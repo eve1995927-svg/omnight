@@ -2808,16 +2808,10 @@ document.getElementById('genAdQ').addEventListener('click',async()=>{
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
   openAllSecs('adSections');
 });
-document.getElementById('adXls')?.addEventListener('click',()=>{
-  const n=document.getElementById('adN')?.value||'業主';
-  const tp=document.getElementById('adTp')?.value||'全室裝修';
-  dlXls(n,tp,adSections,'internal');// 內部版（含成本）
-});
-document.getElementById('adXlsClient')?.addEventListener('click',()=>{
-  const n=document.getElementById('adN')?.value||'業主';
-  const tp=document.getElementById('adTp')?.value||'全室裝修';
-  dlXls(n,tp,adSections,'client');// 客戶版（只含對客價）
-});
+
+
+
+;
 
 // Vendor picker for new quote
 let selVendors=new Set();
@@ -2893,41 +2887,201 @@ function renderQTable(){
 function dlXls(name,type,sections,mode){
   const today=new Date().toLocaleDateString('zh-TW');
   const isInternal=(mode==='internal');
-  showToast('⏳ 生成報價單中...');
 
-  const secData=(sections||[]).map(sec=>({
-    name:sec.name||'',
-    items:(sec.items||[]).map(it=>({
-      name:it.name||'',unit:it.unit||'式',
-      qty:parseFloat((it.qty||1).toString().replace(/[^\d.]/g,''))||1,
-      price:parseFloat(it.price)||0,
-      note:it.note||''
-    }))
-  }));
+  async function doGen(){
+    // 載入 ExcelJS 瀏覽器版
+    if(!window.ExcelJS){
+      showToast('⏳ 載入報表套件...');
+      await new Promise((res,rej)=>{
+        const sc=document.createElement('script');
+        sc.src='https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js';
+        sc.onload=res; sc.onerror=rej;
+        document.head.appendChild(sc);
+      });
+    }
 
-  // 呼叫 Netlify Function 後端生成帶格式的 Excel
-  fetch('/.netlify/functions/generate-excel',{
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name,today,sections:secData})
-  })
-  .then(r=>r.json())
-  .then(d=>{
-    if(!d.b64){showToast('❌ 生成失敗：'+( d.error||'未知錯誤'));return;}
-    const binary=atob(d.b64);
-    const bytes=new Uint8Array(binary.length);
-    for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-    const blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    showToast('⏳ 生成報價單中...');
+    const wb=new ExcelJS.Workbook();
+    const BLUEH='4472C4',WHITE='FFFFFF',YELLOW='FFFF00',RED='C00000';
+    const NUMS=['一','二','三','四','五','六','七','八','九','十','十一','十二','十三','十四'];
+
+    const allBrd={top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}};
+    const medBrd={top:{style:'medium'},bottom:{style:'medium'},left:{style:'medium'},right:{style:'medium'}};
+
+    // 計算
+    let grand=0; const sts=[];
+    (sections||[]).forEach(sec=>{
+      const t=(sec.items||[]).reduce((a,it)=>{
+        const q=parseFloat((it.qty||1).toString().replace(/[^\d.]/g,''))||1;
+        return a+(parseFloat(it.price)||0)*q;
+      },0);
+      sts.push(Math.round(t)); grand+=Math.round(t);
+    });
+    const tax=Math.round(grand*0.05);
+
+    // ── 主表 ──
+    const ws=wb.addWorksheet('澤居報價單');
+    ws.columns=[{width:8},{width:32},{width:8},{width:8},{width:12},{width:12},{width:18}];
+
+    // R1 公司名
+    ws.getRow(1).height=38;
+    ws.mergeCells('A1:G1');
+    const r1=ws.getCell('A1');
+    r1.value='澤　居　室　內　裝　修';
+    r1.font={bold:true,size:16,name:'新細明體'};
+    r1.alignment={horizontal:'center',vertical:'middle'};
+    r1.border=allBrd;
+
+    // R2
+    ws.getRow(2).height=20;
+    ws.mergeCells('A2:D2'); ws.getCell('A2').value='業主：'+(name||''); ws.getCell('A2').font={size:11,name:'新細明體'}; ws.getCell('A2').alignment={horizontal:'left',vertical:'middle'}; ws.getCell('A2').border=allBrd;
+    ws.mergeCells('E2:F2'); ws.getCell('E2').value='製表：'; ws.getCell('E2').font={size:11,name:'新細明體'}; ws.getCell('E2').border=allBrd;
+    ws.getCell('G2').value='陳鴻彬'; ws.getCell('G2').font={size:11,name:'新細明體'}; ws.getCell('G2').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('G2').border=allBrd;
+
+    // R3
+    ws.getRow(3).height=20;
+    ws.mergeCells('A3:D3'); ws.getCell('A3').value='地址：'; ws.getCell('A3').font={size:11,name:'新細明體'}; ws.getCell('A3').alignment={horizontal:'left',vertical:'middle'}; ws.getCell('A3').border=allBrd;
+    ws.mergeCells('E3:F3'); ws.getCell('E3').value='日期：'+today; ws.getCell('E3').font={size:11,name:'新細明體'}; ws.getCell('E3').border=allBrd;
+    ws.getCell('G3').value='報價有效期限15日'; ws.getCell('G3').font={size:10,color:{argb:'FF'+RED},name:'新細明體'}; ws.getCell('G3').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('G3').border=allBrd;
+
+    // R4
+    ws.getRow(4).height=16;
+    ws.mergeCells('A4:G4'); ws.getCell('A4').value='報價總單'; ws.getCell('A4').font={size:11,name:'新細明體'}; ws.getCell('A4').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('A4').border=allBrd;
+
+    // R5 表頭
+    ws.getRow(5).height=24;
+    ['項次','工程種類別','單位','數量','單價','複價','備註'].forEach((h,i)=>{
+      const col=String.fromCharCode(65+i);
+      const c=ws.getCell(col+'5');
+      c.value=h;
+      c.font={bold:true,size:12,color:{argb:'FF'+WHITE},name:'新細明體'};
+      c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+BLUEH}};
+      c.alignment={horizontal:'center',vertical:'middle'};
+      c.border=medBrd;
+    });
+
+    // R6-19
+    for(let i=0;i<14;i++){
+      const r=6+i;
+      ws.getRow(r).height=22;
+      const sec=(sections||[])[i];
+      const st=sts[i]||0;
+      ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+r).border=allBrd);
+      ws.getCell('A'+r).value=NUMS[i]; ws.getCell('A'+r).font={size:12,name:'新細明體'}; ws.getCell('A'+r).alignment={horizontal:'center',vertical:'middle'};
+      ws.getCell('B'+r).value=sec?sec.name:''; ws.getCell('B'+r).font={size:11,name:'新細明體'}; ws.getCell('B'+r).alignment={horizontal:'center',vertical:'middle'};
+      ws.getCell('C'+r).value='式'; ws.getCell('C'+r).alignment={horizontal:'center',vertical:'middle'};
+      ws.getCell('D'+r).value=1; ws.getCell('D'+r).alignment={horizontal:'center',vertical:'middle'};
+      ws.getCell('F'+r).value=st; ws.getCell('F'+r).font={bold:true,size:12,color:{argb:'FF'+RED},name:'新細明體'}; ws.getCell('F'+r).numFmt='#,##0'; ws.getCell('F'+r).alignment={horizontal:'right',vertical:'middle'};
+    }
+
+    // R20-22
+    ws.getRow(20).height=20; ws.mergeCells('A20:E20');
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'20').border=allBrd);
+    ws.getCell('F20').value=grand; ws.getCell('F20').font={bold:true,size:12,color:{argb:'FF'+RED}}; ws.getCell('F20').numFmt='#,##0'; ws.getCell('F20').alignment={horizontal:'right',vertical:'middle'};
+
+    ws.getRow(21).height=20; ws.mergeCells('A21:E21');
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'21').border=allBrd);
+    ws.getCell('A21').value='稅金5%'; ws.getCell('A21').font={size:11,name:'新細明體'}; ws.getCell('A21').alignment={horizontal:'center',vertical:'middle'};
+    ws.getCell('F21').value=tax; ws.getCell('F21').font={bold:true,size:12,color:{argb:'FF'+RED}}; ws.getCell('F21').numFmt='#,##0'; ws.getCell('F21').alignment={horizontal:'right',vertical:'middle'};
+
+    ws.getRow(22).height=24; ws.mergeCells('A22:E22');
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'22').border=medBrd);
+    ws.getCell('A22').value='合計'; ws.getCell('A22').font={bold:true,size:13,name:'新細明體'}; ws.getCell('A22').alignment={horizontal:'center',vertical:'middle'};
+    ws.getCell('F22').value=grand+tax; ws.getCell('F22').font={bold:true,size:13,color:{argb:'FF'+RED}}; ws.getCell('F22').numFmt='#,##0'; ws.getCell('F22').alignment={horizontal:'right',vertical:'middle'};
+
+    // R23 備注
+    ws.getRow(23).height=68; ws.mergeCells('A23:G23');
+    ws.getCell('A23').value='備註：一. 付款方式：第一期訂金30%，第二期施工進場3天內30%，第三期完成7成30%，第四期尾款驗收後10%\n二. 每期請款請於提出後3日內付清，否則保留停工之權利\n三. 此報價單確認無誤後請簽名回傳，即轉為正式合約';
+    ws.getCell('A23').font={size:10,name:'新細明體'}; ws.getCell('A23').alignment={horizontal:'left',vertical:'top',wrapText:true}; ws.getCell('A23').border=allBrd;
+
+    ws.getRow(24).height=10; ws.mergeCells('A24:G24'); ws.getCell('A24').border=allBrd;
+
+    ws.getRow(25).height=18; ws.mergeCells('A25:G25');
+    ws.getCell('A25').value='匯款資訊：銀行代碼：050　台灣企銀-八德分行　戶名：澤居室內裝修　帳號：7505400208531';
+    ws.getCell('A25').font={bold:true,size:10,name:'新細明體'}; ws.getCell('A25').alignment={horizontal:'left',vertical:'middle'}; ws.getCell('A25').border=allBrd;
+
+    ws.getRow(26).height=52;
+    ws.mergeCells('A26:C26'); ws.getCell('A26').value='公司蓋章處'; ws.getCell('A26').font={bold:true,size:12,name:'新細明體'}; ws.getCell('A26').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('A26').border=allBrd;
+    ws.mergeCells('D26:G26'); ws.getCell('D26').value='客戶回簽處'; ws.getCell('D26').font={bold:true,size:12,name:'新細明體'}; ws.getCell('D26').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('D26').border=allBrd;
+
+    ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
+    ws.pageSetup.margins={left:0.4,right:0.4,top:0.5,bottom:0.5};
+
+    // ── 細項 Sheets ──
+    const usedNames=['澤居報價單'];
+    (sections||[]).forEach((sec,si)=>{
+      const st=sts[si]||0;
+      let sname=(sec.name||'工程').substring(0,8);
+      if(usedNames.includes(sname)) sname=sname.substring(0,6)+si;
+      usedNames.push(sname);
+      const ws2=wb.addWorksheet(sname);
+      ws2.columns=[{width:8},{width:36},{width:8},{width:8},{width:12},{width:12},{width:18}];
+      const items=sec.items||[];
+      const totalRows=5+Math.max(items.length,15);
+
+      // 框線
+      for(let r=1;r<=totalRows;r++) ['A','B','C','D','E','F','G'].forEach(col=>ws2.getCell(col+r).border=allBrd);
+
+      ws2.getRow(1).height=20; ws2.mergeCells('A1:D1');
+      ws2.getCell('A1').value='業主：'+(name||''); ws2.getCell('A1').font={size:11,name:'新細明體'}; ws2.getCell('A1').alignment={horizontal:'left',vertical:'middle'};
+      ws2.mergeCells('E1:F1'); ws2.getCell('E1').value='製表：'; ws2.getCell('E1').font={size:11};
+      ws2.getCell('G1').value='日期：'+today; ws2.getCell('G1').font={size:11};
+
+      ws2.getRow(2).height=20; ws2.mergeCells('A2:G2');
+      ws2.getCell('A2').value='地址：'; ws2.getCell('A2').font={size:11,name:'新細明體'}; ws2.getCell('A2').alignment={horizontal:'left',vertical:'middle'};
+
+      ws2.getRow(3).height=16; ws2.mergeCells('A3:G3');
+      ws2.getCell('A3').value='報價細項表'; ws2.getCell('A3').font={size:11,name:'新細明體'}; ws2.getCell('A3').alignment={horizontal:'center',vertical:'middle'};
+
+      ws2.getRow(4).height=24;
+      ['項次','工程種類別','單位','數量','單價','複價','備註'].forEach((h,i)=>{
+        const col=String.fromCharCode(65+i); const c=ws2.getCell(col+'4');
+        c.value=h; c.font={bold:true,size:12,color:{argb:'FF'+WHITE},name:'新細明體'};
+        c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+BLUEH}};
+        c.alignment={horizontal:'center',vertical:'middle'}; c.border=medBrd;
+      });
+
+      ws2.getRow(5).height=22; ws2.mergeCells('A5:E5');
+      ws2.getCell('A5').value=sec.name||''; ws2.getCell('A5').font={bold:true,size:12,name:'新細明體'};
+      ws2.getCell('A5').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}};
+      ws2.getCell('A5').alignment={horizontal:'center',vertical:'middle'};
+      ws2.getCell('F5').value='合計'; ws2.getCell('F5').font={bold:true,size:11,color:{argb:'FF'+RED},name:'新細明體'};
+      ws2.getCell('F5').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}}; ws2.getCell('F5').alignment={horizontal:'right',vertical:'middle'};
+      ws2.getCell('G5').value=st; ws2.getCell('G5').font={bold:true,size:12,color:{argb:'FF'+RED},name:'新細明體'};
+      ws2.getCell('G5').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}}; ws2.getCell('G5').numFmt='#,##0'; ws2.getCell('G5').alignment={horizontal:'right',vertical:'middle'};
+
+      let row=6;
+      items.forEach((it,ii)=>{
+        ws2.getRow(row).height=22;
+        const qty=parseFloat((it.qty||1).toString().replace(/[^\d.]/g,''))||1;
+        const price=parseFloat(it.price)||0;
+        ws2.getCell('A'+row).value=ii+1; ws2.getCell('A'+row).alignment={horizontal:'center',vertical:'middle'};
+        ws2.getCell('B'+row).value=it.name||''; ws2.getCell('B'+row).font={size:10,name:'新細明體'}; ws2.getCell('B'+row).alignment={horizontal:'left',vertical:'middle',wrapText:true};
+        ws2.getCell('C'+row).value=it.unit||''; ws2.getCell('C'+row).alignment={horizontal:'center',vertical:'middle'};
+        ws2.getCell('D'+row).value=qty; ws2.getCell('D'+row).alignment={horizontal:'center',vertical:'middle'};
+        ws2.getCell('E'+row).value=price||null; ws2.getCell('E'+row).numFmt='#,##0'; ws2.getCell('E'+row).alignment={horizontal:'right',vertical:'middle'};
+        ws2.getCell('F'+row).value=Math.round(qty*price); ws2.getCell('F'+row).numFmt='#,##0'; ws2.getCell('F'+row).alignment={horizontal:'right',vertical:'middle'};
+        ws2.getCell('G'+row).value=it.note||''; ws2.getCell('G'+row).font={size:10,name:'新細明體'}; ws2.getCell('G'+row).alignment={horizontal:'left',vertical:'middle',wrapText:true};
+        row++;
+      });
+      while(row<=totalRows){ws2.getRow(row).height=22;row++;}
+      ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
+    });
+
+    // 下載
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url;
     a.download='澤居報價單_'+name+'_'+today.replace(/\//g,'')+(isInternal?'_內部':'_客戶')+'.xlsx';
     a.click(); URL.revokeObjectURL(url);
     showToast('✅ 報價單下載成功！格式完整');
-  })
-  .catch(err=>{
-    console.error('Excel gen error:',err);
-    showToast('❌ 下載失敗，請稍後再試');
+  }
+
+  doGen().catch(err=>{
+    console.error(err);
+    showToast('❌ 下載失敗：'+err.message);
   });
 }
 
