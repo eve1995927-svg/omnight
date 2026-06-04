@@ -2101,14 +2101,7 @@ async function apiTestConn(){
   setRes('#EBF3FF','#A0C4F0','#1A5490','🔄 正在連線，請稍候…');
 
   try{
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': API_KEY,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true'
-      },
+    const r = await fetch('/.netlify/functions/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
         max_tokens: 3000,
@@ -2889,7 +2882,6 @@ function dlXls(name,type,sections,mode){
   const isInternal=(mode==='internal');
 
   async function doGen(){
-    // 載入 ExcelJS 瀏覽器版
     if(!window.ExcelJS){
       showToast('⏳ 載入報表套件...');
       await new Promise((res,rej)=>{
@@ -2899,18 +2891,16 @@ function dlXls(name,type,sections,mode){
         document.head.appendChild(sc);
       });
     }
-
     showToast('⏳ 生成報價單中...');
-    console.log('dlXls called, name:', name, 'sections count:', (sections||[]).length);
-    if(sections&&sections.length) console.log('first sec:', JSON.stringify(sections[0]).substring(0,100));
+
     const wb=new ExcelJS.Workbook();
     const BLUEH='4472C4',WHITE='FFFFFF',YELLOW='FFFF00',RED='C00000';
     const NUMS=['一','二','三','四','五','六','七','八','九','十','十一','十二','十三','十四'];
+    const thinBrd={style:'thin'};
+    const medBrd={style:'medium'};
+    function brd(s){return{top:{style:s},bottom:{style:s},left:{style:s},right:{style:s}};}
 
-    const allBrd={top:{style:'thin'},bottom:{style:'thin'},left:{style:'thin'},right:{style:'thin'}};
-    const medBrd={top:{style:'medium'},bottom:{style:'medium'},left:{style:'medium'},right:{style:'medium'}};
-
-    // 計算
+    // 計算合計
     let grand=0; const sts=[];
     (sections||[]).forEach(sec=>{
       const t=(sec.items||[]).reduce((a,it)=>{
@@ -2921,156 +2911,185 @@ function dlXls(name,type,sections,mode){
     });
     const tax=Math.round(grand*0.05);
 
-    // ── 主表 ──
+    // ══ 主表：完全按照模板格式 ══
     const ws=wb.addWorksheet('澤居報價單');
-    ws.columns=[{width:8},{width:32},{width:8},{width:8},{width:12},{width:12},{width:18}];
+    // 欄寬完全跟模板一樣
+    ws.columns=[{width:7},{width:28},{width:7},{width:7},{width:10},{width:10},{width:20}];
+
+    function setCell(ref, val, opts={}){
+      const c=ws.getCell(ref);
+      if(val!==undefined) c.value=val;
+      if(opts.bold||opts.sz||opts.color||opts.name)
+        c.font={bold:opts.bold||false,size:opts.sz||10,color:{argb:opts.color?'FF'+opts.color:'FF000000'},name:opts.name||'新細明體'};
+      if(opts.fill) c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+opts.fill}};
+      if(opts.h) c.alignment={...(c.alignment||{}),horizontal:opts.h};
+      if(opts.v) c.alignment={...(c.alignment||{}),vertical:opts.v};
+      if(opts.wrap) c.alignment={...(c.alignment||{}),wrapText:true};
+      if(opts.brd) c.border=brd(opts.brd);
+      if(opts.numFmt) c.numFmt=opts.numFmt;
+    }
 
     // R1 公司名
-    ws.getRow(1).height=38;
+    ws.getRow(1).height=34;
     ws.mergeCells('A1:G1');
-    const r1=ws.getCell('A1');
-    r1.value='澤　居　室　內　裝　修';
-    r1.font={bold:true,size:16,name:'新細明體'};
-    r1.alignment={horizontal:'center',vertical:'middle'};
-    r1.border=allBrd;
+    setCell('A1','澤　居　室　內　裝　修',{bold:true,sz:12,h:'center',v:'middle',brd:'thin'});
 
     // R2
-    ws.getRow(2).height=20;
-    ws.mergeCells('A2:D2'); ws.getCell('A2').value='業主：'+(name||''); ws.getCell('A2').font={size:11,name:'新細明體'}; ws.getCell('A2').alignment={horizontal:'left',vertical:'middle'}; ws.getCell('A2').border=allBrd;
-    ws.mergeCells('E2:F2'); ws.getCell('E2').value='製表：'; ws.getCell('E2').font={size:11,name:'新細明體'}; ws.getCell('E2').border=allBrd;
-    ws.getCell('G2').value='陳鴻彬'; ws.getCell('G2').font={size:11,name:'新細明體'}; ws.getCell('G2').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('G2').border=allBrd;
+    ws.getRow(2).height=16;
+    ws.mergeCells('A2:D2'); setCell('A2','業主：'+(name||''),{sz:10,h:'left',v:'middle',brd:'thin'});
+    ws.mergeCells('E2:F2'); setCell('E2','製表：',{sz:10,h:'left',v:'middle',brd:'thin'});
+    setCell('G2','陳鴻彬',{sz:10,h:'center',v:'middle',brd:'thin'});
 
     // R3
-    ws.getRow(3).height=20;
-    ws.mergeCells('A3:D3'); ws.getCell('A3').value='地址：'; ws.getCell('A3').font={size:11,name:'新細明體'}; ws.getCell('A3').alignment={horizontal:'left',vertical:'middle'}; ws.getCell('A3').border=allBrd;
-    ws.mergeCells('E3:F3'); ws.getCell('E3').value='日期：'+today; ws.getCell('E3').font={size:11,name:'新細明體'}; ws.getCell('E3').border=allBrd;
-    ws.getCell('G3').value='報價有效期限15日'; ws.getCell('G3').font={size:10,color:{argb:'FF'+RED},name:'新細明體'}; ws.getCell('G3').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('G3').border=allBrd;
+    ws.getRow(3).height=16;
+    ws.mergeCells('A3:D3'); setCell('A3','地址：',{sz:10,h:'left',v:'middle',brd:'thin'});
+    ws.mergeCells('E3:F3'); setCell('E3','日期：'+today,{sz:10,h:'left',v:'middle',brd:'thin'});
+    setCell('G3','報價有效期限15日',{sz:9,color:RED,h:'center',v:'middle',brd:'thin'});
 
     // R4
-    ws.getRow(4).height=16;
-    ws.mergeCells('A4:G4'); ws.getCell('A4').value='報價總單'; ws.getCell('A4').font={size:11,name:'新細明體'}; ws.getCell('A4').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('A4').border=allBrd;
+    ws.getRow(4).height=14;
+    ws.mergeCells('A4:G4'); setCell('A4','報價總單',{sz:10,h:'center',v:'middle',brd:'thin'});
 
     // R5 表頭
-    ws.getRow(5).height=24;
+    ws.getRow(5).height=20;
     ['項次','工程種類別','單位','數量','單價','複價','備註'].forEach((h,i)=>{
       const col=String.fromCharCode(65+i);
       const c=ws.getCell(col+'5');
-      c.value=h;
-      c.font={bold:true,size:12,color:{argb:'FF'+WHITE},name:'新細明體'};
+      c.value=h; c.font={bold:true,size:11,color:{argb:'FF'+WHITE},name:'新細明體'};
       c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+BLUEH}};
       c.alignment={horizontal:'center',vertical:'middle'};
-      c.border=medBrd;
+      c.border=brd('medium');
     });
 
-    // R6-19
+    // R6-19 資料行（列高18，跟模板一樣）
     for(let i=0;i<14;i++){
       const r=6+i;
-      ws.getRow(r).height=22;
-      const sec=(sections||[])[i];
-      const st=sts[i]||0;
-      ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+r).border=allBrd);
-      ws.getCell('A'+r).value=NUMS[i]; ws.getCell('A'+r).font={size:12,name:'新細明體'}; ws.getCell('A'+r).alignment={horizontal:'center',vertical:'middle'};
-      ws.getCell('B'+r).value=sec?sec.name:''; ws.getCell('B'+r).font={size:11,name:'新細明體'}; ws.getCell('B'+r).alignment={horizontal:'center',vertical:'middle'};
-      ws.getCell('C'+r).value='式'; ws.getCell('C'+r).alignment={horizontal:'center',vertical:'middle'};
-      ws.getCell('D'+r).value=1; ws.getCell('D'+r).alignment={horizontal:'center',vertical:'middle'};
-      ws.getCell('F'+r).value=st; ws.getCell('F'+r).font={bold:true,size:12,color:{argb:'FF'+RED},name:'新細明體'}; ws.getCell('F'+r).numFmt='#,##0'; ws.getCell('F'+r).alignment={horizontal:'right',vertical:'middle'};
+      ws.getRow(r).height=18;
+      const sec=(sections||[])[i]; const st=sts[i]||0;
+      ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+r).border=brd('thin'));
+      setCell('A'+r,NUMS[i],{sz:10,h:'center',v:'middle'});
+      setCell('B'+r,sec?sec.name:'',{sz:10,h:'center',v:'middle'});
+      setCell('C'+r,'式',{sz:10,h:'center',v:'middle'});
+      setCell('D'+r,1,{sz:10,h:'center',v:'middle'});
+      const fc=ws.getCell('F'+r);
+      fc.value=st; fc.font={size:10,name:'新細明體'};
+      fc.numFmt='#,##0'; fc.alignment={horizontal:'right',vertical:'middle'};
     }
 
-    // R20-22
-    ws.getRow(20).height=20; ws.mergeCells('A20:E20');
-    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'20').border=allBrd);
-    ws.getCell('F20').value=grand; ws.getCell('F20').font={bold:true,size:12,color:{argb:'FF'+RED}}; ws.getCell('F20').numFmt='#,##0'; ws.getCell('F20').alignment={horizontal:'right',vertical:'middle'};
+    // R20 小計
+    ws.getRow(20).height=16;
+    ws.mergeCells('A20:E20');
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'20').border=brd('thin'));
+    const f20=ws.getCell('F20'); f20.value=grand; f20.numFmt='#,##0'; f20.alignment={horizontal:'right',vertical:'middle'};
 
-    ws.getRow(21).height=20; ws.mergeCells('A21:E21');
-    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'21').border=allBrd);
-    ws.getCell('A21').value='稅金5%'; ws.getCell('A21').font={size:11,name:'新細明體'}; ws.getCell('A21').alignment={horizontal:'center',vertical:'middle'};
-    ws.getCell('F21').value=tax; ws.getCell('F21').font={bold:true,size:12,color:{argb:'FF'+RED}}; ws.getCell('F21').numFmt='#,##0'; ws.getCell('F21').alignment={horizontal:'right',vertical:'middle'};
+    // R21 稅金
+    ws.getRow(21).height=16;
+    ws.mergeCells('A21:E21');
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'21').border=brd('thin'));
+    setCell('A21','稅金5%',{sz:10,h:'center',v:'middle'});
+    const f21=ws.getCell('F21'); f21.value=tax; f21.numFmt='#,##0'; f21.alignment={horizontal:'right',vertical:'middle'};
 
-    ws.getRow(22).height=24; ws.mergeCells('A22:E22');
-    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'22').border=medBrd);
-    ws.getCell('A22').value='合計'; ws.getCell('A22').font={bold:true,size:13,name:'新細明體'}; ws.getCell('A22').alignment={horizontal:'center',vertical:'middle'};
-    ws.getCell('F22').value=grand+tax; ws.getCell('F22').font={bold:true,size:13,color:{argb:'FF'+RED}}; ws.getCell('F22').numFmt='#,##0'; ws.getCell('F22').alignment={horizontal:'right',vertical:'middle'};
+    // R22 合計
+    ws.getRow(22).height=18;
+    ws.mergeCells('A22:E22');
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+'22').border=brd('medium'));
+    setCell('A22','合計',{bold:true,sz:11,h:'center',v:'middle'});
+    const f22=ws.getCell('F22'); f22.value=grand+tax; f22.font={bold:true,size:11,color:{argb:'FF'+RED},name:'新細明體'}; f22.numFmt='#,##0'; f22.alignment={horizontal:'right',vertical:'middle'};
 
-    // R23 備注
-    ws.getRow(23).height=68; ws.mergeCells('A23:G23');
-    ws.getCell('A23').value='備註：一. 付款方式：第一期訂金30%，第二期施工進場3天內30%，第三期完成7成30%，第四期尾款驗收後10%\n二. 每期請款請於提出後3日內付清，否則保留停工之權利\n三. 此報價單確認無誤後請簽名回傳，即轉為正式合約';
-    ws.getCell('A23').font={size:10,name:'新細明體'}; ws.getCell('A23').alignment={horizontal:'left',vertical:'top',wrapText:true}; ws.getCell('A23').border=allBrd;
+    // R23 備注（高度52，跟模板一樣）
+    ws.getRow(23).height=52;
+    ws.mergeCells('A23:G23');
+    const c23=ws.getCell('A23');
+    c23.value='備註：一. 付款方式：第一期簽約訂金支付總金額30%，第二期施工進場3天內支付30%，第三期工程完成7成時支付30%，第四期尾款驗收後10%\n二. 每期請款請於提出後3日內付清，否則保留停工之權利\n三. 此報價單確認無誤後請簽名回傳，即轉為正式合約';
+    c23.font={size:9,name:'新細明體'}; c23.alignment={horizontal:'left',vertical:'top',wrapText:true}; c23.border=brd('thin');
 
-    ws.getRow(24).height=10; ws.mergeCells('A24:G24'); ws.getCell('A24').border=allBrd;
+    // R24 空行
+    ws.getRow(24).height=10;
+    ws.mergeCells('A24:G24'); ws.getCell('A24').border=brd('thin');
 
-    ws.getRow(25).height=18; ws.mergeCells('A25:G25');
-    ws.getCell('A25').value='匯款資訊：銀行代碼：050　台灣企銀-八德分行　戶名：澤居室內裝修　帳號：7505400208531';
-    ws.getCell('A25').font={bold:true,size:10,name:'新細明體'}; ws.getCell('A25').alignment={horizontal:'left',vertical:'middle'}; ws.getCell('A25').border=allBrd;
+    // R25 匯款
+    ws.getRow(25).height=14;
+    ws.mergeCells('A25:G25');
+    setCell('A25','匯款資訊：銀行代碼：050　台灣企銀-八德分行　戶名：澤居室內裝修　帳號：7505400208531',{bold:true,sz:9,h:'left',v:'middle',brd:'thin'});
 
-    ws.getRow(26).height=52;
-    ws.mergeCells('A26:C26'); ws.getCell('A26').value='公司蓋章處'; ws.getCell('A26').font={bold:true,size:12,name:'新細明體'}; ws.getCell('A26').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('A26').border=allBrd;
-    ws.mergeCells('D26:G26'); ws.getCell('D26').value='客戶回簽處'; ws.getCell('D26').font={bold:true,size:12,name:'新細明體'}; ws.getCell('D26').alignment={horizontal:'center',vertical:'middle'}; ws.getCell('D26').border=allBrd;
+    // R26 蓋章（高度46，跟模板一樣）
+    ws.getRow(26).height=46;
+    ws.mergeCells('A26:C26'); setCell('A26','公司蓋章處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
+    ws.mergeCells('D26:G26'); setCell('D26','客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
 
     ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
-    ws.pageSetup.margins={left:0.4,right:0.4,top:0.5,bottom:0.5};
+    ws.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4};
+    ws.pageSetup.printArea='A1:G26';
 
-    // ── 細項 Sheets ──
+    // ══ 細項 Sheets ══
     const usedNames=['澤居報價單'];
     (sections||[]).forEach((sec,si)=>{
       const st=sts[si]||0;
-      let sname=(sec.name||'工程').substring(0,8);
-      if(usedNames.includes(sname)) sname=sname.substring(0,6)+si;
+      let sname=(sec.name||'工程').substring(0,10);
+      if(usedNames.includes(sname)) sname=sname.substring(0,8)+si;
       usedNames.push(sname);
       const ws2=wb.addWorksheet(sname);
-      ws2.columns=[{width:8},{width:36},{width:8},{width:8},{width:12},{width:12},{width:18}];
+      // 細項欄寬也跟模板一樣
+      ws2.columns=[{width:7},{width:33},{width:7},{width:7},{width:10},{width:10},{width:20}];
       const items=sec.items||[];
       const totalRows=5+Math.max(items.length,15);
 
-      // 框線
-      for(let r=1;r<=totalRows;r++) ['A','B','C','D','E','F','G'].forEach(col=>ws2.getCell(col+r).border=allBrd);
+      // 全部框線
+      for(let r=1;r<=totalRows;r++) ['A','B','C','D','E','F','G'].forEach(col=>ws2.getCell(col+r).border=brd('thin'));
 
-      ws2.getRow(1).height=20; ws2.mergeCells('A1:D1');
-      ws2.getCell('A1').value='業主：'+(name||''); ws2.getCell('A1').font={size:11,name:'新細明體'}; ws2.getCell('A1').alignment={horizontal:'left',vertical:'middle'};
-      ws2.mergeCells('E1:F1'); ws2.getCell('E1').value='製表：'; ws2.getCell('E1').font={size:11};
-      ws2.getCell('G1').value='日期：'+today; ws2.getCell('G1').font={size:11};
+      function sc2(ref,val,opts={}){
+        const c=ws2.getCell(ref);
+        if(val!==undefined) c.value=val;
+        if(opts.bold||opts.sz||opts.color) c.font={bold:opts.bold||false,size:opts.sz||10,color:{argb:opts.color?'FF'+opts.color:'FF000000'},name:'新細明體'};
+        if(opts.fill) c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+opts.fill}};
+        if(opts.h||opts.v||opts.wrap) c.alignment={horizontal:opts.h||'left',vertical:opts.v||'middle',wrapText:!!opts.wrap};
+        if(opts.brd) c.border=brd(opts.brd);
+        if(opts.numFmt) c.numFmt=opts.numFmt;
+      }
 
-      ws2.getRow(2).height=20; ws2.mergeCells('A2:G2');
-      ws2.getCell('A2').value='地址：'; ws2.getCell('A2').font={size:11,name:'新細明體'}; ws2.getCell('A2').alignment={horizontal:'left',vertical:'middle'};
+      ws2.getRow(1).height=16; ws2.mergeCells('A1:D1');
+      sc2('A1','業主：'+(name||''),{sz:10,h:'left',v:'middle'}); ws2.mergeCells('E1:F1');
+      sc2('E1','製表：',{sz:10}); sc2('G1','日期：'+today,{sz:10});
 
-      ws2.getRow(3).height=16; ws2.mergeCells('A3:G3');
-      ws2.getCell('A3').value='報價細項表'; ws2.getCell('A3').font={size:11,name:'新細明體'}; ws2.getCell('A3').alignment={horizontal:'center',vertical:'middle'};
+      ws2.getRow(2).height=16; ws2.mergeCells('A2:G2');
+      sc2('A2','地址：',{sz:10,h:'left',v:'middle'});
 
-      ws2.getRow(4).height=24;
+      ws2.getRow(3).height=14; ws2.mergeCells('A3:G3');
+      sc2('A3','報價細項表',{sz:10,h:'center',v:'middle'});
+
+      ws2.getRow(4).height=20;
       ['項次','工程種類別','單位','數量','單價','複價','備註'].forEach((h,i)=>{
         const col=String.fromCharCode(65+i); const c=ws2.getCell(col+'4');
-        c.value=h; c.font={bold:true,size:12,color:{argb:'FF'+WHITE},name:'新細明體'};
+        c.value=h; c.font={bold:true,size:11,color:{argb:'FF'+WHITE},name:'新細明體'};
         c.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+BLUEH}};
-        c.alignment={horizontal:'center',vertical:'middle'}; c.border=medBrd;
+        c.alignment={horizontal:'center',vertical:'middle'}; c.border=brd('medium');
       });
 
-      ws2.getRow(5).height=22; ws2.mergeCells('A5:E5');
-      ws2.getCell('A5').value=sec.name||''; ws2.getCell('A5').font={bold:true,size:12,name:'新細明體'};
-      ws2.getCell('A5').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}};
-      ws2.getCell('A5').alignment={horizontal:'center',vertical:'middle'};
-      ws2.getCell('F5').value='合計'; ws2.getCell('F5').font={bold:true,size:11,color:{argb:'FF'+RED},name:'新細明體'};
-      ws2.getCell('F5').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}}; ws2.getCell('F5').alignment={horizontal:'right',vertical:'middle'};
-      ws2.getCell('G5').value=st; ws2.getCell('G5').font={bold:true,size:12,color:{argb:'FF'+RED},name:'新細明體'};
-      ws2.getCell('G5').fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}}; ws2.getCell('G5').numFmt='#,##0'; ws2.getCell('G5').alignment={horizontal:'right',vertical:'middle'};
+      ws2.getRow(5).height=18; ws2.mergeCells('A5:E5');
+      sc2('A5',sec.name||'',{bold:true,sz:10,fill:YELLOW,h:'center',v:'middle'});
+      sc2('F5','合計',{bold:true,sz:10,color:RED,fill:YELLOW,h:'right',v:'middle'});
+      const g5=ws2.getCell('G5'); g5.value=st; g5.font={bold:true,size:10,color:{argb:'FF'+RED},name:'新細明體'};
+      g5.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}}; g5.numFmt='#,##0'; g5.alignment={horizontal:'right',vertical:'middle'};
 
       let row=6;
       items.forEach((it,ii)=>{
-        ws2.getRow(row).height=22;
+        ws2.getRow(row).height=18;
         const qty=parseFloat((it.qty||1).toString().replace(/[^\d.]/g,''))||1;
         const price=parseFloat(it.price)||0;
-        ws2.getCell('A'+row).value=ii+1; ws2.getCell('A'+row).alignment={horizontal:'center',vertical:'middle'};
-        ws2.getCell('B'+row).value=it.name||''; ws2.getCell('B'+row).font={size:10,name:'新細明體'}; ws2.getCell('B'+row).alignment={horizontal:'left',vertical:'middle',wrapText:true};
-        ws2.getCell('C'+row).value=it.unit||''; ws2.getCell('C'+row).alignment={horizontal:'center',vertical:'middle'};
-        ws2.getCell('D'+row).value=qty; ws2.getCell('D'+row).alignment={horizontal:'center',vertical:'middle'};
-        ws2.getCell('E'+row).value=price||null; ws2.getCell('E'+row).numFmt='#,##0'; ws2.getCell('E'+row).alignment={horizontal:'right',vertical:'middle'};
-        ws2.getCell('F'+row).value=Math.round(qty*price); ws2.getCell('F'+row).numFmt='#,##0'; ws2.getCell('F'+row).alignment={horizontal:'right',vertical:'middle'};
-        ws2.getCell('G'+row).value=it.note||''; ws2.getCell('G'+row).font={size:10,name:'新細明體'}; ws2.getCell('G'+row).alignment={horizontal:'left',vertical:'middle',wrapText:true};
+        sc2('A'+row,ii+1,{sz:10,h:'center',v:'middle'});
+        sc2('B'+row,it.name||'',{sz:9,h:'left',v:'middle',wrap:true});
+        sc2('C'+row,it.unit||'',{sz:10,h:'center',v:'middle'});
+        const dc=ws2.getCell('D'+row); dc.value=qty; dc.font={size:10,name:'新細明體'}; dc.alignment={horizontal:'center',vertical:'middle'};
+        const ec=ws2.getCell('E'+row); ec.value=price||null; ec.numFmt='#,##0'; ec.alignment={horizontal:'right',vertical:'middle'};
+        const fc2=ws2.getCell('F'+row); fc2.value=Math.round(qty*price); fc2.numFmt='#,##0'; fc2.alignment={horizontal:'right',vertical:'middle'};
+        sc2('G'+row,it.note||'',{sz:9,h:'left',v:'middle',wrap:true});
         row++;
       });
-      while(row<=totalRows){ws2.getRow(row).height=22;row++;}
+      while(row<=totalRows){ ws2.getRow(row).height=18; row++; }
       ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
+      ws2.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4};
     });
 
-    // 下載
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob);
@@ -3078,11 +3097,11 @@ function dlXls(name,type,sections,mode){
     a.href=url;
     a.download='澤居報價單_'+name+'_'+today.replace(/\//g,'')+(isInternal?'_內部':'_客戶')+'.xlsx';
     a.click(); URL.revokeObjectURL(url);
-    showToast('✅ 報價單下載成功！格式完整');
+    showToast('✅ 報價單下載成功！');
   }
 
   doGen().catch(err=>{
-    console.error(err);
+    console.error('Excel error:',err);
     showToast('❌ 下載失敗：'+err.message);
   });
 }
@@ -3702,14 +3721,7 @@ function doPunch(){
         // 用 Claude AI 反查台灣繁體中文地址
         if(API_KEY){
           try{
-            const r=await fetch('https://api.anthropic.com/v1/messages',{
-              method:'POST',
-              headers:{
-                'Content-Type':'application/json',
-                'x-api-key':API_KEY,
-                'anthropic-version':'2023-06-01',
-                'anthropic-dangerous-direct-browser-access':'true'
-              },
+            const r=await fetch('/.netlify/functions/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
               body:JSON.stringify({
                 model:'claude-sonnet-4-6',
                 max_tokens:3000,
@@ -5653,9 +5665,7 @@ async function genMktImg(){
 要求：viewBox="0 0 640 640"，風格：${styleDesc}，右上角「澤居」金色大字，副標ZEJU INTERIOR，中央精美室內設計幾何圖，底部標語「${tagline}」${caption?'，特別要求：'+caption:''}。
 直接輸出SVG，從<svg開始，以</svg>結束。`;
   try{
-    const r=await fetch('https://api.anthropic.com/v1/messages',{
-      method:'POST',
-      headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    const r=await fetch('/.netlify/functions/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
       body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:[{role:'user',content:prompt}]})
     });
     if(!r.ok)throw new Error('api '+r.status);
