@@ -413,6 +413,7 @@ function openLB(src){document.getElementById('lbimg').src=src;document.getElemen
 
 // ══ LOGIN ════════════════════════════════════════════════
 let curRole='owner';
+let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id，共用帳號為角色名
 
 // ── 自動恢復登入狀態 ──────────────────────────────────────
 (function autoRestore(){
@@ -442,24 +443,63 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
   document.querySelectorAll('.lrb').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('lUser').value=ACCTS[curRole].user;
+  // 公務角色：顯示員工個人打卡帳號欄位（選填）
+  const empAccEl=document.getElementById('lEmpAccount');
+  if(empAccEl){
+    empAccEl.style.display=(curRole==='punch')?'block':'none';
+    if(curRole!=='punch')empAccEl.value='';
+  }
 });
 document.getElementById('lBtn').addEventListener('click',doLogin);
 document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
+let _punchEmployee=null; // 個人打卡帳號登入時，記錄對應員工資料
+
 function doLogin(){
   const p=document.getElementById('lPass').value.trim();
   const err=document.getElementById('lErr');
   if(!p){err.style.display='block';err.textContent='請輸入密碼';return;}
-  const pwMap={owner:'0923',staff:'zeju',punch:'zeju1'};
-  const correctPw=pwMap[curRole];
-  if(!correctPw||p!==correctPw){
-    err.style.display='block';
-    err.textContent='密碼不正確，請重新輸入';
-    return;
+
+  _punchEmployee=null;
+
+  if(curRole==='punch'){
+    const empAcc=(document.getElementById('lEmpAccount')?.value||'').trim();
+    if(empAcc){
+      // 員工個人打卡帳號登入
+      const emp=DB.getAll('employees').find(e=>e.account===empAcc&&!e.deleted);
+      if(!emp||emp.password!==p){
+        err.style.display='block';
+        err.textContent='打卡帳號或密碼不正確，請再試一次';
+        return;
+      }
+      _punchEmployee=emp;
+    } else {
+      // 共用公務帳號
+      if(p!=='zeju1'){
+        err.style.display='block';
+        err.textContent='密碼不正確，請重新輸入';
+        return;
+      }
+    }
+  } else {
+    const pwMap={owner:'0923',staff:'zeju'};
+    const correctPw=pwMap[curRole];
+    if(!correctPw||p!==correctPw){
+      err.style.display='block';
+      err.textContent='密碼不正確，請重新輸入';
+      return;
+    }
   }
   err.style.display='none';
   // 儲存登入狀態
   localStorage.setItem('zeju_session_role', curRole);
   localStorage.setItem('zeju_session_ts', Date.now());
+  if(_punchEmployee){
+    localStorage.setItem('zeju_punch_emp_id', _punchEmployee._id);
+    localStorage.setItem('zeju_punch_emp_name', _punchEmployee.name);
+  } else {
+    localStorage.removeItem('zeju_punch_emp_id');
+    localStorage.removeItem('zeju_punch_emp_name');
+  }
   const ls=document.getElementById('ls');
   ls.style.opacity='0';
   ls.style.transition='opacity .4s';
@@ -485,10 +525,16 @@ function setupApp(role){
   const uName=document.getElementById('uName');
   const aName=document.getElementById('aName');
   const aRole=document.getElementById('aRole');
-  if(uDot)uDot.textContent=a?.abbr||'?';
-  if(uName)uName.textContent=a?.name||nameMap[role]||role;
-  if(aName)aName.textContent=a?.name||nameMap[role]||role;
-  if(aRole)aRole.textContent=a?.role||'';
+  // 個人打卡帳號登入：顯示員工本人姓名
+  const empName=localStorage.getItem('zeju_punch_emp_name');
+  const empId=localStorage.getItem('zeju_punch_emp_id');
+  const displayName=(role==='punch'&&empName)?empName:(a?.name||nameMap[role]||role);
+  curPunchUser=(role==='punch'&&empId)?('emp_'+empId):role;
+
+  if(uDot)uDot.textContent=(role==='punch'&&empName)?empName.charAt(0):(a?.abbr||'?');
+  if(uName)uName.textContent=displayName;
+  if(aName)aName.textContent=displayName;
+  if(aRole)aRole.textContent=(role==='punch'&&empName)?'員工打卡':(a?.role||'');
 
   // 公務帳號：只顯示打卡介面
   if(role==='punch'){

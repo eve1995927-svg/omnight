@@ -372,8 +372,8 @@ function renderVendors(filter){
       // 細項表格
       const itemWrap=document.createElement('div');
       const itmHd=document.createElement('div');
-      itmHd.style.cssText='display:grid;grid-template-columns:1fr 80px 100px;padding:7px 16px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
-      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:right">金額</span>';
+      itmHd.style.cssText='display:grid;grid-template-columns:1.5fr 55px 55px 80px 90px;padding:7px 16px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
+      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:right">小計</span>';
       const itmBody=document.createElement('div');itmBody.id='vi-body-'+v._id;
 
       function renderVCardItems(){
@@ -381,12 +381,44 @@ function renderVendors(filter){
         if(!editItems.length){const em=document.createElement('div');em.style.cssText='padding:10px 16px;font-size:.82rem;color:var(--g400)';em.textContent='無細項';itmBody.appendChild(em);return;}
         editItems.forEach((it,i)=>{
           const row=document.createElement('div');
-          row.style.cssText='display:grid;grid-template-columns:1fr 80px 100px 32px;padding:6px 16px;border-bottom:1px solid var(--g100);align-items:center;gap:6px';
-          const n=document.createElement('input');n.style.cssText='padding:5px 8px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';n.value=it.name||'';n.placeholder='工項名稱';n.addEventListener('input',()=>it.name=n.value);n.addEventListener('focus',()=>n.style.borderColor='var(--gold)');n.addEventListener('blur',()=>n.style.borderColor='transparent');
-          const q=document.createElement('input');q.style.cssText=n.style.cssText;q.value=it.qty||'1式';q.placeholder='數量';q.addEventListener('input',()=>it.qty=q.value);q.addEventListener('focus',()=>q.style.borderColor='var(--gold)');q.addEventListener('blur',()=>q.style.borderColor='transparent');
-          const a=document.createElement('input');a.type='number';a.style.cssText=n.style.cssText+'text-align:right;font-family:monospace';a.value=it.amount||0;a.addEventListener('input',()=>{it.amount=parseFloat(a.value)||0;updVCardTotal();});a.addEventListener('focus',()=>a.style.borderColor='var(--gold)');a.addEventListener('blur',()=>a.style.borderColor='transparent');
+          row.style.cssText='display:grid;grid-template-columns:1.5fr 55px 55px 80px 90px 30px;padding:6px 16px;border-bottom:1px solid var(--g100);align-items:center;gap:4px';
+          const IS='padding:5px 6px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';
+          const mkF=el=>{el.addEventListener('focus',()=>el.style.borderColor='var(--gold)');el.addEventListener('blur',()=>el.style.borderColor='transparent');};
+
+          const n=document.createElement('input');n.style.cssText=IS;n.value=it.name||'';n.placeholder='工項名稱';n.addEventListener('input',()=>it.name=n.value);mkF(n);
+
+          const qtyNum=parseFloat((it.qty||'1').toString().replace(/[^\d.]/g,''))||1;
+          const q=document.createElement('input');q.type='number';q.style.cssText=IS+'text-align:center';q.value=qtyNum;q.placeholder='數量';
+          const u=document.createElement('input');u.style.cssText=IS+'text-align:center';u.value=it.unit||(it.qty||'').toString().replace(/[\d.]/g,'')||'式';u.placeholder='單位';mkF(u);
+
+          const up=document.createElement('input');up.type='number';up.style.cssText=IS+'text-align:right;font-family:monospace';
+          up.value=it.unitPrice!=null?it.unitPrice:(qtyNum?Math.round((it.amount||0)/qtyNum):(it.amount||0));
+          mkF(up);
+
+          const a=document.createElement('input');a.type='number';a.style.cssText=IS+'text-align:right;font-family:monospace;font-weight:700';a.value=it.amount||0;mkF(a);
+
+          function recalc(){
+            const qv=parseFloat(q.value)||1, upv=parseFloat(up.value)||0;
+            it.unitPrice=upv;it.qty=qv+(u.value||'式');it.unit=u.value||'式';
+            it.amount=Math.round(qv*upv);
+            a.value=it.amount;
+            updVCardTotal();
+          }
+          q.addEventListener('input',recalc);
+          up.addEventListener('input',recalc);
+          u.addEventListener('input',()=>{it.unit=u.value;it.qty=(parseFloat(q.value)||1)+(u.value||'式');});
+          a.addEventListener('input',()=>{
+            // 手動覆寫小計：反推單價
+            it.amount=parseFloat(a.value)||0;
+            const qv=parseFloat(q.value)||1;
+            it.unitPrice=qv?Math.round(it.amount/qv):it.amount;
+            up.value=it.unitPrice;
+            updVCardTotal();
+          });
+          mkF(q);
+
           const del=document.createElement('button');del.style.cssText='width:26px;height:26px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center';del.textContent='🗑';del.addEventListener('click',()=>{editItems.splice(i,1);renderVCardItems();updVCardTotal();});
-          row.appendChild(n);row.appendChild(q);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
+          row.appendChild(n);row.appendChild(q);row.appendChild(u);row.appendChild(up);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
         });
       }
       function updVCardTotal(){
@@ -394,7 +426,7 @@ function renderVendors(filter){
         subTotEl.textContent='小計 NT$'+t.toLocaleString();
         hd.querySelector('[style*="gold"]')?.textContent&&(hd.querySelectorAll('div')[2].textContent='NT$'+t.toLocaleString());
       }
-      const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:'1式',amount:0});renderVCardItems();});
+      const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:1,unit:'式',unitPrice:0,amount:0});renderVCardItems();});
       const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.textContent='小計 NT$'+(v.amount||0).toLocaleString();
 
       // 儲存列
@@ -445,7 +477,7 @@ function initPunchClock(){
 function doPunch(){
   const now=new Date();
   const today=now.toLocaleDateString('zh-TW');
-  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curRole);
+  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser);
   const alreadyIn=todayRecs.some(r=>r.type==='in');
   const alreadyOut=todayRecs.some(r=>r.type==='out');
   // 上班只能打一次，下班只能打一次
@@ -457,7 +489,7 @@ function doPunch(){
   const save=(lat,lng,addr)=>{
     DB.push('punch_recs',{
       summary:(isIn?'上班':'下班')+'打卡 '+now.toLocaleTimeString('zh-TW',{hour12:false}),
-      user:curRole,userName:empName,date:today,
+      user:curPunchUser,userName:empName,date:today,
       time:now.toLocaleTimeString('zh-TW',{hour12:false}),
       type:isIn?'in':'out',
       lat:lat||null,lng:lng||null,addr:addr||null
@@ -514,7 +546,7 @@ function doPunch(){
             DB.push('billing',{
               summary:'打卡地址查詢 -'+pts+'點',
               desc:'打卡地址查詢',role:'punch',
-              points:pts,tokens:tu,user:curRole||'punch',
+              points:pts,tokens:tu,user:curPunchUser||'punch',
               ts:_now.toLocaleString('zh-TW'),
               month:_now.getFullYear()+'-'+(_now.getMonth()+1).toString().padStart(2,'0'),
               day:_now.toLocaleDateString('zh-TW'),
@@ -535,7 +567,7 @@ function updatePunchBtn(){
   const ico=document.getElementById('punchBtnIco');
   if(!btn)return;
   const today=new Date().toLocaleDateString('zh-TW');
-  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curRole);
+  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser);
   const hasIn=todayRecs.some(r=>r.type==='in');
   const hasOut=todayRecs.some(r=>r.type==='out');
   if(hasIn&&hasOut){
@@ -579,7 +611,7 @@ function renderHRPanel(){
         const row=document.createElement('div');
         row.style.cssText='display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rxs);margin-bottom:3px;background:var(--g50)';
         const nameLabel=r.userName||r.user||'員工';
-        const roleLabel={owner:'老闆',staff:'員工',punch:'公務'}[r.user]||r.user;
+        const roleLabel=r.user&&r.user.startsWith('emp_')?'個人帳號':({owner:'老闆',staff:'員工',punch:'公務'}[r.user]||r.user);
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+
@@ -707,9 +739,10 @@ document.getElementById('addLedgerBtn')?.addEventListener('click',()=>{
   const date=document.getElementById('ldDate').value;
   const caseN=document.getElementById('ldCase').value.trim();
   if(!amt&&!ldItems.length){showToast('⚠️ 請填入金額');return;}
+  const bookLabel=curLedgerBook==='out'?'內帳':'外帳';
   DB.push('ledger',{
-    summary:(curLedgerType==='in'?'收入':'支出')+' '+desc+' '+fmt(amt||ldItems.reduce((s,x)=>s+(x.amount||0),0)),
-    type:curLedgerType,amount:amt,desc,cat,date,caseN,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
+    summary:bookLabel+(curLedgerType==='in'?'收入':'支出')+' '+desc+' '+fmt(amt||ldItems.reduce((s,x)=>s+(x.amount||0),0)),
+    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
   });
   closeModal('ledgerModal');renderLedger();updLedgerStats();renderHistory();showToast('✅ 已儲存！');
 });

@@ -490,6 +490,11 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .ltab:hover{color:var(--g600)}
 .ltab.on{color:var(--gold-d);border-bottom-color:var(--gold);font-weight:900}
 .ledger-body{display:none}.ledger-body.on{display:block;animation:slideUp .2s ease}
+.ldir{background:var(--g50);color:var(--g500);transition:all var(--ease)}
+.ldir:hover{background:var(--g100)}
+.ldir.on{background:var(--gold-pale);border-color:var(--gold-l)!important;color:var(--gold-d)}
+.ldir[data-ldir="in"].on{background:var(--ok-bg);border-color:var(--ok-bd)!important;color:var(--ok)}
+.ldir[data-ldir="out"].on{background:var(--bad-bg);border-color:var(--bad-bd)!important;color:var(--bad)}
 .ledger-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease)}
 .ledger-row:hover{background:var(--g50);margin:0 -8px;padding-left:8px;padding-right:8px;border-radius:var(--rxs)}
 .ledger-row:last-child{border:none}

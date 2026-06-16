@@ -35,6 +35,7 @@
   </div>
 
   <input type="hidden" id="lUser" value="omnight">
+  <input class="linp" type="text" id="lEmpAccount" placeholder="打卡帳號（員工個人帳號，選填）" autocomplete="username" style="display:none;margin-bottom:10px">
   <input class="linp" type="password" id="lPass" placeholder="密碼" autocomplete="current-password">
   <button class="lbtn" id="lBtn">登　入</button>
   <div class="lerr" id="lErr">帳號或密碼不正確，請再試一次</div>
@@ -541,28 +542,43 @@
 
 <!-- ══ AC OVERVIEW ══ -->
 <div class="panel" id="p-ac-overview">
- <div class="ph"><div><div class="ptit">💰 帳款總覽</div><div class="psub">內帳（支出）｜外帳（收入），點 Tab 切換</div></div></div>
+ <div class="ph"><div><div class="ptit">💰 帳款總覽</div><div class="psub">內帳（成本/工程支出）｜外帳（客戶收款），各自可記收入與支出</div></div></div>
 
+ <!-- 外帳 -->
+ <div style="font-size:.78rem;font-weight:900;color:var(--gold-d);letter-spacing:.08em;margin-bottom:8px">💰 外帳（客戶帳）</div>
+ <div class="g3" style="margin-bottom:14px">
+  <div class="stat"><div class="sn" id="ledInSum" style="color:var(--ok)">—</div><div class="sl">收入</div></div>
+  <div class="stat"><div class="sn" id="ledInExpense" style="color:var(--bad)">—</div><div class="sl">支出</div></div>
+  <div class="stat"><div class="sn" id="ledInNet">—</div><div class="sl">外帳淨額</div></div>
+ </div>
+
+ <!-- 內帳 -->
+ <div style="font-size:.78rem;font-weight:900;color:var(--gold-d);letter-spacing:.08em;margin-bottom:8px">📤 內帳（成本帳）</div>
+ <div class="g3" style="margin-bottom:14px">
+  <div class="stat"><div class="sn" id="ledOutIncome" style="color:var(--ok)">—</div><div class="sl">收入</div></div>
+  <div class="stat"><div class="sn" id="ledOutSum" style="color:var(--bad)">—</div><div class="sl">支出</div></div>
+  <div class="stat"><div class="sn" id="ledOutNet">—</div><div class="sl">內帳淨額</div></div>
+ </div>
+
+ <!-- 整體 -->
  <div class="g3" style="margin-bottom:16px">
-  <div class="stat"><div class="sn" id="ledInSum">—</div><div class="sl">💰 外帳收入</div></div>
-  <div class="stat"><div class="sn" id="ledOutSum">—</div><div class="sl">📤 內帳支出</div></div>
-  <div class="stat"><div class="sn" id="ledProfit">—</div><div class="sl">📊 毛利</div></div>
+  <div class="stat" style="grid-column:1/-1"><div class="sn" id="ledProfit">—</div><div class="sl">📊 整體毛利（外帳淨額＋內帳收入－內帳支出）</div></div>
  </div>
 
  <!-- 分頁標籤 -->
  <div class="ledger-tab">
-  <div class="ltab on" data-lt="out" onclick="switchLedger('out')">📤 內帳（支出）</div>
-  <div class="ltab" data-lt="in" onclick="switchLedger('in')">💰 外帳（收入）</div>
+  <div class="ltab on" data-lt="out" onclick="switchLedger('out')">📤 內帳</div>
+  <div class="ltab" data-lt="in" onclick="switchLedger('in')">💰 外帳</div>
   <div class="ltab" data-lt="all" onclick="switchLedger('all')">📋 全部</div>
  </div>
 
  <div class="ledger-body on" id="lb-out">
   <div id="ledger-out-list"></div>
-  <button class="add-ledger-btn" onclick="openLedgerModal('out')">＋ 新增支出記錄</button>
+  <button class="add-ledger-btn" onclick="openLedgerModal('out')">＋ 新增內帳記錄</button>
  </div>
  <div class="ledger-body" id="lb-in">
   <div id="ledger-in-list"></div>
-  <button class="add-ledger-btn" onclick="openLedgerModal('in')">＋ 新增收入記錄</button>
+  <button class="add-ledger-btn" onclick="openLedgerModal('in')">＋ 新增外帳記錄</button>
  </div>
  <div class="ledger-body" id="lb-all">
   <div id="ledger-all-list"></div>
@@ -1063,6 +1079,12 @@
  <div class="modal" style="max-width:520px">
   <div class="mtit" id="ledgerModalTitle">新增記錄 <button class="mcl" data-close="ledgerModal">✕</button></div>
 
+  <!-- 收入/支出 切換 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+   <div class="ldir on" data-ldir="in" onclick="setLedgerDir('in')" style="text-align:center;padding:10px;border-radius:var(--rs);border:1.5px solid var(--g200);cursor:pointer;font-weight:800;font-size:.88rem">💰 收入</div>
+   <div class="ldir" data-ldir="out" onclick="setLedgerDir('out')" style="text-align:center;padding:10px;border-radius:var(--rs);border:1.5px solid var(--g200);cursor:pointer;font-weight:800;font-size:.88rem">📤 支出</div>
+  </div>
+
   <!-- 上傳發票/單據 AI 辨識 -->
   <div class="upz" id="ldZone" style="border-style:solid;border-width:2px;padding:16px;margin-bottom:12px">
    <span class="upz-ic" style="font-size:1.6rem">📎</span>
@@ -1143,6 +1165,14 @@
   <div class="g2" style="margin-bottom:12px">
    <div class="field" style="margin:0"><label class="fl">身分證字號</label><input class="fi" id="empId" placeholder="A123456789"></div>
    <div class="field" style="margin:0"><label class="fl">銀行帳號</label><input class="fi" id="empBank" placeholder="00000000000000"></div>
+  </div>
+  <div style="background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);padding:16px;margin-bottom:14px">
+   <div style="font-size:.85rem;font-weight:800;color:var(--gold-d);margin-bottom:8px">🔑 打卡帳號設定（選填）</div>
+   <p style="font-size:.78rem;color:var(--g500);margin:0 0 10px">設定後，員工可用此帳號密碼登入打卡，打卡記錄會顯示員工姓名</p>
+   <div class="g2" style="margin-bottom:4px">
+    <div class="field" style="margin:0"><label class="fl">登入帳號</label><input class="fi" id="empAccount" placeholder="例：chen123" autocomplete="off"></div>
+    <div class="field" style="margin:0"><label class="fl">登入密碼</label><input class="fi" id="empPassword" placeholder="例：1234" autocomplete="off"></div>
+   </div>
   </div>
   <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
    <div style="font-size:.85rem;font-weight:800;color:var(--info);margin-bottom:12px">💰 薪資設定</div>

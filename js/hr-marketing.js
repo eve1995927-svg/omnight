@@ -111,7 +111,7 @@ function calcSalaryInsurance(){
 
 document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   empEditId=null;
-  ['empName','empTitle','empPhone','empId','empBank'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['empName','empTitle','empPhone','empId','empBank','empAccount','empPassword'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('empSalary').value='32000';
   document.getElementById('empMeal').value='2400';
   document.getElementById('empTransport').value='0';
@@ -132,9 +132,17 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   const health=Math.round((salary+meal)*0.0517*0.3);
   const retire=Math.round(salary*0.06);
   const net=salary+meal+transport+other-labor-health;
-  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,labor,health,retire,net,summary:'員工 '+name};
-  if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！');}
-  else{DB.push('employees',data);showToast('✅ 員工已新增！');}
+  const account=(document.getElementById('empAccount')?.value||'').trim();
+  const password=(document.getElementById('empPassword')?.value||'').trim();
+  // 帳號重複檢查（排除自己）
+  if(account){
+    const dup=DB.get('employees').find(e=>e.account===account&&e._id!==empEditId);
+    if(dup){showToast('⚠️ 此打卡帳號已被「'+dup.name+'」使用，請換一個');return;}
+    if(!password){showToast('⚠️ 設定了帳號就需要設定密碼');return;}
+  }
+  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,labor,health,retire,net,account,password,summary:'員工 '+name};
+  if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
+  else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
 });
 
@@ -173,7 +181,8 @@ function renderEmployees(){
         '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+( e.retire||0).toLocaleString()+'</span></div>'+
         '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+( e.net||0).toLocaleString()+'</span></div>'+
       '</div>'+
-      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'');
+      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'')+
+      (e.account?'<div style="font-size:.75rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'');
     card.querySelector('[data-eedit]')?.addEventListener('click',()=>{
       empEditId=e._id;
       document.getElementById('empName').value=e.name||'';document.getElementById('empTitle').value=e.title||'';
@@ -181,6 +190,8 @@ function renderEmployees(){
       document.getElementById('empBank').value=e.bank||'';document.getElementById('empStartDate').value=e.startDate||'';
       document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||2400;
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
+      const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
+      const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
       document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
@@ -684,11 +695,7 @@ document.querySelectorAll('[data-close]').forEach(btn=>{
   btn.addEventListener('click',()=>closeModal(btn.dataset.close));
 });
 
-// lightbox 點外關閉
-document.getElementById('lb')?.addEventListener('click',e=>{
-  if(e.target===document.getElementById('lb'))
-    document.getElementById('lb').classList.remove('show');
-});
+// lightbox：僅可點右上角 ✕ 關閉，避免滑動瀏覽圖片時誤觸背景關閉
 document.getElementById('lbx')?.addEventListener('click',()=>{
   document.getElementById('lb').classList.remove('show');
 });

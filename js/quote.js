@@ -524,10 +524,11 @@ function dlXls(name,type,sections,mode){
     // R26 蓋章（高度46，跟模板一樣）
     ws.getRow((26+offset)).height=46;
     ws.mergeCells('A'+(26+offset)+':C'+(26+offset)); setCell('A'+(26+offset),'公司蓋章處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
-    ws.mergeCells('D'+(26+offset)+':G'+(26+offset)); setCell('D26','客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
+    ws.mergeCells('D'+(26+offset)+':G'+(26+offset)); setCell('D'+(26+offset),'客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
 
-    ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
-    ws.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4};
+    // 14個分類以內：強制縮放至A4單頁；超過則允許依內容自動分頁（避免字體過小）
+    ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(offset>0?0:1)};
+    ws.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
     ws.pageSetup.printArea='A1:G'+(26+offset);
 
     // ══ 細項 Sheets ══
@@ -595,8 +596,9 @@ function dlXls(name,type,sections,mode){
         row++;
       });
       while(row<=totalRows){ ws2.getRow(row).height=18; row++; }
-      ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:1};
-      ws2.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4};
+      ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(totalRows>30?0:1)};
+      ws2.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
+      ws2.pageSetup.printArea='A1:G'+totalRows;
     });
 
     const buf=await wb.xlsx.writeBuffer();

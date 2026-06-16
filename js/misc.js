@@ -38,7 +38,8 @@ document.addEventListener('click',function(e){
   const mcl=e.target.closest('.mcl');
   if(mcl){const mov=mcl.closest('.mov');if(mov)mov.classList.remove('show');return;}
   if(e.target.classList?.contains('mov')){e.target.classList.remove('show');return;}
-  if(e.target.id==='lb'||e.target.id==='lbx'||e.target.closest('#lbx')){
+  // lightbox：僅 ✕ 按鈕可關閉（避免滑動瀏覽圖片時誤觸背景而關閉）
+  if(e.target.id==='lbx'||e.target.closest('#lbx')){
     document.getElementById('lb')?.classList.remove('show');return;
   }
 });
@@ -94,100 +95,7 @@ function initContractListeners(){
   });
 }
 
-  // 每次都重新確認 listener 是否已綁定（用元素本身標記）
-
-  // ctZone click → open file picker
-  const ctZ=document.getElementById('ctZone');
-  if(ctZ&&!ctZ._b){ctZ._b=true;ctZ.addEventListener('click',()=>document.getElementById('ctFile')?.click());}
-
-  // ctFile change → read files
-  const ctF=document.getElementById('ctFile');
-  if(ctF&&!ctF._b){ctF._b=true;ctF.addEventListener('change',async e=>{
-    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
-    if(!Array.isArray(ctImgUrl))ctImgUrl=[];
-    const readFile=f=>new Promise(res=>{
-      const rd=new FileReader();
-      rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});
-      rd.readAsDataURL(f);
-    });
-    const results=await Promise.all(files.map(readFile));
-    ctImgUrl.push(...results);
-    renderCtPhotos();
-  });
-
-  // ctDelFile → clear all
-  document.getElementById('ctDelFile')?.addEventListener('click',()=>{
-    ctImgUrl=[];
-    const fc=document.getElementById('ctFileCard');if(fc)fc.style.display='none';
-    const fi=document.getElementById('ctFile');if(fi)fi.value='';
-    const grid=document.getElementById('ctPhotoGrid');if(grid)grid.innerHTML='';
-  });
-
-  // openContract → open modal
-  document.getElementById('openContract')?.addEventListener('click',()=>{
-    ctEditId=null; ctImgUrl=[];
-    ['ctName','ctClient','ctAmt2','ctNote'].forEach(id=>{
-      const el=document.getElementById(id);if(el)el.value='';
-    });
-    const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
-    const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
-    const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
-    const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='💾 儲存合約';
-    const nte=document.getElementById('ctEditNote');if(nte)nte.style.display='none';
-    openModal('contractModal');
-  });
-
-  // addCtBtn → save contract
-  document.getElementById('addCtBtn')?.addEventListener('click',()=>{
-    const name=(document.getElementById('ctName')?.value||'').trim();
-    const client=(document.getElementById('ctClient')?.value||'').trim();
-    const amt=parseInt(document.getElementById('ctAmt2')?.value||0)||0;
-    const status=document.getElementById('ctStatus')?.value||'pending';
-    const note=(document.getElementById('ctNote')?.value||'').trim();
-    if(!name){showToast('⚠️ 請填入合約名稱');return;}
-    const fileUrls=Array.isArray(ctImgUrl)?ctImgUrl:(ctImgUrl?[ctImgUrl]:[]);
-    if(ctEditId){
-      DB.upd('contracts',ctEditId,{name,client,amount:amt,status,note,
-        fileUrls,fileUrl:fileUrls[0]?.url||fileUrls[0]||null,
-        summary:'合約 '+name+' '+client});
-      ctEditId=null;
-      showToast('✅ 合約已更新！');
-    }else{
-      const newCt=DB.push('contracts',{
-        summary:'合約 '+name+' '+client,
-        name,client,amount:amt,status,note,
-        fileUrls,fileUrl:fileUrls[0]?.url||fileUrls[0]||null
-      })[0];
-      if(newCt){
-        DB.push('progress',{
-          summary:'進度 '+name,caseN:name,client,
-          contractId:newCt._id,status:'pending',
-          items:[
-            {text:'合約簽訂',done:true,date:new Date().toLocaleDateString('zh-TW')},
-            {text:'開工日期確認',done:false,date:''},
-            {text:'施工進行中',done:false,date:''},
-            {text:'驗收',done:false,date:''},
-            {text:'結案',done:false,date:''},
-          ]
-        });
-      }
-      showToast('✅ 合約已儲存，已同步到工程進度！');
-    }
-    closeModal('contractModal');
-    renderContracts();updContractStats();
-    const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='💾 儲存合約';
-  });
-}
-
 // ══ 發票上傳 AI 辨識 ══════════════════════════════════════
-
-
-
-
-
-
-
-// ── 發票上傳 AI 辨識 ──────────────────────────────────────
 document.getElementById('invZone')?.addEventListener('click',()=>document.getElementById('invFile')?.click());
 document.getElementById('invFile')?.addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;e.target.value='';
@@ -358,7 +266,7 @@ function renderPunchCal(){
   const lbl=document.getElementById('punchMonthLabel');
   if(!grid)return;
   if(lbl)lbl.textContent=_punchCalYear+'年'+(_punchCalMonth+1)+'月';
-  const recs=DB.get('punch_recs').filter(r=>r.user===curRole);
+  const recs=DB.get('punch_recs').filter(r=>r.user===curPunchUser);
   const today=new Date().toLocaleDateString('zh-TW');
   const recMap={};
   recs.forEach(r=>{if(!recMap[r.date])recMap[r.date]=[];recMap[r.date].push(r);});
@@ -432,7 +340,7 @@ function renderPunchRec(){
   const today=new Date().toLocaleDateString('zh-TW');
   if(!_punchSelDate||_punchSelDate===today){
     _punchSelDate=today;
-    const recs=DB.get('punch_recs').filter(r=>r.user===curRole&&r.date===today);
+    const recs=DB.get('punch_recs').filter(r=>r.user===curPunchUser&&r.date===today);
     showPunchDayDetail(today,recs);
   }
 }
