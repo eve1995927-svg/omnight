@@ -465,7 +465,14 @@ function doLogin(){
     const empAcc=(document.getElementById('lEmpAccount')?.value||'').trim();
     if(empAcc){
       // 員工個人打卡帳號登入
-      const emp=DB.getAll('employees').find(e=>e.account===empAcc&&!e.deleted);
+      // 登入時 Firebase 可能尚未同步，先查 localStorage 備份，再查 cache
+      let empList=[];
+      try{
+        const raw=localStorage.getItem('z7_employees');
+        if(raw) empList=JSON.parse(raw);
+      }catch{}
+      if(!empList.length) empList=DB.getAll('employees');
+      const emp=empList.find(e=>e.account===empAcc&&!e.deleted);
       if(!emp||emp.password!==p){
         err.style.display='block';
         err.textContent='打卡帳號或密碼不正確，請再試一次';

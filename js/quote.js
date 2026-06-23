@@ -527,7 +527,7 @@ function dlXls(name,type,sections,mode){
     ws.mergeCells('D'+(26+offset)+':G'+(26+offset)); setCell('D'+(26+offset),'客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
 
     // 14個分類以內：強制縮放至A4單頁；超過則允許依內容自動分頁（避免字體過小）
-    ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(offset>0?0:1)};
+    ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(offset>0?0:1),horizontalDpi:200,verticalDpi:200};
     ws.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
     ws.pageSetup.printArea='A1:G'+(26+offset);
 
@@ -540,7 +540,7 @@ function dlXls(name,type,sections,mode){
       usedNames.push(sname);
       const ws2=wb.addWorksheet(sname);
       // 細項欄寬也跟模板一樣
-      ws2.columns=[{width:7},{width:33},{width:7},{width:7},{width:10},{width:10},{width:20}];
+      ws2.columns=[{width:8},{width:38},{width:8},{width:8},{width:12},{width:12},{width:18}];
       const items=sec.items||[];
       const totalRows=5+Math.max(items.length,15);
 

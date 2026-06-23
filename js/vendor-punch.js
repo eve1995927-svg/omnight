@@ -372,8 +372,8 @@ function renderVendors(filter){
       // 細項表格
       const itemWrap=document.createElement('div');
       const itmHd=document.createElement('div');
-      itmHd.style.cssText='display:grid;grid-template-columns:1.5fr 55px 55px 80px 90px;padding:7px 16px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
-      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;text-align:right">小計</span>';
+      itmHd.style.cssText='display:grid;grid-template-columns:2fr 50px 45px 80px 85px 32px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
+      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400)">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">小計</span><span></span>';
       const itmBody=document.createElement('div');itmBody.id='vi-body-'+v._id;
 
       function renderVCardItems(){
@@ -381,7 +381,7 @@ function renderVendors(filter){
         if(!editItems.length){const em=document.createElement('div');em.style.cssText='padding:10px 16px;font-size:.82rem;color:var(--g400)';em.textContent='無細項';itmBody.appendChild(em);return;}
         editItems.forEach((it,i)=>{
           const row=document.createElement('div');
-          row.style.cssText='display:grid;grid-template-columns:1.5fr 55px 55px 80px 90px 30px;padding:6px 16px;border-bottom:1px solid var(--g100);align-items:center;gap:4px';
+          row.style.cssText='display:grid;grid-template-columns:2fr 50px 45px 80px 85px 32px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
           const IS='padding:5px 6px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';
           const mkF=el=>{el.addEventListener('focus',()=>el.style.borderColor='var(--gold)');el.addEventListener('blur',()=>el.style.borderColor='transparent');};
 
