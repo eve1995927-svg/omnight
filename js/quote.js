@@ -699,7 +699,7 @@ document.getElementById('viewPostHistory')?.addEventListener('click',()=>{
   renderPostHistory();
 });
 
-document.getElementById('genImgBtn')?.addEventListener('click',genMktImg);
+document.getElementById('genImgBtn')?.addEventListener('click',()=>genMktImg());
 
 function genDefaultSvg(style,text){
   const styles={

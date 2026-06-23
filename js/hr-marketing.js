@@ -746,7 +746,7 @@ document.getElementById('dlImgBtn')?.addEventListener('click',()=>{
   URL.revokeObjectURL(url); showToast('✅ 圖片已下載！');
 });
 
-document.getElementById('regenImgBtn')?.addEventListener('click',genMktImg);
+document.getElementById('regenImgBtn')?.addEventListener('click',()=>genMktImg());
 document.getElementById('rgnPst')?.addEventListener('click',()=>chatQ('mk-chat','幫我重新生成一個不同角度的版本'));
 
 document.getElementById('outBtn')?.addEventListener('click',()=>{
