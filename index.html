@@ -35,7 +35,7 @@
   </div>
 
   <input type="hidden" id="lUser" value="omnight">
-  <input class="linp" type="text" id="lEmpAccount" placeholder="打卡帳號（員工個人帳號，選填）" autocomplete="username" style="display:none;margin-bottom:10px">
+  <input class="linp" type="text" id="lEmpAccount" placeholder="個人帳號（選填）" autocomplete="username" style="display:none;margin-bottom:10px">
   <input class="linp" type="password" id="lPass" placeholder="密碼" autocomplete="current-password">
   <button class="lbtn" id="lBtn">登　入</button>
   <div class="lerr" id="lErr">帳號或密碼不正確，請再試一次</div>
@@ -70,41 +70,97 @@
  <div class="ml">
   <div class="sb" id="sidebar">
    <div id="sNav"></div>
-   <div id="histSec" style="display:none">
-    <div class="sb-lbl" style="margin-top:14px">歷史記錄</div>
-    <div id="histList"></div>
-   </div>
+
    <div class="sb-foot"><div class="sb-fn" id="aName"></div><div class="sb-fr" id="aRole"></div></div>
   </div>
   <div class="ws">
 
 <!-- ══ OWNER DASH ══ -->
 <div class="panel" id="p-owner-dash">
- <div class="ph"><div><div class="ptit">📊 經營儀表板</div><div class="psub">全公司即時狀況 · 老闆專屬</div></div><span class="tag-owner">👑 最高權限</span></div>
- <div class="setup-card" id="apiCard">
-  <div class="sc-hd"><span class="sc-ic">🔑</span><div style="flex:1"><div class="sc-title">AI 金鑰設定</div><div class="sc-sub">輸入一次後永久記憶，全平台 AI 功能即啟用</div></div><div class="api-dot" id="apiDot">⚠️ 未設定</div></div>
-  <div class="sc-row">
-   <input type="password" class="sc-inp" id="apiInp" placeholder="sk-ant-api03-…" onkeydown="if(event.key==='Enter')apiSaveKey()">
-   <button class="btn bg bsm" onclick="apiSaveKey()">💾 儲存</button>
-   <button class="btn bo bsm" onclick="apiTestConn()">🔌 測試連線</button>
-   <button class="btn brd bsm" onclick="apiClearKey()">🗑 清除</button>
+ <div class="ph">
+  <div><div class="ptit">📊 今日總覽</div><div class="psub">最重要的事情，一眼看完</div></div>
+  <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
+ </div>
+
+ <!-- 四大統計 -->
+ <div class="g4" style="margin-bottom:20px">
+  <div class="stat"><div class="sn" id="dash-active" style="color:var(--gold-d)">0</div><div class="sl">🔨 施工中</div></div>
+  <div class="stat"><div class="sn" id="dash-month-income" style="color:var(--ok)">NT$0</div><div class="sl">本月收款</div></div>
+  <div class="stat"><div class="sn" id="dash-month-cost" style="color:var(--bad)">NT$0</div><div class="sl">本月成本</div></div>
+  <div class="stat"><div class="sn" id="dash-month-profit">—</div><div class="sl">📊 本月毛利</div></div>
+ </div>
+
+ <!-- 快速記帳 -->
+ <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em;margin-bottom:10px">💸 快速記一筆</div>
+ <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:24px">
+  <button onclick="quickExpense('材料費')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">🧱</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">材料費</span>
+  </button>
+  <button onclick="quickExpense('工資')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">👷</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">工資</span>
+  </button>
+  <button onclick="quickExpense('雜項')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">📦</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">雜項</span>
+  </button>
+  <button onclick="quickExpense('交通油錢')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">⛽</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">油錢</span>
+  </button>
+ </div>
+
+ <!-- 待辦事項 -->
+ <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em;margin-bottom:10px">⚡ 需要處理</div>
+ <div id="dashTodos" style="margin-bottom:24px"></div>
+
+ <!-- 近期案場 -->
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+  <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em">近期案場</div>
+  <button onclick="showPanel('p-projects')" style="background:none;border:none;color:var(--gold-d);font-size:.8rem;cursor:pointer;font-weight:700">查看全部 →</button>
+ </div>
+ <div id="dashRecentProjects"></div>
+
+ <!-- API 設定（隱藏在底部） -->
+ <details style="margin-top:24px">
+  <summary style="font-size:.78rem;color:var(--g400);cursor:pointer;user-select:none">⚙️ 進階設定（AI金鑰）</summary>
+  <div class="setup-card" id="apiCard" style="margin-top:12px">
+   <div class="sc-hd"><span class="sc-ic">🔑</span><div style="flex:1"><div class="sc-title">AI 金鑰設定</div><div class="sc-sub">輸入一次後永久記憶</div></div><div class="api-dot" id="apiDot">⚠️ 未設定</div></div>
+   <div class="sc-row">
+    <input type="password" class="sc-inp" id="apiInp" placeholder="sk-ant-api03-…" onkeydown="if(event.key==='Enter')apiSaveKey()">
+    <button class="btn bg bsm" onclick="apiSaveKey()">💾 儲存</button>
+    <button class="btn bo bsm" onclick="apiTestConn(event)">🔌 測試</button>
+    <button class="btn bo bsm" style="color:var(--bad)" onclick="apiClearKey()">🗑 清除</button>
+   </div>
   </div>
-  <div id="apiTestResult" style="display:none;margin-top:10px;padding:12px 14px;border-radius:var(--rs);font-size:.85rem;font-weight:600;line-height:1.65"></div>
-  <div class="sc-foot">🔒 Key 只存在你的瀏覽器，不會外洩 <span class="sc-hide" onclick="document.getElementById('apiCard').style.display='none'">設定完畢，收起</span></div>
- </div>
- <div class="g4" style="margin-bottom:16px">
-  <div class="stat"><div class="sn" id="ds-amt">—</div><div class="sl">本月報價總額</div></div>
-  <div class="stat"><div class="sn" id="ds-q">0</div><div class="sl">報價單件數</div></div>
-  <div class="stat"><div class="sn" id="ds-vend">0</div><div class="sl">廠商報價件數</div></div>
-  <div class="stat"><div class="sn" id="ds-inv">0</div><div class="sl">本月發票張數</div></div>
- </div>
- <div class="card"><div class="ct">👑 AI 老闆助理</div><div id="owner-chat" style="height:260px"></div></div>
+ </details>
 </div>
 
-<!-- ══ CS CHAT ══ -->
+<!-- ══ PROJECTS 案場總覽 ══ -->
+<div class="panel" id="p-projects">
+ <div class="ph">
+  <div><div class="ptit">🏗️ 案場總覽</div><div class="psub">所有案場，點進去看完整資料</div></div>
+  <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
+ </div>
+ <div class="ledger-tab" style="margin-bottom:16px">
+  <div class="ltab on" data-filter="all" onclick="filterProjects('all',this)">全部 <span id="proj-cnt-all">0</span></div>
+  <div class="ltab" data-filter="progress" onclick="filterProjects('progress',this)">施工中 <span id="proj-cnt-active">0</span></div>
+  <div class="ltab" data-filter="inquiry" onclick="filterProjects('inquiry',this)">洽談中 <span id="proj-cnt-inquiry">0</span></div>
+  <div class="ltab" data-filter="done" onclick="filterProjects('done',this)">完工 <span id="proj-cnt-done">0</span></div>
+ </div>
+ <div id="projectList"></div>
+</div>
+
+<!-- ══ PROJECT DETAIL 案場詳情 ══ -->
+<div class="panel" id="p-project-detail">
+ <div id="projDetailHeader" style="margin-bottom:16px"></div>
+ <div class="ledger-tab" id="projDetailTabs" style="margin-bottom:16px"></div>
+ <div id="projDetailContent"></div>
+</div>
+
 <div class="panel" id="p-cs-chat">
  <div class="ph">
   <div><div class="ptit">💬 客戶諮詢</div><div class="psub">每位客戶獨立對話，歷史紀錄完整保留</div></div>
+  <select id="csChatProject" style="padding:6px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer;max-width:140px">
+   <option value="">連結案場...</option>
+  </select>
  </div>
  <div style="display:flex;gap:0;height:calc(100vh - 190px);min-height:460px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
 
@@ -230,6 +286,11 @@
   <div>
    <div class="card">
     <div class="ct">⚙️ 貼文設定</div>
+    <div class="field"><label class="fl">📍 以哪個案場為主題？</label>
+     <select class="fs" id="mkProject" onchange="fillMkFromProject()">
+      <option value="">不選案場（手動填寫）</option>
+     </select>
+    </div>
     <div class="field"><label class="fl">平台</label><select class="fs" id="mkPl"><option>Instagram</option><option>Facebook</option><option>LINE 官方帳號</option></select></div>
     <div class="field"><label class="fl">主題</label><select class="fs" id="mkTp"><option>案例分享 — 日式風格</option><option>案例分享 — 北歐極簡</option><option>施工現場直擊</option><option>裝修小知識</option><option>限時優惠活動</option><option>客戶好評分享</option></select></div>
     <div class="field"><label class="fl">補充說明</label><textarea class="ft" id="mkNt" placeholder="例：大安區30坪完工，木質調…" rows="2"></textarea></div>
@@ -542,46 +603,71 @@
 
 <!-- ══ AC OVERVIEW ══ -->
 <div class="panel" id="p-ac-overview">
- <div class="ph"><div><div class="ptit">💰 帳款總覽</div><div class="psub">內帳（成本/工程支出）｜外帳（客戶收款），各自可記收入與支出</div></div></div>
-
- <!-- 外帳 -->
- <div style="font-size:.78rem;font-weight:900;color:var(--gold-d);letter-spacing:.08em;margin-bottom:8px">💰 外帳（客戶帳）</div>
- <div class="g3" style="margin-bottom:14px">
-  <div class="stat"><div class="sn" id="ledInSum" style="color:var(--ok)">—</div><div class="sl">收入</div></div>
-  <div class="stat"><div class="sn" id="ledInExpense" style="color:var(--bad)">—</div><div class="sl">支出</div></div>
-  <div class="stat"><div class="sn" id="ledInNet">—</div><div class="sl">外帳淨額</div></div>
+ <div class="ph">
+  <div><div class="ptit">💰 帳款總覽</div><div class="psub">以月份或案場查看收支明細</div></div>
+  <div style="display:flex;gap:8px">
+   <button class="btn bg bsm" onclick="openLedgerModal('in')">＋ 外帳收款</button>
+   <button class="btn bo bsm" onclick="openLedgerModal('out')">＋ 內帳支出</button>
+  </div>
  </div>
 
- <!-- 內帳 -->
- <div style="font-size:.78rem;font-weight:900;color:var(--gold-d);letter-spacing:.08em;margin-bottom:8px">📤 內帳（成本帳）</div>
- <div class="g3" style="margin-bottom:14px">
-  <div class="stat"><div class="sn" id="ledOutIncome" style="color:var(--ok)">—</div><div class="sl">收入</div></div>
-  <div class="stat"><div class="sn" id="ledOutSum" style="color:var(--bad)">—</div><div class="sl">支出</div></div>
-  <div class="stat"><div class="sn" id="ledOutNet">—</div><div class="sl">內帳淨額</div></div>
+ <!-- 頂部：月份選擇 + 案場篩選 -->
+ <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:8px">
+   <button onclick="shiftLedgerMonth(-1)" style="width:32px;height:32px;border:1.5px solid var(--g200);border-radius:var(--rs);background:var(--w);cursor:pointer;font-size:1rem">←</button>
+   <div id="ledgerMonthLabel" style="font-size:1rem;font-weight:900;color:var(--g800);min-width:80px;text-align:center"></div>
+   <button onclick="shiftLedgerMonth(1)" style="width:32px;height:32px;border:1.5px solid var(--g200);border-radius:var(--rs);background:var(--w);cursor:pointer;font-size:1rem">→</button>
+  </div>
+  <select id="ledgerProjectFilter" onchange="renderLedger()" style="padding:7px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer;flex:1;max-width:200px">
+   <option value="">全部案場</option>
+  </select>
+  <button onclick="setLedgerMonth('all')" id="ledgerAllMonthBtn" style="padding:7px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g500);background:var(--w);cursor:pointer;font-weight:700">全期</button>
  </div>
 
- <!-- 整體 -->
- <div class="g3" style="margin-bottom:16px">
-  <div class="stat" style="grid-column:1/-1"><div class="sn" id="ledProfit">—</div><div class="sl">📊 整體毛利（外帳淨額＋內帳收入－內帳支出）</div></div>
+ <!-- 統計卡 -->
+ <div class="g3" style="margin-bottom:6px">
+  <div class="stat"><div class="sn" id="ledInSum" style="color:var(--ok)">—</div><div class="sl">💰 外帳收入</div></div>
+  <div class="stat"><div class="sn" id="ledOutSum" style="color:var(--bad)">—</div><div class="sl">📤 內帳支出</div></div>
+  <div class="stat"><div class="sn" id="ledProfit">—</div><div class="sl">📊 毛利</div></div>
+ </div>
+ <div class="g3" style="margin-bottom:20px">
+  <div class="stat"><div class="sn" id="ledInExpense" style="color:var(--bad);font-size:.9rem">—</div><div class="sl">外帳支出（退款）</div></div>
+  <div class="stat"><div class="sn" id="ledOutIncome" style="color:var(--ok);font-size:.9rem">—</div><div class="sl">內帳收入（廠商退款）</div></div>
+  <div class="stat"><div class="sn" id="ledProfitRate" style="font-size:.9rem">—</div><div class="sl">毛利率</div></div>
  </div>
 
- <!-- 分頁標籤 -->
- <div class="ledger-tab">
-  <div class="ltab on" data-lt="out" onclick="switchLedger('out')">📤 內帳</div>
-  <div class="ltab" data-lt="in" onclick="switchLedger('in')">💰 外帳</div>
-  <div class="ltab" data-lt="all" onclick="switchLedger('all')">📋 全部</div>
+ <!-- 切換：月度總表 / 明細 -->
+ <div class="ledger-tab" style="margin-bottom:16px">
+  <div class="ltab on" data-lt="detail" onclick="switchLedgerView('detail',this)">📋 收支明細</div>
+  <div class="ltab" data-lt="monthly" onclick="switchLedgerView('monthly',this)">📅 月度總表</div>
+  <div class="ltab" data-lt="project" onclick="switchLedgerView('project',this)">🏗️ 案場分析</div>
  </div>
 
- <div class="ledger-body on" id="lb-out">
-  <div id="ledger-out-list"></div>
-  <button class="add-ledger-btn" onclick="openLedgerModal('out')">＋ 新增內帳記錄</button>
+ <!-- 明細 view -->
+ <div id="lv-detail" class="ledger-view">
+  <!-- 分類 tab -->
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+   <button class="ldir on" data-ldir="all" onclick="setLedgerDir2('all',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">全部</button>
+   <button class="ldir" data-ldir="in-in" onclick="setLedgerDir2('in-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">💰 外帳收入</button>
+   <button class="ldir" data-ldir="in-out" onclick="setLedgerDir2('in-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">外帳支出</button>
+   <button class="ldir" data-ldir="out-out" onclick="setLedgerDir2('out-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">📤 內帳支出</button>
+   <button class="ldir" data-ldir="out-in" onclick="setLedgerDir2('out-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">內帳收入</button>
+  </div>
+  <div id="ledger-detail-list"></div>
+  <div style="display:flex;gap:8px;margin-top:16px">
+   <button class="add-ledger-btn" onclick="openLedgerModal('in')">＋ 外帳記錄</button>
+   <button class="add-ledger-btn" onclick="openLedgerModal('out')">＋ 內帳記錄</button>
+  </div>
  </div>
- <div class="ledger-body" id="lb-in">
-  <div id="ledger-in-list"></div>
-  <button class="add-ledger-btn" onclick="openLedgerModal('in')">＋ 新增外帳記錄</button>
+
+ <!-- 月度總表 view -->
+ <div id="lv-monthly" class="ledger-view" style="display:none">
+  <div id="ledger-monthly-table"></div>
  </div>
- <div class="ledger-body" id="lb-all">
-  <div id="ledger-all-list"></div>
+
+ <!-- 案場分析 view -->
+ <div id="lv-project" class="ledger-view" style="display:none">
+  <div id="ledger-project-table"></div>
  </div>
 </div>
 
@@ -633,6 +719,14 @@
  <div style="text-align:center;padding:10px 0 20px">
   <div style="font-size:.82rem;color:var(--g400);font-weight:600" id="punchDate">—</div>
   <div style="font-size:3rem;font-family:monospace;font-weight:900;color:var(--g800);letter-spacing:3px;line-height:1.1;margin:6px 0" id="punchTime">00:00:00</div>
+ </div>
+
+ <!-- 今日案場選擇 -->
+ <div style="margin:0 4px 16px">
+  <div style="font-size:.78rem;font-weight:900;color:var(--g400);margin-bottom:8px;letter-spacing:.06em">📍 今天在哪個案場？</div>
+  <select id="punchProjectSel" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
+   <option value="">不指定案場</option>
+  </select>
  </div>
 
  <!-- 打卡按鈕 -->
@@ -1032,6 +1126,43 @@
 </div>
 
 <!-- ══ CONTRACT MODAL ══ -->
+<!-- ══ PROJECT MODAL 案場新增/編輯 ══ -->
+<div class="mov" id="projModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit" id="projModalTitle">新增案場 <button class="mcl" data-close="projModal">✕</button></div>
+
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field"><label class="fl">案場名稱 *</label><input class="fi" id="projName" placeholder="例：林小姐-大安區老屋翻新"></div>
+   <div class="field"><label class="fl">業主姓名</label><input class="fi" id="projClient" placeholder="例：林小姐"></div>
+  </div>
+  <div class="field"><label class="fl">地址</label><input class="fi" id="projAddress" placeholder="例：台北市大安區仁愛路三段100號"></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field"><label class="fl">工程類型</label>
+    <select class="fi" id="projType" style="cursor:pointer">
+     <option>全室翻新</option><option>老屋翻新</option><option>局部裝修</option>
+     <option>新成屋裝修</option><option>商業空間</option><option>辦公室</option>
+     <option>廚衛翻修</option><option>其他</option>
+    </select>
+   </div>
+   <div class="field"><label class="fl">案場狀態</label>
+    <select class="fi" id="projStatus" style="cursor:pointer"></select>
+   </div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field"><label class="fl">預計開工日</label><input class="fi" type="date" id="projStart"></div>
+   <div class="field"><label class="fl">預計完工日</label><input class="fi" type="date" id="projEnd"></div>
+  </div>
+  <div class="field"><label class="fl">負責員工</label>
+   <select class="fi" id="projEmployee" style="cursor:pointer"></select>
+  </div>
+  <div class="field"><label class="fl">備注</label><textarea class="fi" id="projNote" rows="2" placeholder="案場說明、特殊需求…" style="resize:none"></textarea></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+   <button class="btn bo" data-close="projModal">取消</button>
+   <button class="btn bg" onclick="saveProject()">💾 儲存案場</button>
+  </div>
+ </div>
+</div>
+
 <div class="mov" id="contractModal">
  <div class="modal" style="max-width:560px">
   <div class="mtit">上傳合約文件 <button class="mcl" data-close="contractModal">✕</button></div>
@@ -1224,6 +1355,7 @@
 
 
 <script src="js/core.js"></script>
+<script src="js/projects.js"></script>
 <script src="js/quote.js"></script>
 <script src="js/vendor-punch.js"></script>
 <script src="js/hr-marketing.js"></script>
