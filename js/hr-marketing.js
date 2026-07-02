@@ -195,7 +195,7 @@ function renderEmployees(){
       document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
-    card.querySelector('[data-edel]')?.addEventListener('click',()=>{if(!confirm('確定刪除「'+e.name+'」的資料？'))return;DB.del('employees',e._id);renderEmployees();updHRStats();showToast('✅ 已刪除。');});
+    card.querySelector('[data-edel]')?.addEventListener('click',()=>{confirmAction('刪除員工「'+e.name+'」？歷史打卡和薪資記錄仍會保留。',()=>{DB.upd('employees',e._id,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW')});renderEmployees();updHRStats();showToast('✅ 員工已移除，歷史記錄保留');});});
     list.appendChild(card);
   });
 }
@@ -318,6 +318,10 @@ function renderMonthSalary(monthKey){
   let totalNet=0,totalAll=0;
   emps.forEach(e=>{
     const paid=payRecords[e._id]||false;
+    // 從打卡記錄計算出勤
+    const empPunchId=e._id?('emp_'+e._id):null;
+    const monthRecs=DB.get('punch_recs').filter(r=>(r.user===empPunchId||r.userName===e.name)&&(r.date||'').startsWith(monthKey));
+    const workDays=new Set(monthRecs.filter(r=>r.type==='in').map(r=>r.date)).size;
     const net=e.net||0;const gross=((e.salary||0)+(e.meal||0)+(e.transport||0)+(e.other||0));
     const compCost=gross+(e.retire||0)+(Math.round((e.salary||0)*0.105*0.8))+(Math.round(((e.salary||0)+(e.meal||0))*0.0517*0.7));
     totalNet+=net;totalAll+=compCost;
@@ -328,7 +332,7 @@ function renderMonthSalary(monthKey){
         <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
         <div style="flex:1">
           <div style="font-size:.9rem;font-weight:900">${e.name}</div>
-          <div style="font-size:.75rem;color:var(--g400)">${e.title||'員工'}</div>
+          <div style="font-size:.75rem;color:var(--g400)">${e.title||'員工'} ${workDays?'· 出勤 '+workDays+' 天':''}</div>
         </div>
         <div style="text-align:right;margin-right:10px">
           <div style="font-size:.75rem;color:var(--g400)">實領薪資</div>

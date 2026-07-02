@@ -163,132 +163,237 @@ function saveBankAcct(){
   showToast('✅ 帳號已儲存！');
 }
 
-// ── 帳款（內外帳，各自可記收入與支出）──────────────────────
-// book: 'out'=內帳（廠商/工程成本帳） 'in'=外帳（客戶/營收帳）
-// type: 'in'=收入  'out'=支出（兩個帳本皆可有收入與支出）
-let curLedgerBook='out';   // 目前顯示的帳本 tab
-let curLedgerType='out';   // 新增記錄時選的收支方向（modal內）
+// ══ 帳款系統（月度總表 + 案場分析 + 明細）════════════════
+// book: 'in'=外帳（客戶帳） 'out'=內帳（成本帳）
+// type: 'in'=收入  'out'=支出
 
-// 取得某筆記錄所屬帳本（相容舊資料：舊資料沒有 book 欄位時，依 type 推斷）
+let curLedgerBook='out';
+let curLedgerType='out';
+let curLedgerMonth=null;
+let curLedgerDir2='all';
+
 function getLedgerBook(r){
   if(r.book)return r.book;
-  return r.type==='in'?'in':'out'; // 舊資料：內帳只有支出、外帳只有收入
+  return r.type==='in'?'in':'out';
 }
 
-function switchLedger(book){
-  curLedgerBook=book;
-  document.querySelectorAll('.ltab[data-lt]').forEach(t=>t.classList.toggle('on',t.dataset.lt===book));
-  document.querySelectorAll('[id^="lb-"]').forEach(b=>b.classList.remove('on'));
-  const el=document.getElementById('lb-'+book);if(el)el.classList.add('on');
+function initLedgerMonth(){
+  if(!curLedgerMonth){
+    const now=new Date();
+    curLedgerMonth=now.getFullYear()+'-'+(now.getMonth()+1).toString().padStart(2,'0');
+  }
+  updateLedgerMonthLabel();
+}
+function updateLedgerMonthLabel(){
+  const el=document.getElementById('ledgerMonthLabel');if(!el)return;
+  if(!curLedgerMonth){el.textContent='全期';return;}
+  const p=curLedgerMonth.split('-');
+  el.textContent=p[0]+'年'+parseInt(p[1])+'月';
+}
+function shiftLedgerMonth(dir){
+  if(!curLedgerMonth){
+    const now=new Date();
+    curLedgerMonth=now.getFullYear()+'-'+(now.getMonth()+1).toString().padStart(2,'0');
+  }
+  const p=curLedgerMonth.split('-').map(Number);
+  const d=new Date(p[0],p[1]-1+dir,1);
+  curLedgerMonth=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');
+  updateLedgerMonthLabel();renderLedger();
+}
+function setLedgerMonth(val){
+  curLedgerMonth=(val==='all'?null:val);
+  updateLedgerMonthLabel();renderLedger();
+}
+function setLedgerDir2(dir,el){
+  curLedgerDir2=dir;
+  document.querySelectorAll('.ldir[data-ldir]').forEach(t=>{
+    if(t.dataset.ldir)t.classList.toggle('on',t.dataset.ldir===dir);
+  });
   renderLedger();
 }
-
+function switchLedgerView(view,el){
+  document.querySelectorAll('.ledger-view').forEach(v=>v.style.display='none');
+  const el2=document.getElementById('lv-'+view);if(el2)el2.style.display='block';
+  document.querySelectorAll('.ltab[data-lt]').forEach(t=>t.classList.toggle('on',t.dataset.lt===view));
+  if(view==='monthly')renderLedgerMonthly();
+  else if(view==='project')renderLedgerByProject();
+  else renderLedger();
+}
+function getFilteredLedger(){
+  let items=DB.get('ledger');
+  if(curLedgerMonth)items=items.filter(r=>(r.date||'').startsWith(curLedgerMonth));
+  const pf=document.getElementById('ledgerProjectFilter')?.value||'';
+  if(pf)items=items.filter(r=>r.projectId==pf);
+  return items.sort((a,b)=>b._id-a._id);
+}
+function updateLedgerProjectFilter(){
+  const sel=document.getElementById('ledgerProjectFilter');if(!sel)return;
+  const cur=sel.value;
+  const projects=DB.get('projects');
+  sel.innerHTML='<option value="">全部案場</option>'+
+    projects.map(p=>'<option value="'+p._id+'"'+(p._id==cur?' selected':'')+'>'+esc(p.name)+'</option>').join('');
+}
+function updLedgerStats(){
+  const items=getFilteredLedger();
+  let inIn=0,inOut=0,outIn=0,outOut=0;
+  items.forEach(r=>{
+    const book=getLedgerBook(r);const amt=r.amount||0;
+    if(book==='in'){if(r.type==='out')inOut+=amt;else inIn+=amt;}
+    else{if(r.type==='in')outIn+=amt;else outOut+=amt;}
+  });
+  const profit=(inIn-inOut)-(outOut-outIn);
+  const rate=inIn>0?Math.round(profit/inIn*100):0;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('ledInSum',inIn?'NT$'+inIn.toLocaleString():'NT$0');
+  set('ledOutSum',outOut?'NT$'+outOut.toLocaleString():'NT$0');
+  set('ledInExpense',inOut?'NT$'+inOut.toLocaleString():'NT$0');
+  set('ledOutIncome',outIn?'NT$'+outIn.toLocaleString():'NT$0');
+  set('ledProfitRate',inIn?rate+'%':'—');
+  const pfEl=document.getElementById('ledProfit');
+  if(pfEl){pfEl.textContent=(profit>=0?'+':'')+'NT$'+Math.abs(profit).toLocaleString();pfEl.style.color=profit>=0?'var(--ok)':'var(--bad)';}
+  updateLedgerProjectFilter();
+}
+function renderLedger(){
+  initLedgerMonth();updLedgerStats();
+  const c=document.getElementById('ledger-detail-list');if(!c)return;
+  let items=getFilteredLedger();
+  if(curLedgerDir2!=='all'){
+    const parts=curLedgerDir2.split('-');
+    items=items.filter(r=>getLedgerBook(r)===parts[0]&&r.type===parts[1]);
+  }
+  if(!items.length){
+    c.innerHTML='<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">尚無記錄</div><div class="es-s">點右上角新增收支記錄</div></div>';
+    return;
+  }
+  const projects=DB.get('projects');
+  const CAT_C={'材料費':'background:#FEF9C3;color:#92400E','工資':'background:#D1FAE5;color:#065F46','廠商費用':'background:#DBEAFE;color:#1E40AF','管理費':'background:#EDE9FE;color:#5B21B6','合約收款':'background:#D1FAE5;color:#065F46','訂金':'background:#FEF9C3;color:#92400E','工程款':'background:#D1FAE5;color:#065F46','設計費':'background:#FCE7F3;color:#9D174D'};
+  c.innerHTML='';
+  let runTotal=0;
+  const byDate={};
+  items.forEach(r=>{const d=r.date||r._ts?.split(' ')[0]||'未填';if(!byDate[d])byDate[d]=[];byDate[d].push(r);});
+  Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).forEach(([date,di])=>{
+    const dh=document.createElement('div');
+    dh.style.cssText='font-size:.72rem;font-weight:900;color:var(--g400);padding:10px 0 6px;letter-spacing:.05em;border-bottom:1px solid var(--g100)';
+    dh.textContent=date;c.appendChild(dh);
+    di.forEach(r=>{
+      const isIn=r.type==='in';const book=getLedgerBook(r);
+      const proj=r.projectId?projects.find(p=>p._id==r.projectId):null;
+      const cs=CAT_C[r.cat]||'background:var(--g100);color:var(--g600)';
+      runTotal+=(isIn?1:-1)*(r.amount||0);
+      const row=document.createElement('div');
+      row.style.cssText='display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g50)';
+      row.innerHTML='<div style="width:38px;height:38px;border-radius:10px;background:'+(isIn?'var(--ok-bg)':'var(--bad-bg)')+';display:flex;align-items:center;justify-content:center;font-size:.95rem;flex-shrink:0">'+(isIn?'💰':'📤')+'</div>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:.88rem;font-weight:700;color:var(--g700)">'+esc(r.desc||r.cat||'記錄')+'</div>'+
+        '<div style="display:flex;gap:5px;align-items:center;margin-top:3px;flex-wrap:wrap">'+
+        (r.cat?'<span style="font-size:.68rem;padding:2px 7px;border-radius:10px;'+cs+'">'+r.cat+'</span>':'')+
+        '<span style="font-size:.68rem;padding:2px 7px;border-radius:10px;background:'+(book==='in'?'var(--ok-bg)':'var(--bad-bg)')+';color:'+(book==='in'?'var(--ok)':'var(--bad)')+';">'+(book==='in'?'外帳':'內帳')+'</span>'+
+        (proj?'<span style="font-size:.68rem;color:var(--g400)">📍'+esc(proj.name)+'</span>':'')+
+        (r.caseN&&!proj?'<span style="font-size:.68rem;color:var(--g400)">📍'+esc(r.caseN)+'</span>':'')+
+        '</div></div>'+
+        '<div style="text-align:right;flex-shrink:0"><div style="font-weight:900;font-size:.95rem;color:'+(isIn?'var(--ok)':'var(--bad)')+';">'+(isIn?'+':'-')+'NT$'+(r.amount||0).toLocaleString()+'</div>'+
+        '<button onclick="delLedger('+r._id+')" style="font-size:.65rem;color:var(--g300);background:none;border:none;cursor:pointer;padding:0;margin-top:2px">刪除</button></div>';
+      c.appendChild(row);
+    });
+  });
+  const sr=document.createElement('div');
+  sr.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-top:2px solid var(--g200);margin-top:4px;font-weight:900';
+  sr.innerHTML='<span style="color:var(--g600)">'+items.length+' 筆記錄</span><span style="color:'+(runTotal>=0?'var(--ok)':'var(--bad)')+'">'+( runTotal>=0?'+':'')+'NT$'+Math.abs(runTotal).toLocaleString()+'</span>';
+  c.appendChild(sr);
+}
+function renderLedgerMonthly(){
+  const c=document.getElementById('ledger-monthly-table');if(!c)return;
+  const all=DB.get('ledger');
+  if(!all.length){c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">尚無帳款記錄</div></div>';return;}
+  const months=new Set();
+  all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
+  const sm=[...months].sort().reverse();
+  c.innerHTML='';
+  const hd=document.createElement('div');
+  hd.style.cssText='display:grid;grid-template-columns:90px 1fr 1fr 1fr 70px;gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
+  hd.innerHTML='<span>月份</span><span style="text-align:right">外帳收入</span><span style="text-align:right">內帳支出</span><span style="text-align:right">毛利</span><span style="text-align:right">毛利率</span>';
+  c.appendChild(hd);
+  let tIn=0,tOut=0;
+  sm.forEach(month=>{
+    const it=all.filter(r=>(r.date||'').startsWith(month));
+    const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+    const inOut=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+    const outOut=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+    const outIn=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+    const profit=(inIn-inOut)-(outOut-outIn);const rate=inIn>0?Math.round(profit/inIn*100):0;
+    tIn+=inIn;tOut+=outOut;
+    const pp=month.split('-');
+    const row=document.createElement('div');
+    row.style.cssText='display:grid;grid-template-columns:90px 1fr 1fr 1fr 70px;gap:6px;padding:10px 12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease);font-size:.85rem;align-items:center';
+    row.innerHTML='<span style="font-weight:800;color:var(--g700)">'+parseInt(pp[0])+'年'+parseInt(pp[1])+'月</span>'+
+      '<span style="text-align:right;color:var(--ok);font-weight:700">'+(inIn?'NT$'+inIn.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;color:var(--bad);font-weight:700">'+(outOut?'NT$'+outOut.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;color:'+(profit>=0?'var(--ok)':'var(--bad)')+';font-weight:800">'+(profit?'NT$'+profit.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;color:'+(rate>=0?'var(--ok)':'var(--bad)')+';">'+(inIn?rate+'%':'—')+'</span>';
+    row.addEventListener('click',()=>{setLedgerMonth(month);switchLedgerView('detail',null);document.querySelector('[data-lt="detail"]')?.classList.add('on');document.querySelector('[data-lt="monthly"]')?.classList.remove('on');});
+    row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
+    row.addEventListener('mouseleave',()=>row.style.background='');
+    c.appendChild(row);
+  });
+  const tp=tIn-tOut;const tr=tIn>0?Math.round(tp/tIn*100):0;
+  const tot=document.createElement('div');
+  tot.style.cssText='display:grid;grid-template-columns:90px 1fr 1fr 1fr 70px;gap:6px;padding:12px;background:var(--gold-pale);border-radius:var(--rs);font-size:.88rem;font-weight:900;margin-top:8px;border:1.5px solid var(--gold-l)';
+  tot.innerHTML='<span style="color:var(--gold-d)">合計</span><span style="text-align:right;color:var(--ok)">NT$'+tIn.toLocaleString()+'</span><span style="text-align:right;color:var(--bad)">NT$'+tOut.toLocaleString()+'</span><span style="text-align:right;color:'+(tp>=0?'var(--ok)':'var(--bad)')+'">NT$'+tp.toLocaleString()+'</span><span style="text-align:right">'+(tIn?tr+'%':'—')+'</span>';
+  c.appendChild(tot);
+}
+function renderLedgerByProject(){
+  const c=document.getElementById('ledger-project-table');if(!c)return;
+  const all=curLedgerMonth?DB.get('ledger').filter(r=>(r.date||'').startsWith(curLedgerMonth)):DB.get('ledger');
+  const projects=DB.get('projects');
+  const byP={};
+  all.forEach(r=>{const k=r.projectId?String(r.projectId):'_other';if(!byP[k])byP[k]=[];byP[k].push(r);});
+  c.innerHTML='';
+  const hd=document.createElement('div');
+  hd.style.cssText='display:grid;grid-template-columns:1fr 100px 100px 100px;gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
+  hd.innerHTML='<span>案場</span><span style="text-align:right">收入</span><span style="text-align:right">支出</span><span style="text-align:right">毛利</span>';
+  c.appendChild(hd);
+  const calcP=recs=>recs.filter(r=>r.type==='in').reduce((s,r)=>s+(r.amount||0),0)-recs.filter(r=>r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+  Object.entries(byP).sort((a,b)=>calcP(b[1])-calcP(a[1])).forEach(([key,recs])=>{
+    const proj=key!=='_other'?projects.find(p=>String(p._id)===key):null;
+    const income=recs.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+    const cost=recs.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+    const profit=income-cost;
+    const row=document.createElement('div');
+    row.style.cssText='display:grid;grid-template-columns:1fr 100px 100px 100px;gap:6px;padding:10px 12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease);font-size:.85rem;align-items:center';
+    row.innerHTML='<div><div style="font-weight:800;color:var(--g700)">'+esc(proj?proj.name:(recs[0]?.caseN||'未指定案場'))+'</div>'+
+      (proj?'<div style="font-size:.7rem;color:var(--g400)">'+esc(proj.client||'')+' '+recs.length+' 筆</div>':'<div style="font-size:.7rem;color:var(--g400)">'+recs.length+' 筆</div>')+
+      '</div>'+
+      '<span style="text-align:right;color:var(--ok);font-weight:700">'+(income?'NT$'+income.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;color:var(--bad);font-weight:700">'+(cost?'NT$'+cost.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;color:'+(profit>=0?'var(--ok)':'var(--bad)')+';font-weight:800;">'+(profit?'NT$'+profit.toLocaleString():'—')+'</span>';
+    if(proj)row.addEventListener('click',()=>openProject(proj._id,'ledger'));
+    row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
+    row.addEventListener('mouseleave',()=>row.style.background='');
+    c.appendChild(row);
+  });
+  if(!Object.keys(byP).length)c.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無案場帳款</div></div>';
+}
 function setLedgerDir(dir){
   curLedgerType=dir;
-  document.querySelectorAll('.ldir[data-ldir]').forEach(t=>t.classList.toggle('on',t.dataset.ldir===dir));
+  const bl=curLedgerBook==='out'?'內帳':'外帳';
   const title=document.getElementById('ledgerModalTitle');
-  const bookLabel=curLedgerBook==='out'?'內帳':'外帳';
-  if(title)title.innerHTML='＋ 新增'+(dir==='in'?'收入':'支出')+'記錄（'+bookLabel+'）'+' <button class="mcl" data-close="ledgerModal">✕</button>';
+  if(title)title.innerHTML='＋ 新增'+(dir==='in'?'收入':'支出')+'記錄（'+bl+'）<button class="mcl" data-close="ledgerModal">✕</button>';
   const cat=document.getElementById('ldCat');
   if(cat)cat.innerHTML=getLedgerCats(dir).map(o=>'<option>'+o+'</option>').join('');
 }
-
 function openLedgerModal(book){
-  curLedgerBook=book||'out';
-  curLedgerType=curLedgerBook==='in'?'in':'out'; // 預設：內帳預設支出，外帳預設收入
+  curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
   ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
   const op=document.getElementById('ldOcr');if(op)op.classList.remove('show');
-  document.querySelectorAll('.ldir[data-ldir]').forEach(t=>t.classList.toggle('on',t.dataset.ldir===curLedgerType));
-  setLedgerDir(curLedgerType);
-  openModal('ledgerModal');
+  document.querySelectorAll('.ldir[data-ldir="in"],.ldir[data-ldir="out"]').forEach(t=>t.classList.toggle('on',t.dataset.ldir===curLedgerType));
+  setLedgerDir(curLedgerType);openModal('ledgerModal');
 }
+function switchLedger(book){openLedgerModal(book);}
+function delLedger(id){DB.softDel('ledger',id);renderLedger();updLedgerStats();showToast('✅ 已移至垃圾桶');}
 
-function updLedgerStats(){
-  const all=DB.get('ledger');
-  let inIn=0,inOut=0,outIn=0,outOut=0; // 外帳收入/外帳支出/內帳收入/內帳支出
-  all.forEach(r=>{
-    const book=getLedgerBook(r);
-    const amt=r.amount||0;
-    if(book==='in'){ if(r.type==='out')inOut+=amt; else inIn+=amt; }
-    else { if(r.type==='in')outIn+=amt; else outOut+=amt; }
-  });
-  const inNet=inIn-inOut;     // 外帳淨額
-  const outNet=outIn-outOut;  // 內帳淨額（內帳收入通常較少，如廠商退款）
-  const profit=inNet-outOut+outIn; // 整體：外帳淨額 + 內帳收入 - 內帳支出（避免重複，內帳收入單獨計入）
-
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  set('ledInSum',inIn?fmt(inIn):'NT$0');
-  set('ledOutSum',outOut?fmt(outOut):'NT$0');
-  set('ledInExpense',inOut?fmt(inOut):'NT$0');
-  set('ledOutIncome',outIn?fmt(outIn):'NT$0');
-  set('ledInNet',fmt(Math.abs(inNet)));
-  set('ledOutNet',fmt(Math.abs(outNet)));
-
-  const inNetEl=document.getElementById('ledInNet');
-  if(inNetEl)inNetEl.style.color=inNet>=0?'var(--ok)':'var(--bad)';
-  const outNetEl=document.getElementById('ledOutNet');
-  if(outNetEl)outNetEl.style.color=outNet>=0?'var(--ok)':'var(--bad)';
-
-  const pfEl=document.getElementById('ledProfit');
-  if(pfEl){pfEl.textContent=fmt(Math.abs(profit))+(profit>=0?' ▲':' ▼');pfEl.style.color=profit>=0?'var(--ok)':'var(--bad)';}
-}
-function renderLedger(){
-  const all=DB.get('ledger');
-  const CAT_COLORS={
-    '材料費':'background:#FEF9C3;color:#92400E','工資':'background:#D1FAE5;color:#065F46',
-    '廠商費用':'background:#DBEAFE;color:#1E40AF','管理費':'background:#EDE9FE;color:#5B21B6',
-    '合約收款':'background:#D1FAE5;color:#065F46','訂金':'background:#FEF9C3;color:#92400E',
-    '工程款':'background:#D1FAE5;color:#065F46','設計費':'background:#FCE7F3;color:#9D174D',
-  };
-  function renderList(containerId,items,showNetSum){
-    const c=document.getElementById(containerId);if(!c)return;
-    if(!items.length){
-      c.innerHTML='<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無記錄</div></div>';return;
-    }
-    c.innerHTML='';
-    let inSum=0,outSum=0;
-    items.forEach(r=>{
-      const row=document.createElement('div');row.className='ledger-row';
-      const catStyle=CAT_COLORS[r.cat]||'background:var(--g100);color:var(--g600)';
-      const dateStr=r.date||r._ts?.split(' ')[0]||'—';
-      const isIn=r.type==='in';
-      if(isIn)inSum+=r.amount||0; else outSum+=r.amount||0;
-      row.innerHTML=
-        '<div class="lr-date">'+dateStr+'</div>'+
-        '<div class="lr-desc">'+(r.desc||'—')+(r.caseN?' <span style="font-size:.72rem;color:var(--g400)">📍'+r.caseN+'</span>':'')+'</div>'+
-        '<span class="lr-cat" style="'+catStyle+'">'+( r.cat||'')+( isIn?' <span style="opacity:.6">·收入</span>':' <span style="opacity:.6">·支出</span>')+'</span>'+
-        '<div class="lr-amt '+(isIn?'in':'out')+'">'+(isIn?'+':'-')+fmt(r.amount||0)+'</div>'+
-        '<button style="width:28px;height:28px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);cursor:pointer;font-size:.72rem;flex-shrink:0" onclick="delLedger('+r._id+')">🗑</button>';
-      c.appendChild(row);
-    });
-    const sumDiv=document.createElement('div');sumDiv.className='ledger-sum';
-    if(showNetSum){
-      const net=inSum-outSum;
-      sumDiv.innerHTML=
-        '<span class="ls-label">收入 '+fmt(inSum)+'　支出 '+fmt(outSum)+'</span>'+
-        '<span class="ls-val" style="color:'+(net>=0?'var(--ok)':'var(--bad)')+'">淨額 '+(net>=0?'+':'-')+fmt(Math.abs(net))+'</span>';
-    }else{
-      const sum=inSum+outSum;
-      sumDiv.innerHTML='<span class="ls-label">小計</span><span class="ls-val" style="color:'+(inSum>0&&outSum===0?'var(--ok)':'var(--bad)')+'">'+fmt(sum)+'</span>';
-    }
-    c.appendChild(sumDiv);
-  }
-  const outBook=all.filter(r=>getLedgerBook(r)==='out').sort((a,b)=>b._id-a._id);
-  const inBook=all.filter(r=>getLedgerBook(r)==='in').sort((a,b)=>b._id-a._id);
-  const allSorted=[...all].sort((a,b)=>b._id-a._id);
-  renderList('ledger-out-list',outBook,true);
-  renderList('ledger-in-list',inBook,true);
-  renderList('ledger-all-list',allSorted,false);
-  updLedgerStats();
-}
-function delLedger(id){
-  if(!confirm('確定刪除此記錄？'))return;
-  DB.softDel('ledger',id);renderLedger();updLedgerStats();showToast('✅ 已移至垃圾桶');
-}
 
 // ── 發票管理 ──────────────────────────────────────────────
 function renderInvoices(filter){
@@ -531,9 +636,18 @@ function initAdQuote(){
       DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
+        projectId:curProjectId||null,
         sections:JSON.parse(JSON.stringify(adSections)),total:sub});
-      renderHistory();updStats();renderQTable();
+      updStats();renderQTable();
       showToast('✅ 報價單已儲存！');
+      // 下一步提示
+      if(typeof showNextStep==='function'){
+        showNextStep('報價單已儲存，接下來呢？',[
+          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client')},
+          {label:'📝 建立合約',action:()=>openModal('contractModal')},
+          {label:'稍後再說',action:()=>{}},
+        ]);
+      }
     });
   }
 
@@ -663,3 +777,75 @@ function checkPaymentTriggers(){
 }
 
 // ── exportBackup / importBackup ────────────────────────────
+// ══ 財務報表定義 ══════════════════════════════════════════
+const RPTS={
+  monthly:{
+    t:'月度損益報表',
+    b:()=>{
+      const all=DB.get('ledger');
+      const months=new Set();
+      all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
+      const sm=[...months].sort().reverse().slice(0,12);
+      if(!sm.length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
+      let tIn=0,tOut=0;
+      const rows=sm.map(month=>{
+        const it=all.filter(r=>(r.date||'').startsWith(month));
+        const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+        const outOut=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+        const profit=inIn-outOut;const rate=inIn>0?Math.round(profit/inIn*100):0;
+        tIn+=inIn;tOut+=outOut;
+        const [y,m]=month.split('-');
+        return `<tr><td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${inIn?'NT$'+inIn.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${outOut?'NT$'+outOut.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${inIn?rate+'%':'—'}</td></tr>`;
+      }).join('');
+      const tp=tIn-tOut;
+      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">外帳收入</th><th style="padding:8px 12px;text-align:right">內帳支出</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:var(--ok)">NT$${tIn.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${tOut.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${tp>=0?'var(--ok)':'var(--bad)'}">NT$${tp.toLocaleString()}</td><td style="padding:10px 12px;text-align:right">${tIn?Math.round(tp/tIn*100)+'%':'—'}</td></tr></tfoot></table>`;
+    }
+  },
+  profit:{
+    t:'案場毛利分析',
+    b:()=>{
+      const all=DB.get('ledger');
+      const projects=DB.get('projects');
+      const byP={};
+      all.forEach(r=>{const k=r.projectId?String(r.projectId):'_other';if(!byP[k])byP[k]=[];byP[k].push(r);});
+      if(!Object.keys(byP).length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
+      const rows=Object.entries(byP).map(([key,recs])=>{
+        const proj=key!=='_other'?projects.find(p=>String(p._id)===key):null;
+        const income=recs.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+        const cost=recs.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+        const profit=income-cost;const rate=income>0?Math.round(profit/income*100):0;
+        const name=proj?proj.name:(recs[0]?.caseN||'未指定案場');
+        return {profit,html:`<tr><td style="padding:8px 12px;font-weight:700">${esc(name)}</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${income?'NT$'+income.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${income?rate+'%':'—'}</td></tr>`};
+      }).sort((a,b)=>b.profit-a.profit).map(r=>r.html).join('');
+      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">收入</th><th style="padding:8px 12px;text-align:right">支出</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  },
+  payable:{
+    t:'廠商應付帳款',
+    b:()=>{
+      const vendors=DB.get('vendors').filter(v=>!v.deleted&&!v.paid);
+      if(!vendors.length)return '<p style="color:var(--g400)">目前沒有未付廠商款項</p>';
+      const projects=DB.get('projects');
+      const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
+      const rows=vendors.map(v=>{
+        const proj=v.projectId?projects.find(p=>p._id==v.projectId):null;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('vendors',${v._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記付款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
+      }).join('');
+      return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  },
+  receivable:{
+    t:'客戶應收帳款',
+    b:()=>{
+      const ledger=DB.get('ledger').filter(l=>getLedgerBook(l)==='in'&&l.type==='in'&&!l.paid);
+      if(!ledger.length)return '<p style="color:var(--g400)">目前沒有未收款項</p>';
+      const projects=DB.get('projects');
+      const total=ledger.reduce((s,l)=>s+(l.amount||0),0);
+      const rows=ledger.map(l=>{
+        const proj=l.projectId?projects.find(p=>p._id==l.projectId):null;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('ledger',${l._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記收款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
+      }).join('');
+      return `<div style="font-size:.82rem;color:var(--ok);font-weight:800;margin-bottom:12px">應收總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">說明</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:left">日期</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  },
+};

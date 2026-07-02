@@ -268,7 +268,7 @@ document.getElementById('addVBtn')?.addEventListener('click',()=>{
   if(!vd&&!vItems.length){showToast('請填入廠商名稱');return;}
   const total=vItems.reduce((s,it)=>s+(it.amount||0),0);
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
-  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
+  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId||null,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
   closeModal('vModal');renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
 });
 
@@ -347,8 +347,12 @@ function renderVendors(filter){
           '</div>'+
           '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
         '</div>'+
-        '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace;flex-shrink:0">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+          (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
+        '</div>'+
         '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
+          '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
           '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
           '<button class="btn brd bxs" data-vdel>🗑</button>'+
         '</div>';
@@ -449,6 +453,7 @@ function renderVendors(filter){
       body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(saveBar);
       renderVCardItems();
 
+      hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
       hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
       hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();if(!confirm('確定刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）'))return;DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});
       card.appendChild(hd);card.appendChild(body);grpBody.appendChild(card);
@@ -492,7 +497,8 @@ function doPunch(){
       user:curPunchUser,userName:empName,date:today,
       time:now.toLocaleTimeString('zh-TW',{hour12:false}),
       type:isIn?'in':'out',
-      lat:lat||null,lng:lng||null,addr:addr||null
+      lat:lat||null,lng:lng||null,addr:addr||null,
+      projectId:(()=>{const sel=document.getElementById('punchProjectSel');if(sel?.value){localStorage.setItem('zeju_last_punch_proj',sel.value);return sel.value;}return null;})()
     });
     renderPunchRec();updatePunchBtn();
     showToast('✅ '+(isIn?'上班':'下班')+'打卡成功！'+now.toLocaleTimeString('zh-TW',{hour12:false}));
@@ -742,7 +748,7 @@ document.getElementById('addLedgerBtn')?.addEventListener('click',()=>{
   const bookLabel=curLedgerBook==='out'?'內帳':'外帳';
   DB.push('ledger',{
     summary:bookLabel+(curLedgerType==='in'?'收入':'支出')+' '+desc+' '+fmt(amt||ldItems.reduce((s,x)=>s+(x.amount||0),0)),
-    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
+    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,projectId:curProjectId||null,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
   });
   closeModal('ledgerModal');renderLedger();updLedgerStats();renderHistory();showToast('✅ 已儲存！');
 });

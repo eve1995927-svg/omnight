@@ -86,7 +86,7 @@ function initContractListeners(){
       DB.upd('contracts',ctEditId,{name,client,amount:amt,status,note,fileUrls,fileUrl:fileUrls[0]?.url||null,summary:'合約 '+name+' '+client});
       ctEditId=null;showToast('✅ 合約已更新！');
     }else{
-      const newCt=DB.push('contracts',{summary:'合約 '+name+' '+client,name,client,amount:amt,status,note,fileUrls,fileUrl:fileUrls[0]?.url||null})[0];
+      const newCt=DB.push('contracts',{summary:'合約 '+name+' '+client,name,client,amount:amt,status,note,projectId:curProjectId||null,fileUrls,fileUrl:fileUrls[0]?.url||null})[0];
       if(newCt){DB.push('progress',{summary:'進度 '+name,caseN:name,client,contractId:newCt._id,status:'pending',items:[{text:'合約簽訂',done:true,date:new Date().toLocaleDateString('zh-TW')},{text:'開工日期確認',done:false,date:''},{text:'施工進行中',done:false,date:''},{text:'驗收',done:false,date:''},{text:'結案',done:false,date:''}]});}
       showToast('✅ 合約已儲存！');
     }
@@ -148,8 +148,27 @@ document.getElementById('qSave')?.addEventListener('click',()=>{
   const n=document.getElementById('qN')?.value||'業主';
   const tp=document.getElementById('qTp')?.value||'全室裝修';
   const sub=calcAll(qSections);
-  DB.push('quotes',{summary:'報價 '+n+' '+sub,name:n,type:tp,sections:JSON.parse(JSON.stringify(qSections)),total:sub});
-  renderHistory();updStats();renderQTable();showToast('✅ 已儲存！');
+  const savedQ=DB.push('quotes',{summary:'報價 '+n+' '+sub,name:n,type:tp,projectId:curProjectId||null,sections:JSON.parse(JSON.stringify(qSections)),total:sub});
+  updStats();renderQTable();
+  // 下一步提示
+  if(typeof showNextStep==='function'){
+    showNextStep('報價單已儲存！下一步呢？',[
+      {label:'🏗️ 新增為案場',action:()=>{
+        if(typeof openAddProject==='function'){
+          openAddProject();
+          setTimeout(()=>{
+            const pN=document.getElementById('projName');if(pN)pN.value=n;
+            const pC=document.getElementById('projClient');if(pC)pC.value=n;
+            const pT=document.getElementById('projType');if(pT)pT.value=tp||'全室翻新';
+          },200);
+        }
+      }},
+      {label:'📤 下載 Excel 給業主',action:()=>dlXls(n,tp,qSections,'client')},
+      {label:'稍後再說',action:()=>{}},
+    ]);
+  } else {
+    showToast('✅ 已儲存！');
+  }
 });
 // ══ 行銷圖片生成 ═════════════════════════════════════════
 async function genMktImg(){
@@ -235,6 +254,24 @@ function renderCtPhotos(){
 }
 
 // ══ 行銷貼文生成 ══════════════════════════════════════════
+// ── 行銷貼文：案場選擇 ──────────────────────────────────
+function initMkProjectSel(){
+  const sel=document.getElementById('mkProject');if(!sel||sel._built)return;
+  sel._built=true;
+  const projects=DB.get('projects');
+  sel.innerHTML='<option value="">不選案場（手動填寫）</option>'+
+    projects.map(p=>'<option value="'+p._id+'">'+esc(p.name)+'</option>').join('');
+}
+function fillMkFromProject(){
+  const sel=document.getElementById('mkProject');
+  const id=sel?.value;if(!id)return;
+  const p=DB.get('projects').find(proj=>String(proj._id)===String(id));if(!p)return;
+  const ntEl=document.getElementById('mkNt');
+  if(ntEl)ntEl.value=(p.type?p.type+' ':'')+
+    (p.address?p.address.slice(0,10)+'完工，':'')+
+    (p.client?'業主'+p.client.slice(0,3)+'私宅':'');
+}
+
 async function genPost(){
   const pl=document.getElementById('mkPl')?.value||'Instagram';
   const tp=document.getElementById('mkTp')?.value||'案例分享 — 日式風格';

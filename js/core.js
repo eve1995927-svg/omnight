@@ -33,12 +33,12 @@ const ACCTS={
 };
 const GROUPS={
   owner:[
-    {l:'總覽',    items:[{id:'owner-dash',l:'儀表板',ic:'📊'}]},
-    {l:'行銷(客服)',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
+    {l:'主頁',     items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'客服行銷', items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
     {l:'行政',     items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'ad-newquote',l:'新建報價',ic:'➕'},{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'contract',l:'合約管理',ic:'📝'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
     {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-invoice',l:'發票管理',ic:'🧾'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
     {l:'人資',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
-    {l:'系統',     items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
+    {l:'系統',     items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   staff:[
     {l:'行銷(客服)',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
@@ -333,16 +333,16 @@ let API_KEY=localStorage.getItem('zeju_apikey')||'';
 function apiSaveKey(){
   const inp = document.getElementById('apiInp');
   const v = inp ? inp.value.trim() : '';
-  if(!v){ alert('⚠️ 請輸入 API Key'); return; }
+  if(!v){ showToast('⚠️ 請輸入 API Key'); return; }
   if(!v.startsWith('sk-ant-')){
-    alert('⚠️ Key 格式不正確\n正確格式應以 sk-ant- 開頭'); return;
+    showToast('⚠️ Key 格式不正確，請確認以 sk-ant- 開頭'); return;
   }
   API_KEY = v;
   localStorage.setItem('zeju_apikey', v);
   // 更新狀態點
   const dot = document.getElementById('apiDot');
   if(dot){ dot.textContent='✅ 已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)'; }
-  alert('✅ API Key 已儲存！\nAI 功能全面啟用，可按「測試連線」確認。');
+  showToast('✅ API Key 已儲存！AI 功能全面啟用');
 }
 
 function apiClearKey(){
@@ -353,7 +353,7 @@ function apiClearKey(){
   const dot = document.getElementById('apiDot');
   if(dot){ dot.textContent='⚠️ 未設定'; dot.style.background='var(--warn-bg)'; dot.style.color='var(--warn)'; }
   const res = document.getElementById('apiTestResult'); if(res) res.style.display='none';
-  alert('已清除 API Key。');
+  showToast('✅ API Key 已清除');
 }
 
 async function apiTestConn(){
@@ -406,6 +406,24 @@ async function apiTestConn(){
 function openModal(id){const el=document.getElementById(id);if(el)el.classList.add('show');}
 function closeModal(id){const el=document.getElementById(id);if(el)el.classList.remove('show');}
 
+// ── 確認對話（替代 confirm()，不阻斷 UI）───────────────────
+function confirmAction(msg,onConfirm,danger=true){
+  const old=document.getElementById('_cfmBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_cfmBox';
+  box.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--w);border:1.5px solid '+(danger?'var(--bad-bd)':'var(--g200)')+';border-radius:var(--r);padding:16px 20px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.18);min-width:260px;text-align:center;animation:slideUp .2s ease';
+  box.innerHTML='<div style="font-size:.88rem;font-weight:700;color:var(--g700);margin-bottom:12px">'+msg+'</div>'+
+    '<div style="display:flex;gap:8px;justify-content:center">'+
+    '<button class="_cfmNo" style="padding:7px 18px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.82rem;cursor:pointer;font-family:inherit">取消</button>'+
+    '<button class="_cfmYes" style="padding:7px 18px;border:none;border-radius:var(--rs);background:'+(danger?'var(--bad)':'var(--gold-d)')+';color:#fff;font-size:.82rem;cursor:pointer;font-weight:700;font-family:inherit">'+(danger?'確定刪除':'確定')+'</button>'+
+    '</div>';
+  document.body.appendChild(box);
+  const close=()=>box.remove();
+  box.querySelector('._cfmNo').addEventListener('click',close);
+  box.querySelector('._cfmYes').addEventListener('click',()=>{close();onConfirm();});
+  setTimeout(close,6000);
+}
+
 function showToast(msg,dur=2600){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 
 // ══ LIGHTBOX ═════════════════════════════════════════════
@@ -413,6 +431,7 @@ function openLB(src){document.getElementById('lbimg').src=src;document.getElemen
 
 // ══ LOGIN ════════════════════════════════════════════════
 let curRole='owner';
+let curProjectId=null; // 目前選取的案場 ID
 let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id，共用帳號為角色名
 
 // ── 自動恢復登入狀態 ──────────────────────────────────────
@@ -443,11 +462,13 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
   document.querySelectorAll('.lrb').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('lUser').value=ACCTS[curRole].user;
-  // 公務角色：顯示員工個人打卡帳號欄位（選填）
+  // 員工/公務角色：顯示個人帳號欄位
   const empAccEl=document.getElementById('lEmpAccount');
   if(empAccEl){
-    empAccEl.style.display=(curRole==='punch')?'block':'none';
-    if(curRole!=='punch')empAccEl.value='';
+    const needAcc=(curRole==='punch'||curRole==='staff');
+    empAccEl.style.display=needAcc?'block':'none';
+    empAccEl.placeholder=curRole==='punch'?'打卡帳號（員工個人帳號，選填）':'員工帳號（選填，不填使用共用帳號）';
+    if(!needAcc)empAccEl.value='';
   }
 });
 document.getElementById('lBtn').addEventListener('click',doLogin);
@@ -461,39 +482,34 @@ function doLogin(){
 
   _punchEmployee=null;
 
-  if(curRole==='punch'){
-    const empAcc=(document.getElementById('lEmpAccount')?.value||'').trim();
-    if(empAcc){
-      // 員工個人打卡帳號登入
-      // 登入時 Firebase 可能尚未同步，先查 localStorage 備份，再查 cache
-      let empList=[];
-      try{
-        const raw=localStorage.getItem('z7_employees');
-        if(raw) empList=JSON.parse(raw);
-      }catch{}
-      if(!empList.length) empList=DB.getAll('employees');
-      const emp=empList.find(e=>e.account===empAcc&&!e.deleted);
-      if(!emp||emp.password!==p){
-        err.style.display='block';
-        err.textContent='打卡帳號或密碼不正確，請再試一次';
-        return;
-      }
-      _punchEmployee=emp;
-    } else {
-      // 共用公務帳號
-      if(p!=='zeju1'){
-        err.style.display='block';
-        err.textContent='密碼不正確，請重新輸入';
-        return;
-      }
+  // 共用帳號密碼對照
+  const SHARED_PW={owner:'0923',staff:'zeju',punch:'zeju1'};
+
+  // 查員工個人帳號（staff 和 punch 都可以用個人帳號）
+  function findEmployee(acc, pw){
+    let empList=[];
+    try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
+    if(!empList.length) empList=DB.getAll('employees');
+    return empList.find(e=>e.account===acc&&e.password===pw&&!e.deleted)||null;
+  }
+
+  const empAcc=(document.getElementById('lEmpAccount')?.value||'').trim();
+
+  if(empAcc){
+    // 個人帳號登入（staff 或 punch）
+    if(curRole!=='staff'&&curRole!=='punch'){
+      err.style.display='block'; err.textContent='個人帳號只適用於員工或公務角色'; return;
     }
+    const emp=findEmployee(empAcc,p);
+    if(!emp){
+      err.style.display='block'; err.textContent='帳號或密碼不正確，請再試一次'; return;
+    }
+    _punchEmployee=emp;
   } else {
-    const pwMap={owner:'0923',staff:'zeju'};
-    const correctPw=pwMap[curRole];
+    // 共用帳號登入
+    const correctPw=SHARED_PW[curRole];
     if(!correctPw||p!==correctPw){
-      err.style.display='block';
-      err.textContent='密碼不正確，請重新輸入';
-      return;
+      err.style.display='block'; err.textContent='密碼不正確，請重新輸入'; return;
     }
   }
   err.style.display='none';
@@ -577,6 +593,7 @@ function setupApp(role){
   updatePtsDisplay();
   renderBilling();
   initSettings();
+  if(typeof initLedgerMonth==='function') initLedgerMonth();
   updVCaseFilter();
   renderProgress();
   renderEmployees();
@@ -585,6 +602,11 @@ function setupApp(role){
   initContractListeners();
   initMultiClientChat();
   initMobileNav(role);
+  // 案場系統
+  if(typeof renderDashboard==='function') renderDashboard();
+  if(typeof renderProjects==='function') renderProjects();
+  if(typeof initMkProjectSel==='function') initMkProjectSel();
+  if(typeof initCsChatProject==='function') initCsChatProject();
   // 登入後：如果 Firebase 空但 localStorage 有資料，提示上傳
   setTimeout(()=>checkAndOfferUpload(), 2000);
   // Firebase 在 initCloudDB() 裡初始化
@@ -650,7 +672,16 @@ function buildSidebar(role, activeGrp){
 }
 function buildBN(role){
   const bn=document.getElementById('bn');bn.innerHTML='';
-  GROUPS[role].flatMap(g=>g.items).slice(0,6).forEach(item=>{
+  // 案場詳情頁：顯示返回按鈕
+  const isInProject=document.getElementById('p-project-detail')?.classList.contains('on');
+  if(isInProject){
+    const backBtn=document.createElement('button');
+    backBtn.className='bni';
+    backBtn.innerHTML='<span class="bnic">←</span><span>返回</span>';
+    backBtn.addEventListener('click',()=>showPanel('projects'));
+    bn.appendChild(backBtn);
+  }
+  GROUPS[role].flatMap(g=>g.items).slice(0,isInProject?5:6).forEach(item=>{
     const b=document.createElement('button');b.className='bni';b.id='bn-'+item.id;
     b.innerHTML='<span class="bnic">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
@@ -865,3 +896,23 @@ function mkSecId(){return 's'+Date.now();}
 function calcSec(items){return items.reduce((s,it)=>s+it.qty*it.price,0);}
 function calcAll(sections){return sections.reduce((s,sec)=>s+calcSec(sec.items),0);}
 function fmt(n){return'NT$'+Math.round(n).toLocaleString();}
+
+// ── 案場篩選（tab 切換）──────────────────────────────────
+
+// ── 客戶諮詢連結案場 ─────────────────────────────────────
+function initCsChatProject(){
+  const sel=document.getElementById('csChatProject');if(!sel||sel._built)return;
+  sel._built=true;
+  const projects=DB.get('projects');
+  sel.innerHTML='<option value="">連結案場...</option>'+
+    projects.map(p=>'<option value="'+p._id+'">'+esc(p.name)+'</option>').join('');
+  sel.addEventListener('change',()=>{
+    if(sel.value) showToast('✅ 已連結到案場：'+projects.find(p=>p._id==sel.value)?.name);
+    curProjectId=sel.value?parseInt(sel.value):null;
+  });
+}
+function filterProjects(filter, el){
+  document.querySelectorAll('[data-filter]').forEach(t=>t.classList.remove('on'));
+  if(el) el.classList.add('on');
+  renderProjects(filter);
+}

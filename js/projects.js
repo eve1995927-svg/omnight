@@ -1,0 +1,777 @@
+// ══ 案場管理系統 ══════════════════════════════════════════
+// 核心：所有功能（報價、合約、帳款、廠商）都以案場為中心
+
+// ── 案場狀態定義 ─────────────────────────────────────────
+const PROJECT_STATUS = {
+  inquiry:  {label:'詢價中',   color:'var(--info)',    bg:'var(--info-bg)',  icon:'💬'},
+  quoting:  {label:'報價中',   color:'var(--warn)',    bg:'var(--warn-bg)',  icon:'📋'},
+  signed:   {label:'已簽約',   color:'var(--ok)',      bg:'var(--ok-bg)',    icon:'✅'},
+  progress: {label:'施工中',   color:'#7C3AED',        bg:'#F3E8FF',         icon:'🔨'},
+  done:     {label:'完工',     color:'var(--g500)',    bg:'var(--g100)',      icon:'🏠'},
+  paused:   {label:'暫停',     color:'var(--bad)',     bg:'var(--bad-bg)',   icon:'⏸️'},
+};
+
+const PROJECT_TYPES = ['全室翻新','老屋翻新','局部裝修','新成屋裝修','商業空間','辦公室','廚衛翻修','其他'];
+
+// ── 取得所有案場（含統計）────────────────────────────────
+function getProjects(){
+  return DB.get('projects').map(p=>({
+    ...p,
+    quotes: DB.get('quotes').filter(q=>q.projectId===p._id),
+    vendors: DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted),
+    ledger: DB.get('ledger').filter(l=>l.projectId===p._id),
+  }));
+}
+
+function getProject(id){
+  return DB.get('projects').find(p=>p._id===id);
+}
+
+// ── 首頁待辦計算 ──────────────────────────────────────────
+function getTodayTodos(){
+  const todos=[];
+  const now=Date.now();
+  const projects=DB.get('projects');
+
+  // 1. 報價單等待中（超過3天未轉合約）
+  const pendingQuotes=DB.get('quotes').filter(q=>{
+    if(q.status==='signed'||q.status==='rejected') return false;
+    const age=(now-q._id)/86400000;
+    return age>3;
+  });
+  if(pendingQuotes.length){
+    todos.push({type:'quote',level:'warn',icon:'📋',
+      title:`${pendingQuotes.length} 份報價單等待超過3天`,
+      desc:'點此查看 → 可追蹤業主是否回覆',
+      action:()=>showPanel('ad-quote')});
+  }
+
+  // 2. 待收款（外帳有未結清的）
+  const unpaid=DB.get('ledger').filter(l=>l.book==='in'&&l.type==='in'&&!l.paid);
+  const unpaidAmt=unpaid.reduce((s,l)=>s+(l.amount||0),0);
+  if(unpaid.length){
+    todos.push({type:'payment',level:'bad',icon:'💰',
+      title:`${unpaid.length} 筆應收款尚未到帳　共 NT$${unpaidAmt.toLocaleString()}`,
+      desc:'點此查看帳款總覽',
+      action:()=>showPanel('ac-overview')});
+  }
+
+  // 3. 施工中但超過7天沒更新進度
+  const stale=projects.filter(p=>{
+    if(p.status!=='progress') return false;
+    const prog=DB.get('progress').filter(r=>r.projectId===p._id);
+    if(!prog.length) return true;
+    const latest=Math.max(...prog.map(r=>r._id));
+    return (now-latest)/86400000>7;
+  });
+  if(stale.length){
+    todos.push({type:'progress',level:'warn',icon:'🔨',
+      title:`${stale.length} 個施工案場超過7天未更新進度`,
+      desc:stale.map(p=>p.name).join('、'),
+      action:()=>showPanel('ad-progress')});
+  }
+
+  // 4. 待審核補登打卡
+  const pendingPunch=DB.get('punch_requests').filter(r=>r.status==='pending');
+  if(pendingPunch.length){
+    todos.push({type:'punch',level:'info',icon:'🕐',
+      title:`${pendingPunch.length} 筆員工補登打卡等待審核`,
+      desc:'點此前往人資管理審核',
+      action:()=>showPanel('hr-settings')});
+  }
+
+  // 5. 案場完工超過30天但未結算
+  const unsettled=projects.filter(p=>{
+    if(p.status!=='done') return false;
+    const doneAge=p.doneDate?(now-new Date(p.doneDate).getTime())/86400000:0;
+    return doneAge>30;
+  });
+  if(unsettled.length){
+    todos.push({type:'settle',level:'info',icon:'🏠',
+      title:`${unsettled.length} 個案場完工超過30天，可確認是否已結案`,
+      desc:unsettled.map(p=>p.name).join('、'),
+      action:()=>showPanel('projects')});
+  }
+
+  return todos;
+}
+
+// ── 渲染首頁儀表板 ────────────────────────────────────────
+function renderDashboard(){
+  const projects=DB.get('projects');
+  const quotes=DB.get('quotes');
+  const ledger=DB.get('ledger');
+
+  // 統計
+  const active=projects.filter(p=>p.status==='progress').length;
+  const thisMonth=new Date().toISOString().slice(0,7);
+  const monthIncome=ledger.filter(l=>l.book==='in'&&l.type==='in'&&(l.date||'').startsWith(thisMonth))
+    .reduce((s,l)=>s+(l.amount||0),0);
+  const monthCost=ledger.filter(l=>l.book==='out'&&l.type==='out'&&(l.date||'').startsWith(thisMonth))
+    .reduce((s,l)=>s+(l.amount||0),0);
+  const monthProfit=monthIncome-monthCost;
+
+  // 更新統計卡
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('dash-active', active);
+  set('dash-month-income', monthIncome?'NT$'+monthIncome.toLocaleString():'NT$0');
+  set('dash-month-cost', monthCost?'NT$'+monthCost.toLocaleString():'NT$0');
+  set('dash-month-profit', (monthProfit>=0?'+':'')+'NT$'+Math.abs(monthProfit).toLocaleString());
+  const pfEl=document.getElementById('dash-month-profit');
+  if(pfEl) pfEl.style.color=monthProfit>=0?'var(--ok)':'var(--bad)';
+
+  // 待辦清單
+  const todoList=document.getElementById('dashTodos');
+  if(!todoList) return;
+  const todos=getTodayTodos();
+  if(!todos.length){
+    todoList.innerHTML='<div style="text-align:center;padding:30px;color:var(--g400)"><div style="font-size:2rem;margin-bottom:8px">✅</div><div style="font-weight:700">今日沒有待辦事項</div><div style="font-size:.82rem;margin-top:4px">所有案場進度正常</div></div>';
+    return;
+  }
+  todoList.innerHTML='';
+  todos.forEach(todo=>{
+    const card=document.createElement('div');
+    const colors={bad:'var(--bad)',warn:'var(--warn)',info:'var(--info)'};
+    const bgs={bad:'var(--bad-bg)',warn:'var(--warn-bg)',info:'var(--info-bg)'};
+    const bds={bad:'var(--bad-bd)',warn:'var(--warn-bd)',info:'var(--info-bd)'};
+    card.style.cssText=`display:flex;align-items:center;gap:14px;padding:14px 16px;background:${bgs[todo.level]};border:1.5px solid ${bds[todo.level]};border-radius:var(--r);cursor:pointer;transition:all var(--ease);margin-bottom:10px`;
+    card.innerHTML=`<div style="font-size:1.5rem;flex-shrink:0">${todo.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;color:${colors[todo.level]};font-size:.9rem">${todo.title}</div>
+        <div style="font-size:.78rem;color:var(--g500);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${todo.desc}</div>
+      </div>
+      <div style="color:${colors[todo.level]};font-size:1rem;flex-shrink:0">→</div>`;
+    card.addEventListener('click', todo.action);
+    card.addEventListener('mouseenter',()=>card.style.transform='translateX(3px)');
+    card.addEventListener('mouseleave',()=>card.style.transform='');
+    todoList.appendChild(card);
+  });
+
+  // 近期案場
+  renderRecentProjects();
+}
+
+// ── 渲染近期案場（首頁下半部）────────────────────────────
+function renderRecentProjects(){
+  const c=document.getElementById('dashRecentProjects');if(!c)return;
+  const projects=DB.get('projects').slice(0,5); // 最新5個
+  if(!projects.length){
+    c.innerHTML='<div style="text-align:center;padding:20px;color:var(--g400);font-size:.85rem">尚無案場，點上方「＋ 新增案場」開始</div>';
+    return;
+  }
+  c.innerHTML='';
+  projects.forEach(p=>{
+    const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+    const card=document.createElement('div');
+    card.style.cssText='display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r);cursor:pointer;transition:all var(--ease);margin-bottom:8px';
+    card.innerHTML=`
+      <div style="width:40px;height:40px;border-radius:10px;background:${st.bg};display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">${st.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:.9rem;color:var(--g700)">${esc(p.name||'未命名案場')}</div>
+        <div style="font-size:.75rem;color:var(--g400);margin-top:2px">${esc(p.client||'業主未填')} ${p.address?' · '+esc(p.address.slice(0,12)):''}</div>
+      </div>
+      <div style="flex-shrink:0;text-align:right">
+        <span style="font-size:.72rem;font-weight:700;padding:3px 8px;border-radius:20px;background:${st.bg};color:${st.color}">${st.label}</span>
+      </div>`;
+    card.addEventListener('click',()=>openProject(p._id));
+    card.addEventListener('mouseenter',()=>{card.style.background='var(--g50)';card.style.borderColor='var(--gold-l)';});
+    card.addEventListener('mouseleave',()=>{card.style.background='var(--w)';card.style.borderColor='var(--g200)';});
+    c.appendChild(card);
+  });
+}
+
+// ── 案場總覽頁面 ──────────────────────────────────────────
+function renderProjects(filter='all'){
+  const c=document.getElementById('projectList');if(!c)return;
+  let projects=DB.get('projects');
+
+  // 篩選
+  if(filter!=='all') projects=projects.filter(p=>p.status===filter);
+
+  // 更新統計
+  const all=DB.get('projects');
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
+  set('proj-cnt-all',all.length);
+  set('proj-cnt-active',all.filter(p=>p.status==='progress').length);
+  set('proj-cnt-inquiry',all.filter(p=>p.status==='inquiry'||p.status==='quoting').length);
+  set('proj-cnt-done',all.filter(p=>p.status==='done').length);
+
+  if(!projects.length){
+    c.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+(filter==='all'?'尚無案場':'此分類沒有案場')+'</div><div class="es-s">點右上角「＋ 新增案場」開始</div></div>';
+    return;
+  }
+  c.innerHTML='';
+  projects.forEach(p=>{
+    const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+    const vCount=DB.get('vendors').filter(v=>v.projectId===p._id).length;
+    const lCount=DB.get('ledger').filter(l=>l.projectId===p._id).length;
+    const income=DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+
+    const card=document.createElement('div');
+    card.className='card';
+    card.style.cssText='cursor:pointer;transition:all var(--ease);margin-bottom:12px';
+    card.innerHTML=`
+      <div style="display:flex;align-items:flex-start;gap:14px">
+        <div style="width:48px;height:48px;border-radius:12px;background:${st.bg};display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">${st.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-weight:900;font-size:1rem;color:var(--g800)">${esc(p.name||'未命名')}</span>
+            <span style="font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:20px;background:${st.bg};color:${st.color}">${st.label}</span>
+          </div>
+          <div style="font-size:.8rem;color:var(--g500);margin-bottom:8px">${esc(p.client||'業主未填')}${p.type?' · '+p.type:''}${p.address?' · '+esc(p.address.slice(0,16)):''}</div>
+          <div style="display:flex;gap:16px;font-size:.75rem;color:var(--g400)">
+            ${income?`<span style="color:var(--ok);font-weight:700">💰 已收 NT$${income.toLocaleString()}</span>`:''}
+            ${vCount?`<span>🏗️ 廠商報價 ${vCount} 筆</span>`:''}
+            ${p.startDate?`<span>📅 ${p.startDate}</span>`:''}
+          </div>
+        </div>
+        <button class="btn bg bsm" style="flex-shrink:0" onclick="event.stopPropagation();openProject(${p._id})">進入案場 →</button>
+      </div>`;
+    card.addEventListener('click',()=>openProject(p._id));
+    card.addEventListener('mouseenter',()=>card.style.boxShadow='var(--sh3)');
+    card.addEventListener('mouseleave',()=>card.style.boxShadow='');
+    c.appendChild(card);
+  });
+}
+
+// ── 新增/編輯案場 Modal ────────────────────────────────────
+let projEditId=null;
+
+function openAddProject(id=null){
+  projEditId=id;
+  const p=id?getProject(id):null;
+  const set=(elId,v)=>{const el=document.getElementById(elId);if(el)el.value=v||'';};
+  set('projName',p?.name);set('projClient',p?.client);set('projAddress',p?.address);
+  set('projType',p?.type||PROJECT_TYPES[0]);set('projStart',p?.startDate);set('projEnd',p?.endDate);
+  set('projNote',p?.note);
+
+  // 狀態選項
+  const stSel=document.getElementById('projStatus');
+  if(stSel){
+    stSel.innerHTML=Object.entries(PROJECT_STATUS).map(([k,v])=>`<option value="${k}"${(p?.status||'inquiry')===k?' selected':''}>${v.icon} ${v.label}</option>`).join('');
+  }
+
+  // 負責員工
+  const empSel=document.getElementById('projEmployee');
+  if(empSel){
+    const emps=DB.get('employees');
+    empSel.innerHTML='<option value="">不指定</option>'+emps.map(e=>`<option value="${e._id}"${p?.employeeId===e._id?' selected':''}>${esc(e.name)}</option>`).join('');
+  }
+
+  document.getElementById('projModalTitle').textContent=id?'編輯案場':'新增案場';
+  openModal('projModal');
+}
+
+function saveProject(){
+  const get=id=>document.getElementById(id)?.value?.trim()||'';
+  const name=get('projName');
+  if(!name){showToast('⚠️ 請填入案場名稱');return;}
+  const existing=projEditId?getProject(projEditId):null;
+  const data={
+    name, client:get('projClient'), address:get('projAddress'),
+    type:get('projType')||PROJECT_TYPES[0], status:get('projStatus')||'inquiry',
+    startDate:get('projStart'), endDate:get('projEnd'), note:get('projNote'),
+    employeeId:document.getElementById('projEmployee')?.value||'',
+    token:existing?.token||('zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)),
+    summary:'案場 '+name,
+  };
+  if(projEditId){
+    DB.upd('projects',projEditId,data);
+    showToast('✅ 案場資料已更新');
+  } else {
+    const arr=DB.push('projects',data);
+    const newId=arr[0]._id;
+    showToast('✅ 案場已建立！');
+    // 建立後提示下一步
+    setTimeout(()=>{
+      showNextStep('案場已建立！接下來可以：', [
+        {label:'📋 建立報價單', action:()=>{closeModal('projModal');openProject(newId,'quote');}},
+        {label:'📝 上傳合約',  action:()=>{closeModal('projModal');openProject(newId,'contract');}},
+        {label:'稍後再說',     action:()=>closeModal('projModal')},
+      ]);
+      return;
+    }, 300);
+    closeModal('projModal');
+    renderProjects();
+    return;
+  }
+  closeModal('projModal');
+  renderProjects();
+}
+
+// ── 下一步提示 ────────────────────────────────────────────
+function showNextStep(msg, options){
+  const old=document.getElementById('_nextStepBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_nextStepBox';
+  box.style.cssText='position:fixed;bottom:30px;right:24px;background:var(--w);border:1.5px solid var(--gold-l);border-radius:var(--r);padding:18px 20px;z-index:8000;box-shadow:var(--sh4);min-width:240px;max-width:300px;animation:slideUp .2s ease';
+  const close=()=>box.remove();
+  box.innerHTML=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <div style="font-weight:800;color:var(--g700);font-size:.88rem">${msg}</div>
+    <button onclick="this.closest('#_nextStepBox').remove()" style="background:none;border:none;color:var(--g400);font-size:1.1rem;cursor:pointer;padding:0 0 0 8px">✕</button>
+  </div>
+  <div id="_nextStepBtns" style="display:flex;flex-direction:column;gap:7px"></div>`;
+  document.body.appendChild(box);
+  const btnC=box.querySelector('#_nextStepBtns');
+  options.forEach((opt,i)=>{
+    const btn=document.createElement('button');
+    btn.style.cssText=`padding:9px 14px;border-radius:var(--rs);border:1.5px solid ${i===0?'var(--gold)':'var(--g200)'};background:${i===0?'var(--gold-pale)':'none'};color:${i===0?'var(--gold-d)':'var(--g500)'};font-size:.82rem;cursor:pointer;font-weight:${i===0?'800':'600'};font-family:inherit;text-align:left;transition:all var(--ease)`;
+    btn.textContent=opt.label;
+    btn.addEventListener('click',()=>{close();opt.action();});
+    btnC.appendChild(btn);
+  });
+  setTimeout(close, 10000);
+}
+
+// ── 進入案場 ──────────────────────────────────────────────
+function openProject(id, tab='overview'){
+  curProjectId=id;
+  const p=getProject(id);if(!p)return;
+  showPanel('project-detail');
+  renderProjectDetail(id, tab);
+}
+
+// ── 案場詳情頁 ────────────────────────────────────────────
+function renderProjectDetail(id, activeTab='overview'){
+  const p=getProject(id);if(!p)return;
+  const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+
+  // 標題
+  const header=document.getElementById('projDetailHeader');
+  if(header){
+    const emps=DB.get('employees');
+    const emp=p.employeeId?emps.find(e=>e._id===p.employeeId):null;
+    header.innerHTML=`
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <button onclick="showPanel('projects')" style="background:none;border:none;color:var(--g400);cursor:pointer;font-size:.85rem;padding:0">← 返回</button>
+        <div style="font-size:1.5rem;font-weight:900;color:var(--g800)">${esc(p.name)}</div>
+        <span style="padding:4px 12px;border-radius:20px;background:${st.bg};color:${st.color};font-size:.78rem;font-weight:800">${st.icon} ${st.label}</span>
+      </div>
+      <div style="font-size:.82rem;color:var(--g400);margin-top:4px;display:flex;gap:16px;flex-wrap:wrap">
+        ${p.client?`<span>👤 業主：${esc(p.client)}</span>`:''}
+        ${p.address?`<span>📍 ${esc(p.address)}</span>`:''}
+        ${p.type?`<span>🏠 ${p.type}</span>`:''}
+        ${emp?`<span>👷 負責：${esc(emp.name)}</span>`:''}
+        ${p.startDate?`<span>📅 開工：${p.startDate}</span>`:''}
+      </div>`;
+  }
+
+  // Tab 切換
+  const tabs=['overview','quote','vendor','contract','ledger','progress'];
+  const tabLabels={overview:'📊 總覽',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
+  const tabBar=document.getElementById('projDetailTabs');
+  if(tabBar){
+    tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
+  }
+
+  // Tab 內容
+  const content=document.getElementById('projDetailContent');
+  if(!content) return;
+
+  switch(activeTab){
+    case 'overview': renderProjOverview(id,p,content); break;
+    case 'quote':    renderProjQuotes(id,p,content);   break;
+    case 'vendor':   renderProjVendors(id,p,content);  break;
+    case 'contract': renderProjContract(id,p,content); break;
+    case 'ledger':   renderProjLedger(id,p,content);   break;
+    case 'progress': renderProjProgress(id,p,content); break;
+  }
+}
+
+// ── 案場總覽 Tab ──────────────────────────────────────────
+function renderProjOverview(id,p,c){
+  const quotes=DB.get('quotes').filter(q=>q.projectId===id);
+  const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
+  const income=ledgerItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+  const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
+  const vendorCost=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  const profit=income-cost-vendorCost;
+  const st=PROJECT_STATUS[p.status||'inquiry'];
+
+  c.innerHTML=`
+    <div class="g3" style="margin-bottom:20px">
+      <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">客戶收款</div></div>
+      <div class="stat"><div class="sn" style="color:var(--bad)">${(cost+vendorCost)?'NT$'+(cost+vendorCost).toLocaleString():'NT$0'}</div><div class="sl">工程成本</div></div>
+      <div class="stat"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${(profit>=0?'+':'')}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
+      ${[
+        {icon:'📋',label:'報價單',count:quotes.length,action:`renderProjectDetail(${id},'quote')`,btn:'查看報價',color:'var(--info)'},
+        {icon:'🏗️',label:'廠商報價',count:vendors.length,action:`renderProjectDetail(${id},'vendor')`,btn:'查看廠商',color:'var(--warn)'},
+        {icon:'📝',label:'合約',count:p.contractId?1:0,action:`renderProjectDetail(${id},'contract')`,btn:'查看合約',color:'var(--ok)'},
+        {icon:'💰',label:'帳款紀錄',count:ledgerItems.length,action:`renderProjectDetail(${id},'ledger')`,btn:'查看帳款',color:'var(--gold-d)'},
+      ].map(item=>`
+        <div onclick="${item.action}" style="padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r);cursor:pointer;transition:all var(--ease)" 
+          onmouseenter="this.style.borderColor='var(--gold-l)';this.style.boxShadow='var(--sh2)'"
+          onmouseleave="this.style.borderColor='var(--g200)';this.style.boxShadow=''">
+          <div style="font-size:.75rem;color:var(--g400);margin-bottom:4px">${item.icon} ${item.label}</div>
+          <div style="font-size:1.4rem;font-weight:900;color:${item.color}">${item.count}</div>
+          <div style="font-size:.72rem;color:var(--g400);margin-top:4px">${item.btn} →</div>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn bg" onclick="shareProjectToClient(${id})" style="background:var(--ok);color:#fff">📱 分享給業主</button>
+      <button class="btn bo" onclick="openAddProject(${id})">✏️ 編輯案場資料</button>
+      <select onchange="if(this.value)updateProjectStatus(${id},this.value)" style="padding:8px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
+        <option value="">更改狀態...</option>
+        ${Object.entries(PROJECT_STATUS).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
+      </select>
+    </div>`;
+}
+
+function updateProjectStatus(id,status){
+  DB.upd('projects',id,{status,doneDate:status==='done'?new Date().toISOString().split('T')[0]:undefined});
+  renderProjectDetail(id,'overview');
+  showToast('✅ 案場狀態已更新：'+PROJECT_STATUS[status].label);
+}
+
+// ── 案場報價 Tab ──────────────────────────────────────────
+function renderProjQuotes(id,p,c){
+  const quotes=DB.get('quotes').filter(q=>q.projectId===id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
+      <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
+    </div>
+    ${quotes.length?quotes.map(q=>`
+      <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openQuoteEdit(${q._id})">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:800">${esc(q.name||'報價單')}</div>
+            <div style="font-size:.78rem;color:var(--g400);margin-top:2px">${q._ts||''}</div>
+          </div>
+          <div style="font-weight:900;color:var(--gold-d)">NT$${Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05).toLocaleString()}</div>
+        </div>
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無報價單</div><div class="es-s">點右上方新建此案場的報價單</div></div>'}`;
+}
+
+function newProjQuote(projectId){
+  curProjectId=projectId;
+  const p=getProject(projectId);
+  showPanel('ad-newquote');
+  // 預填業主名稱
+  setTimeout(()=>{
+    const qN=document.getElementById('qN');
+    if(qN&&p) qN.value=p.client||p.name||'';
+    showNextStep('記得填入業主姓名和工程類型', [{label:'開始填報價',action:()=>{}}]);
+  }, 300);
+}
+
+// ── 案場廠商報價 Tab ──────────────────────────────────────
+function renderProjVendors(id,p,c){
+  const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div>
+        <div style="font-weight:800;color:var(--g700)">廠商報價（${vendors.length} 筆）</div>
+        ${total?`<div style="font-size:.82rem;color:var(--bad);font-weight:700">合計成本：NT$${total.toLocaleString()}</div>`:''}
+      </div>
+      <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
+    </div>
+    ${vendors.length?vendors.map(v=>`
+      <div class="card" style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700">${esc(v.vendor||'廠商')}</div>
+            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')} ${v.caseN?' · '+esc(v.caseN):''}</div>
+          </div>
+          <div style="font-weight:900;color:var(--bad)">NT$${(v.amount||0).toLocaleString()}</div>
+        </div>
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>'}`;
+}
+
+function openVendorForProject(projectId){
+  curProjectId=projectId;
+  const p=getProject(projectId);
+  vItems=[];
+  ['vVd','vCs','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=p?.name||'';});
+  document.getElementById('vTotal').textContent='NT$0';
+  const vCs=document.getElementById('vCs');
+  if(vCs&&p) vCs.value=p.name||'';
+  openModal('vModal');
+}
+
+// ── 案場合約 Tab ──────────────────────────────────────────
+function renderProjContract(id,p,c){
+  const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">合約（${contracts.length} 份）</div>
+      <button class="btn bg bsm" onclick="openContractForProject(${id})">＋ 上傳合約</button>
+    </div>
+    ${contracts.length?contracts.map(ct=>`
+      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="previewContract(${ct._id})">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700">${esc(ct.name||'合約')}</div>
+            <div style="font-size:.75rem;color:var(--g400)">${ct._ts||''} ${ct.amount?'· NT$'+ct.amount.toLocaleString():''}</div>
+          </div>
+          <span style="font-size:.75rem;padding:3px 9px;border-radius:20px;background:var(--ok-bg);color:var(--ok)">點擊查看</span>
+        </div>
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📝</div><div class="es-t">尚無合約</div><div class="es-s">上傳合約檔案，業主可隨時查看</div></div>'}`;
+}
+
+function openContractForProject(projectId){
+  curProjectId=projectId;
+  const p=getProject(projectId);
+  ctEditId=null;
+  ['ctName','ctClient','ctAmt','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  if(p){
+    const ctN=document.getElementById('ctName');if(ctN)ctN.value=p.name||'';
+    const ctCl=document.getElementById('ctClient');if(ctCl)ctCl.value=p.client||'';
+  }
+  openModal('contractModal');
+}
+
+// ── 案場帳款 Tab ──────────────────────────────────────────
+function renderProjLedger(id,p,c){
+  const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>b._id-a._id);
+  const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+  const cost=items.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
+
+  c.innerHTML=`
+    <div class="g3" style="margin-bottom:16px">
+      <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">外帳收入</div></div>
+      <div class="stat"><div class="sn" style="color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'NT$0'}</div><div class="sl">內帳支出</div></div>
+      <div class="stat"><div class="sn" style="color:${income-cost>=0?'var(--ok)':'var(--bad)'}">${(income-cost>=0?'+':'')+'NT$'+Math.abs(income-cost).toLocaleString()}</div><div class="sl">毛利</div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
+      <button class="btn bo bsm" onclick="openProjLedgerModal(${id},'out')">＋ 新增支出</button>
+    </div>
+    <div id="projLedgerList">
+    ${items.length?items.map(l=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
+        <div style="width:36px;height:36px;border-radius:8px;background:${l.type==='in'?'var(--ok-bg)':'var(--bad-bg)'};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">${l.type==='in'?'💰':'📤'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${esc(l.desc||l.cat||'記錄')}</div>
+          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}</div>
+        </div>
+        <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">尚無帳款紀錄</div></div>'}
+    </div>`;
+}
+
+function openProjLedgerModal(projectId, dir){
+  curProjectId=projectId;
+  const p=getProject(projectId);
+  curLedgerBook=dir==='in'?'in':'out';
+  curLedgerType=dir;
+  openLedgerModal(curLedgerBook);
+  // 預填案場
+  setTimeout(()=>{
+    const ldCase=document.getElementById('ldCase');
+    if(ldCase&&p) ldCase.value=p.name||'';
+  }, 100);
+}
+
+// ── 案場進度 Tab ──────────────────────────────────────────
+function renderProjProgress(id,p,c){
+  const items=DB.get('progress').filter(r=>r.projectId===id).sort((a,b)=>a._id-b._id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">工程進度</div>
+      <button class="btn bg bsm" onclick="openProgressForProject(${id})">＋ 新增進度</button>
+    </div>
+    <div style="position:relative;padding-left:20px">
+      ${items.length?items.map((item,i)=>`
+        <div style="position:relative;margin-bottom:20px">
+          <div style="position:absolute;left:-20px;top:4px;width:12px;height:12px;border-radius:50%;background:${item.done?'var(--ok)':'var(--gold)'};border:2px solid var(--w);box-shadow:var(--sh1)"></div>
+          ${i<items.length-1?`<div style="position:absolute;left:-14px;top:16px;width:1px;height:calc(100% + 4px);background:var(--g200)"></div>`:''}
+          <div class="card" style="padding:12px 14px">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start">
+              <div>
+                <div style="font-weight:800;font-size:.88rem">${esc(item.text||item.name||'進度')}</div>
+                <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${item.date||''}</div>
+              </div>
+              <span style="font-size:.72rem;padding:2px 8px;border-radius:20px;background:${item.done?'var(--ok-bg)':'var(--warn-bg)'};color:${item.done?'var(--ok)':'var(--warn)'}">${item.done?'✅ 完成':'進行中'}</span>
+            </div>
+            ${item.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(item.note)}</div>`:''}
+          </div>
+        </div>`).join(''):'<div class="empty-state"><div class="es-ic">🔨</div><div class="es-t">尚無進度記錄</div></div>'}
+    </div>`;
+}
+
+function openProgressForProject(projectId){
+  curProjectId=projectId;
+  showPanel('ad-progress');
+  setTimeout(()=>{
+    const addBtn=document.getElementById('addProgressBtn');
+    if(addBtn) addBtn.click();
+  }, 300);
+}
+
+// ══ 工班付款管理（參考 QuickBooks 帳單付款）══════════════
+// vendors 資料不變，新增 payments 陣列記錄付款歷史
+function getVendorPaid(v){
+  return (v.payments||[]).reduce((s,p)=>s+(p.amount||0),0);
+}
+function getVendorPayStatus(v){
+  const paid=getVendorPaid(v);
+  const total=v.amount||0;
+  if(paid<=0)return {label:'未付款',color:'var(--bad)',bg:'var(--bad-bg)',bd:'var(--bad-bd)'};
+  if(paid<total)return {label:'部分付款',color:'var(--warn)',bg:'var(--warn-bg)',bd:'var(--warn-bd)'};
+  return {label:'已付清',color:'var(--ok)',bg:'var(--ok-bg)',bd:'var(--ok-bd)'};
+}
+
+// 開啟付款視窗
+let _payVendorId=null;
+function openVendorPay(vendorId){
+  _payVendorId=vendorId;
+  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const paid=getVendorPaid(v);
+  const remain=(v.amount||0)-paid;
+
+  const old=document.getElementById('_payBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_payBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`
+   <div style="background:var(--w);border-radius:var(--rl);padding:24px;max-width:420px;width:100%;box-shadow:var(--sh4)" onclick="event.stopPropagation()">
+    <div style="font-size:1.05rem;font-weight:900;color:var(--g800);margin-bottom:4px">💳 付款給 ${esc(v.vendor||'廠商')}</div>
+    <div style="font-size:.8rem;color:var(--g400);margin-bottom:16px">${esc(v.cat||'')} ${v.caseN?'· '+esc(v.caseN):''}</div>
+
+    <div style="background:var(--g50);border-radius:var(--rs);padding:14px;margin-bottom:16px">
+     <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px"><span style="color:var(--g500)">報價總額</span><span style="font-weight:800">NT$${(v.amount||0).toLocaleString()}</span></div>
+     <div style="display:flex;justify-content:space-between;font-size:.85rem;margin-bottom:6px"><span style="color:var(--g500)">已付</span><span style="font-weight:800;color:var(--ok)">NT$${paid.toLocaleString()}</span></div>
+     <div style="display:flex;justify-content:space-between;font-size:.9rem;padding-top:8px;border-top:1px solid var(--g200)"><span style="font-weight:800">尚欠</span><span style="font-weight:900;color:var(--bad)">NT$${remain.toLocaleString()}</span></div>
+    </div>
+
+    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:8px">這次付多少？</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+     <button onclick="document.getElementById('_payAmt').value=${Math.round(remain*0.3)}" style="padding:6px 12px;border:1.5px solid var(--g200);border-radius:20px;background:var(--w);font-size:.78rem;cursor:pointer;font-family:inherit">3成 NT$${Math.round(remain*0.3).toLocaleString()}</button>
+     <button onclick="document.getElementById('_payAmt').value=${Math.round(remain*0.5)}" style="padding:6px 12px;border:1.5px solid var(--g200);border-radius:20px;background:var(--w);font-size:.78rem;cursor:pointer;font-family:inherit">5成 NT$${Math.round(remain*0.5).toLocaleString()}</button>
+     <button onclick="document.getElementById('_payAmt').value=${remain}" style="padding:6px 12px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:800">付清 NT$${remain.toLocaleString()}</button>
+    </div>
+    <input type="number" id="_payAmt" placeholder="輸入金額" value="${remain}" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
+    <input type="text" id="_payNote" placeholder="備注（例：第二期款）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
+
+    <div style="display:flex;gap:8px">
+     <button onclick="document.getElementById('_payBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
+     <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">✅ 確認付款並記帳</button>
+    </div>
+   </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
+  document.body.appendChild(box);
+}
+
+function confirmVendorPay(){
+  const v=DB.get('vendors').find(r=>r._id===_payVendorId);if(!v)return;
+  const amt=parseInt(document.getElementById('_payAmt')?.value)||0;
+  if(amt<=0){showToast('⚠️ 請輸入付款金額');return;}
+  const note=document.getElementById('_payNote')?.value?.trim()||'';
+  const today=new Date().toISOString().split('T')[0];
+
+  // 1. 記錄到廠商付款歷史
+  const payments=[...(v.payments||[]),{amount:amt,date:today,note}];
+  const totalPaid=payments.reduce((s,p)=>s+(p.amount||0),0);
+  DB.upd('vendors',v._id,{payments,paid:totalPaid>=(v.amount||0)});
+
+  // 2. 自動記入內帳支出（雙式記帳，這是 ERP 核心）
+  DB.push('ledger',{
+    summary:'內帳支出 付款給'+(v.vendor||'廠商')+' '+fmt(amt),
+    book:'out',type:'out',amount:amt,
+    desc:'付款給 '+(v.vendor||'廠商')+(note?'（'+note+'）':''),
+    cat:'廠商費用',date:today,
+    caseN:v.caseN||'',projectId:v.projectId||null,
+    vendorId:v._id,
+  });
+
+  document.getElementById('_payBox')?.remove();
+  showToast('✅ 已付款 NT$'+amt.toLocaleString()+'，並自動記入內帳');
+  if(typeof renderVendors==='function')renderVendors(vCurrentFilter);
+  if(typeof renderLedger==='function')renderLedger();
+  if(typeof renderDashboard==='function')renderDashboard();
+}
+
+// ══ 雜項快速記帳（3 秒完成）═══════════════════════════════
+function quickExpense(cat){
+  const old=document.getElementById('_qeBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_qeBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  const icons={'材料費':'🧱','工資':'👷','雜項':'📦','交通油錢':'⛽'};
+  const projects=DB.get('projects').filter(p=>p.status==='progress'||p.status==='signed');
+  box.innerHTML=`
+   <div style="background:var(--w);border-radius:var(--rl);padding:24px;max-width:380px;width:100%;box-shadow:var(--sh4)" onclick="event.stopPropagation()">
+    <div style="font-size:1.05rem;font-weight:900;color:var(--g800);margin-bottom:16px">${icons[cat]||'💸'} 記一筆${cat}</div>
+    <input type="number" id="_qeAmt" placeholder="金額" autofocus style="width:100%;padding:14px;border:1.5px solid var(--gold-l);border-radius:var(--rs);font-size:1.3rem;font-family:monospace;font-weight:800;margin-bottom:10px;box-sizing:border-box;text-align:center">
+    <input type="text" id="_qeNote" placeholder="說明（選填）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
+    <select id="_qeProj" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box;background:var(--w);cursor:pointer">
+     <option value="">不指定案場</option>
+     ${projects.map(p=>'<option value="'+p._id+'">'+esc(p.name)+'</option>').join('')}
+    </select>
+    <div style="display:flex;gap:8px">
+     <button onclick="document.getElementById('_qeBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
+     <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">💾 記帳</button>
+    </div>
+   </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
+  document.body.appendChild(box);
+  setTimeout(()=>document.getElementById('_qeAmt')?.focus(),100);
+}
+
+function saveQuickExpense(cat){
+  const amt=parseInt(document.getElementById('_qeAmt')?.value)||0;
+  if(amt<=0){showToast('⚠️ 請輸入金額');return;}
+  const note=document.getElementById('_qeNote')?.value?.trim()||'';
+  const projId=document.getElementById('_qeProj')?.value||null;
+  DB.push('ledger',{
+    summary:'內帳支出 '+cat+' '+fmt(amt),
+    book:'out',type:'out',amount:amt,
+    desc:note||cat,cat:cat==='交通油錢'?'其他支出':cat,
+    date:new Date().toISOString().split('T')[0],
+    projectId:projId?parseInt(projId):null,
+  });
+  document.getElementById('_qeBox')?.remove();
+  showToast('✅ 已記帳 NT$'+amt.toLocaleString());
+  if(typeof renderLedger==='function')renderLedger();
+  if(typeof renderDashboard==='function')renderDashboard();
+}
+
+
+// ══ 分享給業主（產生 QR Code + 連結）════════════════════
+function shareProjectToClient(id){
+  const p=getProject(id);if(!p)return;
+  // 確保有 token
+  if(!p.token){
+    const token='zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+    DB.upd('projects',id,{token});
+    p.token=token;
+  }
+  const base=location.origin+location.pathname.replace(/[^/]*$/,'');
+  const url=base+'client.html?c='+p.token;
+
+  const old=document.getElementById('_shareBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_shareBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`
+   <div style="background:var(--w);border-radius:var(--rl);padding:26px;max-width:400px;width:100%;box-shadow:var(--sh4);text-align:center" onclick="event.stopPropagation()">
+    <div style="font-size:1.1rem;font-weight:900;color:var(--g800);margin-bottom:4px">📱 分享給業主</div>
+    <div style="font-size:.82rem;color:var(--g400);margin-bottom:18px">${esc(p.name)}</div>
+    <div id="_qrImg" style="width:200px;height:200px;margin:0 auto 18px;background:var(--g50);border-radius:var(--rs);display:flex;align-items:center;justify-content:center;padding:10px"></div>
+    <div style="font-size:.78rem;color:var(--g500);margin-bottom:8px;text-align:left;font-weight:700">業主專屬連結</div>
+    <div style="display:flex;gap:6px;margin-bottom:16px">
+      <input id="_shareUrl" readonly value="${url}" style="flex:1;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:monospace;background:var(--g50);color:var(--g600);min-width:0">
+      <button onclick="navigator.clipboard.writeText('${url}').then(()=>showToast('✅ 已複製連結'))" style="padding:10px 14px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">複製</button>
+    </div>
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 業主打開連結就能看到：施工進度、收款紀錄、合約摘要。<br>看不到你的成本內帳，安全放心。</div>
+    <button onclick="document.getElementById('_shareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
+   </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
+  document.body.appendChild(box);
+
+  // 產生 QR Code（用免費 QR API）
+  const qrDiv=document.getElementById('_qrImg');
+  if(qrDiv){
+    const img=document.createElement('img');
+    img.src='https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data='+encodeURIComponent(url);
+    img.style.cssText='width:100%;height:100%;object-fit:contain';
+    img.alt='QR Code';
+    img.onerror=()=>{qrDiv.innerHTML='<div style="font-size:.75rem;color:var(--g400)">QR 產生失敗<br>請直接複製連結</div>';};
+    qrDiv.innerHTML='';qrDiv.appendChild(img);
+  }
+}
