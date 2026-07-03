@@ -49,13 +49,138 @@ const GROUPS={
     {l:'打卡',    items:[{id:'punch-clock',l:'上下班打卡',ic:'🕐'}]},
   ],
 };
-const SYS={
-  owner:'你是澤居室內裝修的 AI 老闆助理。澤居是台灣在地統包裝修公司，服務台北、新北、桃園、三峽。電話：03-2605199，IG：@zeju0923，LINE：@zj8888。掌握全部資訊，以專業精準方式回應，繁體中文，主動提供建議。',
-  cs:'你是澤居室內裝修的 AI 客服助理「小澤」。統包裝修，台北、新北、桃園、三峽。全室翻新每坪18,000–28,000元，廚房15–35萬，浴室8–20萬，老屋加20%。工期：全室45–60天，局部2–3週。付款：簽約30%/開工30%/七成完工30%/驗收10%。若有上傳照片請描述空間並給具體建議與初步報價。語氣溫暖親切，給具體數字，繁體中文。',
-  mk:'你是澤居室內裝修的 AI 行銷小編。IG @zeju0923，LINE @zj8888。生成貼文：吸引人開頭、描述空間氛圍、Emoji≤5個、3–5個Hashtag含#澤居室內裝修、結尾CTA。120–200字，繁體中文，語氣溫暖質感。',
-  ad:'你是澤居室內裝修的 AI 行政助理。電話：03-2605199，信箱：zeju0923@gmail.com。可協助：工程進度查詢、起草合約、整理廠商報價、安排排程。付款：簽約30%/開工30%/七成完工30%/驗收10%。繁體中文，專業嚴謹。',
-  ac:'你是澤居室內裝修的 AI 會計助理。毛利=對外報價−廠商成本−管理費8%。目標毛利率28–35%。協助：帳款整理、毛利計算、成本分析、催款通知。數字精準，繁體中文，語氣專業嚴謹。',
+// ══ 公司資料設定（多租戶核心：換公司只要改這裡）═══════════════
+// 賣給新客戶時，這是唯一需要調整品牌/業務資料的地方（Firebase 專案設定另見文件說明）
+const DEFAULT_COMPANY_PROFILE = {
+  name:'澤居室內裝修', shortName:'澤居',
+  phone:'03-2605199', email:'zeju0923@gmail.com',
+  ig:'@zeju0923', line:'@zj8888',
+  serviceAreas:'台北、新北、桃園、三峽',
+  priceFullReno:'18,000–28,000元／坪', priceKitchen:'15–35萬', priceBath:'8–20萬',
+  oldHouseSurcharge:'20%',
+  durationFull:'45–60天', durationPartial:'2–3週',
+  paymentTerms:'簽約30%/開工30%/七成完工30%/驗收10%',
+  managementFeeRate:'8%', targetMarginLow:'28%', targetMarginHigh:'35%',
+  aiAssistantName:'小澤',
 };
+
+function getCompanyProfile(){
+  try{
+    const raw=localStorage.getItem('zeju_company_profile');
+    if(raw) return {...DEFAULT_COMPANY_PROFILE, ...JSON.parse(raw)};
+  }catch{}
+  return {...DEFAULT_COMPANY_PROFILE};
+}
+function saveCompanyProfile(profile){
+  const merged={...DEFAULT_COMPANY_PROFILE, ...profile};
+  localStorage.setItem('zeju_company_profile', JSON.stringify(merged));
+  if(_fbDB&&_fbReady){
+    _fbDB.ref('zeju_data/company_profile').set(merged).catch(e=>console.warn('FB write company_profile:',e.message));
+  }
+  return merged;
+}
+async function loadCompanyProfileFromCloud(){
+  if(!_fbDB||!_fbReady)return;
+  try{
+    const snap=await _fbDB.ref('zeju_data/company_profile').once('value');
+    const cloud=snap.val();
+    if(cloud) localStorage.setItem('zeju_company_profile', JSON.stringify({...DEFAULT_COMPANY_PROFILE, ...cloud}));
+  }catch(e){console.warn('company_profile load failed:',e.message);}
+}
+
+// ══ 新手設定精靈（首次登入引導）═══════════════════════════
+function shouldShowSetupWizard(){
+  if(localStorage.getItem('zeju_wizard_done')==='1')return false;
+  if(curRole!=='owner')return false; // 只給老闆看
+  const hasCustomProfile=getCompanyProfile().name!==DEFAULT_COMPANY_PROFILE.name;
+  const hasProjects=DB.get('projects').length>0;
+  return !hasCustomProfile && !hasProjects; // 兩者都還是預設狀態才顯示，避免打擾老客戶
+}
+function maybeShowSetupWizard(){
+  if(shouldShowSetupWizard()){
+    setTimeout(()=>openModal('setupWizardModal'),500);
+  }
+}
+function wizGoToStep(n){
+  document.querySelectorAll('.wiz-panel').forEach(p=>p.classList.toggle('on',p.id==='wizPanel'+n));
+  document.querySelectorAll('.wiz-step').forEach(s=>{
+    const stepN=parseInt(s.dataset.step);
+    s.classList.toggle('on',stepN===n);
+    s.classList.toggle('done',stepN<n);
+  });
+}
+function wizNextStep(fromStep){
+  if(fromStep===1){
+    const name=document.getElementById('wizCompanyName')?.value?.trim();
+    if(!name){showToast('⚠️ 請填入公司全名');return;}
+    saveCompanyProfile({
+      ...getCompanyProfile(),
+      name,
+      phone:document.getElementById('wizCompanyPhone')?.value?.trim()||'',
+      serviceAreas:document.getElementById('wizCompanyAreas')?.value?.trim()||'',
+    });
+    const tlogoEl=document.getElementById('tlogoText');if(tlogoEl)tlogoEl.textContent=name;
+    wizGoToStep(2);
+  } else if(fromStep===2){
+    const name=document.getElementById('wizProjName')?.value?.trim();
+    if(!name){showToast('⚠️ 請填入案場名稱，或點「先跳過」');return;}
+    DB.push('projects',{name,client:document.getElementById('wizProjClient')?.value?.trim()||'',status:'inquiry',summary:'案場 '+name});
+    wizGoToStep(3);
+  }
+}
+function wizSkipStep(fromStep){
+  wizGoToStep(fromStep+1);
+}
+function wizFinish(){
+  localStorage.setItem('zeju_wizard_done','1');
+  closeModal('setupWizardModal');
+  if(typeof renderProjects==='function')renderProjects();
+  if(typeof renderDashboard==='function')renderDashboard();
+  showToast('✅ 準備好了，開始使用吧！');
+}
+
+// ── 圖片壓縮工具（上傳前縮小檔案，減少 Firebase 同步負擔）──────
+// 只用於「純儲存用」的圖片（合約掃描檔等），AI辨識用的圖片不壓縮，避免影響辨識準確度
+function compressImage(file, maxDim=1600, quality=0.75){
+  return new Promise((resolve)=>{
+    if(!file.type.startsWith('image/')){resolve(null);return;}
+    const img=new Image();
+    const reader=new FileReader();
+    reader.onload=e=>{
+      img.onload=()=>{
+        let w=img.width, h=img.height;
+        if(w>maxDim||h>maxDim){
+          if(w>h){h=Math.round(h*maxDim/w);w=maxDim;}
+          else{w=Math.round(w*maxDim/h);h=maxDim;}
+        }
+        const canvas=document.createElement('canvas');
+        canvas.width=w;canvas.height=h;
+        const ctx=canvas.getContext('2d');
+        ctx.drawImage(img,0,0,w,h);
+        const dataUrl=canvas.toDataURL('image/jpeg',quality);
+        resolve(dataUrl);
+      };
+      img.onerror=()=>resolve(e.target.result); // 壓縮失敗就用原圖，不擋流程
+      img.src=e.target.result;
+    };
+    reader.onerror=()=>resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
+// AI 系統提示：從公司資料動態組成，而非寫死品牌名稱
+function buildSysPrompts(){
+  const p=getCompanyProfile();
+  return {
+    owner:`你是${p.name}的 AI 老闆助理。${p.shortName}是台灣在地統包裝修公司，服務${p.serviceAreas}。電話：${p.phone}，IG：${p.ig}，LINE：${p.line}。掌握全部資訊，以專業精準方式回應，繁體中文，主動提供建議。`,
+    cs:`你是${p.name}的 AI 客服助理「${p.aiAssistantName}」。統包裝修，${p.serviceAreas}。全室翻新每坪${p.priceFullReno}，廚房${p.priceKitchen}，浴室${p.priceBath}，老屋加${p.oldHouseSurcharge}。工期：全室${p.durationFull}，局部${p.durationPartial}。付款：${p.paymentTerms}。若有上傳照片請描述空間並給具體建議與初步報價。語氣溫暖親切，給具體數字，繁體中文。`,
+    mk:`你是${p.name}的 AI 行銷小編。IG ${p.ig}，LINE ${p.line}。生成貼文：吸引人開頭、描述空間氛圍、Emoji≤5個、3–5個Hashtag含#${p.shortName}、結尾CTA。120–200字，繁體中文，語氣溫暖質感。`,
+    ad:`你是${p.name}的 AI 行政助理。電話：${p.phone}，信箱：${p.email}。可協助：工程進度查詢、起草合約、整理廠商報價、安排排程。付款：${p.paymentTerms}。繁體中文，專業嚴謹。`,
+    ac:`你是${p.name}的 AI 會計助理。毛利=對外報價−廠商成本−管理費${p.managementFeeRate}。目標毛利率${p.targetMarginLow}–${p.targetMarginHigh}。協助：帳款整理、毛利計算、成本分析、催款通知。數字精準，繁體中文，語氣專業嚴謹。`,
+  };
+}
+// SYS 保留作為向後相容的 getter（改成動態，而不是寫死字串）
+Object.defineProperty(globalThis,'SYS',{get(){return buildSysPrompts();}});
 
 // ══ DB ════════════════════════════════════════════════════
 // ══ DB：雲端同步版本（window.storage）══════════════════════
@@ -116,7 +241,7 @@ function initFirebase(){
 }
 
 const _cache = {};
-const _KEYS = ['quotes','vendors','invoices','contracts','progress','ledger','billing',
+const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports'];
 
@@ -136,6 +261,7 @@ async function initCloudDB(){
         });
         console.log('✅ Firebase data loaded');
         setSyncStatus('ok');
+        loadCompanyProfileFromCloud();
         res(true);
       }, ()=>{
         _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=JSON.parse(v);}catch{}});
@@ -267,10 +393,11 @@ function renderTrashBin(){
       const permaBtn=document.createElement('button');
       permaBtn.className='btn bo bsm';permaBtn.style.color='var(--bad)';permaBtn.textContent='🗑️ 永久刪除';
       permaBtn.addEventListener('click',()=>{
-        if(!confirm('確定永久刪除「'+meta.name(item)+'」？此動作無法復原！'))return;
-        DB.del(k,item._id);
-        showToast('✅ 已永久刪除');
-        renderTrashBin();
+        confirmAction('永久刪除「'+meta.name(item)+'」？此動作無法復原！',()=>{
+          DB.del(k,item._id);
+          showToast('✅ 已永久刪除');
+          renderTrashBin();
+        });
       });
       btns.appendChild(restoreBtn);btns.appendChild(permaBtn);
       row.appendChild(left);row.appendChild(btns);
@@ -346,14 +473,15 @@ function apiSaveKey(){
 }
 
 function apiClearKey(){
-  if(!confirm('確定清除 API Key？\n清除後所有 AI 功能將停用。')) return;
-  API_KEY = '';
-  localStorage.removeItem('zeju_apikey');
-  const inp = document.getElementById('apiInp'); if(inp) inp.value = '';
-  const dot = document.getElementById('apiDot');
-  if(dot){ dot.textContent='⚠️ 未設定'; dot.style.background='var(--warn-bg)'; dot.style.color='var(--warn)'; }
-  const res = document.getElementById('apiTestResult'); if(res) res.style.display='none';
-  showToast('✅ API Key 已清除');
+  confirmAction('清除 API Key？清除後所有 AI 功能將停用。',()=>{
+    API_KEY = '';
+    localStorage.removeItem('zeju_apikey');
+    const inp = document.getElementById('apiInp'); if(inp) inp.value = '';
+    const dot = document.getElementById('apiDot');
+    if(dot){ dot.textContent='⚠️ 未設定'; dot.style.background='var(--warn-bg)'; dot.style.color='var(--warn)'; }
+    const res = document.getElementById('apiTestResult'); if(res) res.style.display='none';
+    showToast('✅ API Key 已清除');
+  },false);
 }
 
 async function apiTestConn(){
@@ -423,6 +551,24 @@ function confirmAction(msg,onConfirm,danger=true){
   box.querySelector('._cfmYes').addEventListener('click',()=>{close();onConfirm();});
   setTimeout(close,6000);
 }
+
+// ── 純資訊顯示（不需要確認/取消，用來取代 alert() 的多行狀態訊息）──
+function showInfoBox(title,message){
+  const old=document.getElementById('_infoBox');if(old)old.remove();
+  const overlay=document.createElement('div');
+  overlay.id='_infoBox';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  const htmlMsg=String(message).replace(/\n/g,'<br>');
+  overlay.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:400px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:800;font-size:1rem;color:var(--g800);margin-bottom:10px">'+title+'</div>'+
+    '<div style="font-size:.86rem;color:var(--g600);line-height:1.7;white-space:normal">'+htmlMsg+'</div>'+
+    '<button id="_infoOk" style="margin-top:16px;width:100%;padding:10px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">知道了</button>'+
+    '</div>';
+  overlay.addEventListener('click',()=>overlay.remove());
+  document.body.appendChild(overlay);
+  document.getElementById('_infoOk').addEventListener('click',()=>overlay.remove());
+}
+
 
 function showToast(msg,dur=2600){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 
@@ -604,9 +750,34 @@ function setupApp(role){
   initMobileNav(role);
   // 案場系統
   if(typeof renderDashboard==='function') renderDashboard();
-  if(typeof renderProjects==='function') renderProjects();
+  if(typeof renderProjects==='function'){
+    const savedView=localStorage.getItem('zeju_proj_view');
+    if(savedView==='kanban'&&typeof setProjView==='function'){setProjView('kanban');}
+    else renderProjects();
+  }
   if(typeof initMkProjectSel==='function') initMkProjectSel();
   if(typeof initCsChatProject==='function') initCsChatProject();
+  if(typeof maybeShowSetupWizard==='function') maybeShowSetupWizard();
+  // 頂欄品牌名稱套用公司資料設定
+  const tlogoEl=document.getElementById('tlogoText');
+  if(tlogoEl&&typeof getCompanyProfile==='function'){
+    tlogoEl.textContent=getCompanyProfile().shortName||'案場通';
+  }
+  // 側邊欄收合
+  const sbBtn=document.getElementById('sbCollapseBtn');
+  const sbEl=document.getElementById('sidebar');
+  const mlEl=document.querySelector('.ml');
+  if(sbBtn&&sbEl&&mlEl&&!sbBtn._bound){
+    sbBtn._bound=true;
+    const savedCollapsed=localStorage.getItem('zeju_sb_collapsed')==='1';
+    if(savedCollapsed){sbEl.classList.add('collapsed');mlEl.classList.add('sb-collapsed');sbBtn.textContent='›';}
+    sbBtn.addEventListener('click',()=>{
+      const nowCollapsed=sbEl.classList.toggle('collapsed');
+      mlEl.classList.toggle('sb-collapsed',nowCollapsed);
+      sbBtn.textContent=nowCollapsed?'›':'‹';
+      localStorage.setItem('zeju_sb_collapsed',nowCollapsed?'1':'0');
+    });
+  }
   // 登入後：如果 Firebase 空但 localStorage 有資料，提示上傳
   setTimeout(()=>checkAndOfferUpload(), 2000);
   // Firebase 在 initCloudDB() 裡初始化
@@ -662,8 +833,8 @@ function buildSidebar(role, activeGrp){
   const sec=document.createElement('div');sec.className='sb-sec';
   sec.innerHTML='<div class="sb-lbl">'+grp.l+'</div>';
   grp.items.forEach(item=>{
-    const el=document.createElement('div');el.className='ni';el.id='nav-'+item.id;
-    el.innerHTML='<span class="ic">'+item.ic+'</span>'+item.l;
+    const el=document.createElement('div');el.className='ni';el.id='nav-'+item.id;el.title=item.l;
+    el.innerHTML='<span class="ic">'+item.ic+'</span><span class="ni-label">'+item.l+'</span>';
     el.addEventListener('click',()=>showPanel(item.id));
     sec.appendChild(el);
   });
@@ -794,7 +965,11 @@ async function callAI(role,content,maxTok=1200){
 
   return rep;
 }
-const FB={owner:'請告訴我您最想了解哪個面向。',cs:'感謝詢問！設計師將在24小時內聯繫您 🏠 急需請致電03-2605199',mk:'好的！請查看右側預覽，如需調整隨時告訴我。',ad:'收到！如需起草合約或文件，請告知細節。',ac:'已分析帳務。需要起草催款通知嗎？'};
+function buildFB(){
+  const p=getCompanyProfile();
+  return {owner:'請告訴我您最想了解哪個面向。',cs:'感謝詢問！設計師將在24小時內聯繫您 🏠 急需請致電'+p.phone,mk:'好的！請查看右側預覽，如需調整隨時告訴我。',ad:'收到！如需起草合約或文件，請告知細節。',ac:'已分析帳務。需要起草催款通知嗎？'};
+}
+Object.defineProperty(globalThis,'FB',{get(){return buildFB();}});
 
 // ══ CHAT ENGINE ════════════════════════════════════════════
 const cSt={};
@@ -834,8 +1009,9 @@ function addImgBbl(cid,role,src){const ms=document.getElementById('ms-'+cid);if(
 function addFileBbl(cid,role,name){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><div style="font-size:.8rem;background:var(--info-bg);border:1px solid var(--info-bd);color:var(--info);padding:8px 12px;border-radius:var(--rs);font-weight:700">📄 '+name+'</div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
 function addTyping(cid){const ms=document.getElementById('ms-'+cid);if(!ms)return{remove:()=>{}};const d=document.createElement('div');d.className='msg';d.innerHTML='<div class="av avai">澤</div><div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;return d;}
 function initAllChats(){
+  const p=getCompanyProfile();
   initChat('owner-chat','owner',240,'老闆好！我掌握公司全部資訊 👑\n可協助分析經營狀況、追蹤帳款、了解各部門進度。',['本月整體營運分析','哪個案子最需要關注？','本月毛利比較']);
-  initChat('cs-chat','cs',280,'您好！我是澤居的 AI 客服小澤 🏠\n可協助您了解裝修費用、風格規劃及施工流程。也歡迎上傳現場照片！',['28坪全室翻新日式簡約預算80萬','廚房浴室改裝費用？','老屋30年要注意什麼？']);
+  initChat('cs-chat','cs',280,'您好！我是'+p.shortName+'的 AI 客服'+p.aiAssistantName+' 🏠\n可協助您了解裝修費用、風格規劃及施工流程。也歡迎上傳現場照片！',['28坪全室翻新日式簡約預算80萬','廚房浴室改裝費用？','老屋30年要注意什麼？']);
   initChat('mk-chat','mk',200,'我是你的 AI 行銷小編 ✨\n生成貼文後可接著生成行銷圖片！',['改成更活潑的語氣','加入限時優惠資訊','幫我想更吸睛的開頭']);
   initChat('ad-chat','ad',460,'您好！我是行政 AI 助理 📋\n可協助查詢工程進度、起草合約、整理廠商資訊。',['本週工程進度摘要','幫我草擬合約','哪些工程快到付款節點？']);
   initChat('ac-chat','ac',460,'您好！我是會計 AI 助理 📊\n可協助：查詢收支、計算毛利率、起草催款通知。',['計算景平路案毛利','起草陳小姐催款通知','本月整體收支？']);
@@ -863,20 +1039,25 @@ function addFiles(files,prevId,key){
 function clearUpload(key,prevId){uSt[key]={imgs:[],files:[]};const p=document.getElementById(prevId);if(p)p.innerHTML='';}
 
 // ══ CS REPLY ══════════════════════════════════════════════
-const RFMT={
-  line:'根據上面對話，用親切的LINE訊息格式整理給業主的回覆。含問候、核心資訊（坪數/報價/工期）、下一步行動。150字以內。',
-  email:'根據對話，用專業Email格式整理回覆，含主旨、正文、簽名（澤居室內裝修 03-2605199）。',
-  sms:'根據對話整理簡訊，100字以內，含03-2605199。',
-  'quote-summary':'根據對話整理報價摘要：【澤居室內裝修 估價摘要】工程項目/坪數/費用範圍/工期/付款方式。適合截圖給業主。',
-};
+function buildRFMT(){
+  const p=getCompanyProfile();
+  return {
+    line:'根據上面對話，用親切的LINE訊息格式整理給業主的回覆。含問候、核心資訊（坪數/報價/工期）、下一步行動。150字以內。',
+    email:'根據對話，用專業Email格式整理回覆，含主旨、正文、簽名（'+p.name+' '+p.phone+'）。',
+    sms:'根據對話整理簡訊，100字以內，含'+p.phone+'。',
+    'quote-summary':'根據對話整理報價摘要：【'+p.name+' 估價摘要】工程項目/坪數/費用範圍/工期/付款方式。適合截圖給業主。',
+  };
+}
+Object.defineProperty(globalThis,'RFMT',{get(){return buildRFMT();}});
 document.querySelectorAll('[data-fmt]').forEach(btn=>btn.addEventListener('click',()=>genReply(btn.dataset.fmt)));
 async function genReply(fmt){
+  const p=getCompanyProfile();
   const sp=document.getElementById('rplSp'),box=document.getElementById('rplBox'),txt=document.getElementById('rplTxt');
   sp.classList.add('show');box.style.display='none';
   const ms=document.getElementById('ms-cs-chat');
-  const convo=ms?Array.from(ms.querySelectorAll('.bbl')).map(b=>(b.classList.contains('bai')?'[澤居AI] ':'[客戶] ')+b.textContent.trim()).join('\n'):'';
-  const prompt=convo?'以下客服對話：\n\n'+convo+'\n\n'+RFMT[fmt]:'澤居室內裝修，統包設計，台北新北桃園三峽。'+RFMT[fmt];
-  try{const rep=await callAI('cs',prompt);txt.textContent=rep;}catch{txt.textContent=fmt==='line'?'您好！感謝洽詢澤居室內裝修 🏠\n已收到您的需求，設計師將在24小時內聯繫您。\n急需請致電03-2605199':'感謝詢問，將盡快聯繫。急需請電03-2605199。澤居室內裝修';}
+  const convo=ms?Array.from(ms.querySelectorAll('.bbl')).map(b=>(b.classList.contains('bai')?'['+p.shortName+'AI] ':'[客戶] ')+b.textContent.trim()).join('\n'):'';
+  const prompt=convo?'以下客服對話：\n\n'+convo+'\n\n'+RFMT[fmt]:p.name+'，統包設計，'+p.serviceAreas+'。'+RFMT[fmt];
+  try{const rep=await callAI('cs',prompt);txt.textContent=rep;}catch{txt.textContent=fmt==='line'?'您好！感謝洽詢'+p.name+' 🏠\n已收到您的需求，設計師將在24小時內聯繫您。\n急需請致電'+p.phone:'感謝詢問，將盡快聯繫。急需請電'+p.phone+'。'+p.name;}
   sp.classList.remove('show');box.style.display='block';
 }
 

@@ -455,7 +455,7 @@ function renderVendors(filter){
 
       hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
       hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
-      hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();if(!confirm('確定刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）'))return;DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});
+      hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
       card.appendChild(hd);card.appendChild(body);grpBody.appendChild(card);
     });
 

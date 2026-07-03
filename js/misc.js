@@ -1,11 +1,13 @@
 function exportBackup(){
-  const keys=['quotes','vendors','invoices','contracts','progress','ledger','billing','employees','punch_recs','punch_requests','clients','post_history'];
-  const backup={version:'v7',date:new Date().toLocaleString('zh-TW'),data:{}};
+  const keys=['projects','quotes','vendors','invoices','contracts','progress','ledger','billing','employees','punch_recs','punch_requests','clients','post_history'];
+  const backup={version:'v14',date:new Date().toLocaleString('zh-TW'),data:{}};
   keys.forEach(k=>backup.data[k]=DB.get(k));
   backup.settings={pts:localStorage.getItem('zeju_pts'),bank:localStorage.getItem('zeju_bank_acct'),payDate:localStorage.getItem('zeju_pay_date')};
+  backup.companyProfile=typeof getCompanyProfile==='function'?getCompanyProfile():null;
   const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
   const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download='澤居備份_'+new Date().toLocaleDateString('zh-TW').replace(/\//g,'')+'.json';
+  const companyName=(typeof getCompanyProfile==='function'?getCompanyProfile().name:'')||'案場通';
+  const a=document.createElement('a');a.href=url;a.download=companyName+'備份_'+new Date().toLocaleDateString('zh-TW').replace(/\//g,'')+'.json';
   a.click();URL.revokeObjectURL(url);
   showToast('✅ 資料備份完成！');
 }
@@ -16,15 +18,19 @@ function importBackup(input){
     try{
       const backup=JSON.parse(e.target.result);
       if(!backup.data)throw new Error('格式不正確');
-      if(!confirm('確定還原備份？現有資料將被覆蓋！'))return;
-      Object.entries(backup.data).forEach(([k,v])=>DB.set(k,v));
-      if(backup.settings){
-        if(backup.settings.pts)localStorage.setItem('zeju_pts',backup.settings.pts);
-        if(backup.settings.bank)localStorage.setItem('zeju_bank_acct',backup.settings.bank);
-        if(backup.settings.payDate)localStorage.setItem('zeju_pay_date',backup.settings.payDate);
-      }
-      showToast('✅ 資料還原完成！即將重新整理…');
-      setTimeout(()=>location.reload(),2000);
+      confirmAction('確定還原備份？現有資料將被覆蓋，此動作無法復原！',()=>{
+        Object.entries(backup.data).forEach(([k,v])=>DB.set(k,v));
+        if(backup.settings){
+          if(backup.settings.pts)localStorage.setItem('zeju_pts',backup.settings.pts);
+          if(backup.settings.bank)localStorage.setItem('zeju_bank_acct',backup.settings.bank);
+          if(backup.settings.payDate)localStorage.setItem('zeju_pay_date',backup.settings.payDate);
+        }
+        if(backup.companyProfile&&typeof saveCompanyProfile==='function'){
+          saveCompanyProfile(backup.companyProfile);
+        }
+        showToast('✅ 資料還原完成！即將重新整理…');
+        setTimeout(()=>location.reload(),2000);
+      });
     }catch(err){showToast('❌ 備份格式錯誤：'+err.message);}
   };
   reader.readAsText(file);
@@ -54,7 +60,14 @@ function initContractListeners(){
   bind('ctFile','change',async e=>{
     const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
     if(!Array.isArray(ctImgUrl))ctImgUrl=[];
-    const rf=f=>new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
+    const rf=async f=>{
+      // 圖片先壓縮再存，PDF/其他檔案原樣保留
+      if(f.type.startsWith('image/')){
+        const compressed=await compressImage(f,1600,0.75);
+        return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+      }
+      return new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
+    };
     ctImgUrl.push(...await Promise.all(files.map(rf)));
     renderCtPhotos();
   });
@@ -435,7 +448,7 @@ function showFirebaseStatus(){
   const detail = fbOk
     ? `Firebase 狀態：已連線 ✅\n專案：zeju-62388\n最後同步：${time}\n\n所有資料已安全備份到雲端。`
     : `Firebase 狀態：未連線 ❌\n最後更新：${time}\n\n⚠️ 建議到「系統設定」匯出備份！`;
-  alert((msgs[status]||msgs.unknown)+'\n\n'+detail);
+  showInfoBox('☁️ 同步狀態',(msgs[status]||msgs.unknown)+'\n\n'+detail);
 }
 // ══ 打卡修改申請 ═══════════════════════════════════════
 function openPunchRequest(){
@@ -540,8 +553,7 @@ async function checkAndOfferUpload(){
     // Firebase 空但 localStorage 有資料
     const localData = localStorage.getItem('z7_quotes');
     if((!fbData||fbData.length===0) && localData && JSON.parse(localData).length>0){
-      const ok = confirm('偵測到本地有資料但 Firebase 是空的！\n\n點「確定」把本地資料上傳到雲端，讓所有裝置同步。\n點「取消」略過。');
-      if(ok) uploadLocalToFirebase();
+      confirmAction('偵測到本地有資料但雲端是空的，要上傳同步嗎？',()=>uploadLocalToFirebase(),false);
     }
   }catch{}
 }
@@ -616,20 +628,22 @@ function renderZejuQuotes(filter){
       '</div>';
     row.querySelector('[data-zqload]').addEventListener('click',e=>{
       e.stopPropagation();
-      if(!confirm('確定載入「'+q.name+'」？目前報價將被替換。'))return;
-      adSections=JSON.parse(JSON.stringify(q.sections||[]));
-      renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
-      if(typeof updProfitBar==='function')updProfitBar();
-      if(q.clientName){const el=document.getElementById('adN');if(el)el.value=q.clientName;}
-      if(q.caseN){const el=document.getElementById('adCase');if(el)el.value=q.caseN;}
-      showToast('✅ 已載入「'+q.name+'」！');
+      confirmAction('載入「'+q.name+'」？目前報價內容將被替換。',()=>{
+        adSections=JSON.parse(JSON.stringify(q.sections||[]));
+        renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+        if(typeof updProfitBar==='function')updProfitBar();
+        if(q.clientName){const el=document.getElementById('adN');if(el)el.value=q.clientName;}
+        if(q.caseN){const el=document.getElementById('adCase');if(el)el.value=q.caseN;}
+        showToast('✅ 已載入「'+q.name+'」！');
+      },false);
     });
     row.querySelector('[data-zqdel]').addEventListener('click',e=>{
       e.stopPropagation();
-      if(!confirm('確定刪除「'+q.name+'」？'))return;
-      DB.del('zeju_quotes',q._id);
-      renderZejuQuotes();updZejuCaseFilter();
-      showToast('✅ 已刪除');
+      confirmAction('刪除報價庫「'+q.name+'」？',()=>{
+        DB.del('zeju_quotes',q._id);
+        renderZejuQuotes();updZejuCaseFilter();
+        showToast('✅ 已刪除');
+      });
     });
     list.appendChild(row);
   });

@@ -139,9 +139,10 @@ function addSettingTag(key,inpId,containerId){
 }
 function delSettingTag(key,idx,containerId){
   const tags=getSettingTags(key);
-  if(!confirm('確定刪除「'+tags[idx]+'」？'))return;
-  tags.splice(idx,1);saveSettingTags(key,tags);
-  renderSettingTags(key,containerId);showToast('✅ 已刪除');
+  confirmAction('刪除分類「'+tags[idx]+'」？',()=>{
+    tags.splice(idx,1);saveSettingTags(key,tags);
+    renderSettingTags(key,containerId);showToast('✅ 已刪除');
+  });
 }
 function initSettings(){
   renderSettingTags('quoteCat','quoteCatTags');
@@ -149,11 +150,44 @@ function initSettings(){
   renderSettingTags('incomeCat','incomeCatTags');
   renderSettingTags('expenseCat','expenseCatTags');
   renderTrashBin();
+  loadCompanyProfileForm();
   const saved=localStorage.getItem('zeju_bank_acct');
   if(saved){
     const el=document.getElementById('bankAcct');if(el)el.value=saved;
     const bl=document.getElementById('bilBankAcct');if(bl)bl.textContent=saved;
   }
+}
+function loadCompanyProfileForm(){
+  const p=getCompanyProfile();
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v||'';};
+  set('cpName',p.name);set('cpShortName',p.shortName);
+  set('cpPhone',p.phone);set('cpEmail',p.email);
+  set('cpIg',p.ig);set('cpLine',p.line);
+  set('cpAreas',p.serviceAreas);
+  set('cpPriceFull',p.priceFullReno);set('cpOldHouse',p.oldHouseSurcharge);
+  set('cpPriceKitchen',p.priceKitchen);set('cpPriceBath',p.priceBath);
+  set('cpDurationFull',p.durationFull);set('cpDurationPartial',p.durationPartial);
+  set('cpPaymentTerms',p.paymentTerms);
+  set('cpMgmtFee',p.managementFeeRate);set('cpAiName',p.aiAssistantName);
+}
+function saveCompanyProfileForm(){
+  const get=id=>document.getElementById(id)?.value?.trim()||'';
+  const name=get('cpName');
+  if(!name){showToast('⚠️ 請填入公司全名');return;}
+  const profile={
+    name, shortName:get('cpShortName')||name,
+    phone:get('cpPhone'), email:get('cpEmail'),
+    ig:get('cpIg'), line:get('cpLine'),
+    serviceAreas:get('cpAreas'),
+    priceFullReno:get('cpPriceFull'), priceKitchen:get('cpPriceKitchen'), priceBath:get('cpPriceBath'),
+    oldHouseSurcharge:get('cpOldHouse'),
+    durationFull:get('cpDurationFull'), durationPartial:get('cpDurationPartial'),
+    paymentTerms:get('cpPaymentTerms'),
+    managementFeeRate:get('cpMgmtFee'), aiAssistantName:get('cpAiName')||'小助理',
+    targetMarginLow:DEFAULT_COMPANY_PROFILE.targetMarginLow, targetMarginHigh:DEFAULT_COMPANY_PROFILE.targetMarginHigh,
+  };
+  saveCompanyProfile(profile);
+  showToast('✅ 公司資料已儲存！AI 對話會自動套用新資料');
 }
 function saveBankAcct(){
   const v=(document.getElementById('bankAcct')?.value||'').trim();
@@ -429,7 +463,7 @@ function renderInvoices(filter){
       '</div>';
     card.prepend(thumb);
     card.querySelector('[data-iedit]').addEventListener('click',e=>{e.stopPropagation();openInvEdit(v._id);});
-    card.querySelector('[data-idel]').addEventListener('click',e=>{e.stopPropagation();if(!confirm('確定刪除？'))return;DB.del('invoices',v._id);renderInvoices(document.getElementById('invSrch')?.value||'');updStats();showToast('✅ 已刪除');});
+    card.querySelector('[data-idel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('確定刪除此發票記錄？',()=>{DB.del('invoices',v._id);renderInvoices(document.getElementById('invSrch')?.value||'');updStats();showToast('✅ 已刪除');});});
     list.appendChild(card);
   });
 }
@@ -477,7 +511,7 @@ function renderContracts(){
     card.querySelector('[data-cprev]')?.addEventListener('click',()=>previewContract(c._id));
     card.querySelector('[data-cedit]').addEventListener('click',()=>editContract(c._id));
     card.querySelector('[data-ctog]').addEventListener('click',()=>toggleContractStatus(c._id));
-    card.querySelector('[data-cdel]').addEventListener('click',()=>{if(!confirm('確定刪除「'+c.name+'」？（可在系統設定→垃圾桶復原）'))return;DB.softDel('contracts',c._id);renderContracts();updContractStats();showToast('✅ 已移至垃圾桶');});
+    card.querySelector('[data-cdel]').addEventListener('click',()=>{confirmAction('刪除合約「'+c.name+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('contracts',c._id);renderContracts();updContractStats();showToast('✅ 已移至垃圾桶');});});
     list.appendChild(card);
   });
 }
@@ -572,8 +606,9 @@ function editContract(id){
   openModal('contractModal');
 }
 function delContract(id){
-  if(!confirm('確定刪除此合約？'))return;
-  DB.softDel('contracts',id);renderContracts();updContractStats();showToast('✅ 已移至垃圾桶');
+  confirmAction('確定刪除此合約？',()=>{
+    DB.softDel('contracts',id);renderContracts();updContractStats();showToast('✅ 已移至垃圾桶');
+  });
 }
 
 // ── initApiCard ────────────────────────────────────────────
@@ -732,10 +767,11 @@ function renderClientList(filter){
     el.addEventListener('click',e=>{if(delBtn.contains(e.target))return;switchClient(c._id);});
     delBtn.addEventListener('click',e=>{
       e.stopPropagation();
-      if(!confirm('確定刪除客戶「'+c.name+'」及所有對話？'))return;
-      const cs=DB.get('clients').filter(x=>x._id!==c._id);DB.set('clients',cs);
-      if(curClientId===c._id){curClientId=null;const chat=document.getElementById('cs-chat');if(chat)chat.innerHTML='';}
-      renderClientList();showToast('✅ 已刪除客戶「'+c.name+'」');
+      confirmAction('刪除客戶「'+c.name+'」及所有對話？此動作不可復原。',()=>{
+        const cs=DB.get('clients').filter(x=>x._id!==c._id);DB.set('clients',cs);
+        if(curClientId===c._id){curClientId=null;const chat=document.getElementById('cs-chat');if(chat)chat.innerHTML='';}
+        renderClientList();showToast('✅ 已刪除客戶「'+c.name+'」');
+      });
     });
     el.appendChild(delBtn);list.appendChild(el);
   });

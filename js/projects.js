@@ -181,35 +181,73 @@ function renderRecentProjects(){
 }
 
 // ── 案場總覽頁面 ──────────────────────────────────────────
-function renderProjects(filter='all'){
+let curProjSearch='';
+let curProjFilter='all';
+
+let curProjView='list'; // 'list' 或 'kanban'
+
+function setProjView(view){
+  curProjView=view;
+  localStorage.setItem('zeju_proj_view',view);
+  document.querySelectorAll('.vt-btn').forEach(b=>b.classList.toggle('on',b.dataset.view===view));
+  const listEl=document.getElementById('projectList');
+  const kbEl=document.getElementById('projectKanban');
+  const filterTabs=document.getElementById('projFilterTabs');
+  if(listEl)listEl.style.display=view==='list'?'block':'none';
+  if(kbEl)kbEl.style.display=view==='kanban'?'block':'none';
+  // 看板模式下狀態篩選頁籤沒有意義（看板本身就是依狀態分欄），先隱藏
+  if(filterTabs)filterTabs.style.display=view==='kanban'?'none':'flex';
+  if(view==='kanban')renderProjectsKanban();
+  else renderProjects();
+}
+
+function renderProjects(filter){
+  if(filter!==undefined) curProjFilter=filter;
+  filter=curProjFilter;
   const c=document.getElementById('projectList');if(!c)return;
   let projects=DB.get('projects');
 
-  // 篩選
-  if(filter!=='all') projects=projects.filter(p=>p.status===filter);
-
-  // 更新統計
-  const all=DB.get('projects');
+  // 更新統計（不受篩選/搜尋影響，永遠顯示全部真實數字）
+  const all=projects;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  set('proj-cnt-all',all.length);
+  set('proj-cnt-all',all.filter(p=>!p.archived).length);
   set('proj-cnt-active',all.filter(p=>p.status==='progress').length);
   set('proj-cnt-inquiry',all.filter(p=>p.status==='inquiry'||p.status==='quoting').length);
   set('proj-cnt-done',all.filter(p=>p.status==='done').length);
+  set('proj-cnt-archived',all.filter(p=>p.archived).length);
+
+  // 篩選：預設不顯示已封存案場，除非篩選就是「已封存」
+  if(filter==='archived'){
+    projects=projects.filter(p=>p.archived);
+  } else {
+    projects=projects.filter(p=>!p.archived);
+    if(filter!=='all') projects=projects.filter(p=>p.status===filter);
+  }
+
+  // 搜尋（案場名稱／業主／地址）
+  const term=(curProjSearch||'').trim().toLowerCase();
+  if(term){
+    projects=projects.filter(p=>
+      (p.name||'').toLowerCase().includes(term) ||
+      (p.client||'').toLowerCase().includes(term) ||
+      (p.address||'').toLowerCase().includes(term)
+    );
+  }
 
   if(!projects.length){
-    c.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+(filter==='all'?'尚無案場':'此分類沒有案場')+'</div><div class="es-s">點右上角「＋ 新增案場」開始</div></div>';
+    const msg=term?'找不到符合「'+esc(curProjSearch)+'」的案場':(filter==='archived'?'尚無已封存案場':(filter==='all'?'尚無案場':'此分類沒有案場'));
+    c.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+msg+'</div><div class="es-s">'+(term?'換個關鍵字試試':'點右上角「＋ 新增案場」開始')+'</div></div>';
     return;
   }
   c.innerHTML='';
   projects.forEach(p=>{
     const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
-    const vCount=DB.get('vendors').filter(v=>v.projectId===p._id).length;
-    const lCount=DB.get('ledger').filter(l=>l.projectId===p._id).length;
+    const vCount=DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted).length;
     const income=DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
 
     const card=document.createElement('div');
     card.className='card';
-    card.style.cssText='cursor:pointer;transition:all var(--ease);margin-bottom:12px';
+    card.style.cssText='cursor:pointer;transition:all var(--ease);margin-bottom:12px;position:relative';
     card.innerHTML=`
       <div style="display:flex;align-items:flex-start;gap:14px">
         <div style="width:48px;height:48px;border-radius:12px;background:${st.bg};display:flex;align-items:center;justify-content:center;font-size:1.3rem;flex-shrink:0">${st.icon}</div>
@@ -217,6 +255,7 @@ function renderProjects(filter='all'){
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
             <span style="font-weight:900;font-size:1rem;color:var(--g800)">${esc(p.name||'未命名')}</span>
             <span style="font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:20px;background:${st.bg};color:${st.color}">${st.label}</span>
+            ${p.archived?'<span style="font-size:.72rem;font-weight:700;padding:3px 9px;border-radius:20px;background:var(--g100);color:var(--g400)">📦 已封存</span>':''}
           </div>
           <div style="font-size:.8rem;color:var(--g500);margin-bottom:8px">${esc(p.client||'業主未填')}${p.type?' · '+p.type:''}${p.address?' · '+esc(p.address.slice(0,16)):''}</div>
           <div style="display:flex;gap:16px;font-size:.75rem;color:var(--g400)">
@@ -225,7 +264,13 @@ function renderProjects(filter='all'){
             ${p.startDate?`<span>📅 ${p.startDate}</span>`:''}
           </div>
         </div>
-        <button class="btn bg bsm" style="flex-shrink:0" onclick="event.stopPropagation();openProject(${p._id})">進入案場 →</button>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end">
+          <button class="btn bg bsm" onclick="event.stopPropagation();openProject(${p._id})">進入案場 →</button>
+          <div style="display:flex;gap:4px">
+            <button title="${p.archived?'取消封存':'封存'}" onclick="event.stopPropagation();toggleProjectArchive(${p._id})" style="width:28px;height:28px;border:1.5px solid var(--g200);background:var(--w);border-radius:var(--rxs);cursor:pointer;font-size:.75rem;color:var(--g400)">${p.archived?'↩️':'📦'}</button>
+            <button title="刪除" onclick="event.stopPropagation();deleteProjectCard(${p._id},'${esc(p.name||'').replace(/'/g,"\\'")}')" style="width:28px;height:28px;border:1.5px solid var(--bad-bd);background:var(--bad-bg);border-radius:var(--rxs);cursor:pointer;font-size:.75rem;color:var(--bad)">🗑</button>
+          </div>
+        </div>
       </div>`;
     card.addEventListener('click',()=>openProject(p._id));
     card.addEventListener('mouseenter',()=>card.style.boxShadow='var(--sh3)');
@@ -233,6 +278,100 @@ function renderProjects(filter='all'){
     c.appendChild(card);
   });
 }
+
+function searchProjects(val){
+  curProjSearch=val;
+  if(curProjView==='kanban')renderProjectsKanban();
+  else renderProjects();
+}
+
+// ── 看板檢視（拖拉卡片切換案場狀態）─────────────────────────
+const KANBAN_STATUSES=['inquiry','quoting','signed','progress','done'];
+
+function renderProjectsKanban(){
+  const el=document.getElementById('projectKanban');if(!el)return;
+  let projects=DB.get('projects').filter(p=>!p.archived);
+
+  const term=(curProjSearch||'').trim().toLowerCase();
+  if(term){
+    projects=projects.filter(p=>
+      (p.name||'').toLowerCase().includes(term) ||
+      (p.client||'').toLowerCase().includes(term) ||
+      (p.address||'').toLowerCase().includes(term)
+    );
+  }
+
+  el.innerHTML='<div class="kanban" id="kanbanRow"></div>';
+  const row=document.getElementById('kanbanRow');
+
+  KANBAN_STATUSES.forEach(statusKey=>{
+    const st=PROJECT_STATUS[statusKey];
+    const items=projects.filter(p=>(p.status||'inquiry')===statusKey);
+    const col=document.createElement('div');
+    col.className='kb-col';
+    col.dataset.status=statusKey;
+    col.innerHTML=`<div class="kb-col-hd"><span class="kb-col-t">${st.icon} ${st.label}</span><span class="kb-col-n">${items.length}</span></div><div class="kb-body"></div>`;
+    const body=col.querySelector('.kb-body');
+
+    if(!items.length){
+      body.innerHTML='<div class="kb-empty">沒有案場</div>';
+    } else {
+      items.forEach(p=>{
+        const income=DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+        const card=document.createElement('div');
+        card.className='kb-card';
+        card.draggable=true;
+        card.dataset.id=p._id;
+        card.innerHTML=`<div class="kb-card-t">${esc(p.name||'未命名')}</div><div class="kb-card-c">${esc(p.client||'業主未填')}</div>${income?`<div class="kb-card-amt">💰 NT$${income.toLocaleString()}</div>`:''}`;
+        card.addEventListener('click',()=>openProject(p._id));
+        card.addEventListener('dragstart',e=>{
+          card.classList.add('dragging');
+          e.dataTransfer.setData('text/plain',String(p._id));
+          e.dataTransfer.effectAllowed='move';
+        });
+        card.addEventListener('dragend',()=>card.classList.remove('dragging'));
+        body.appendChild(card);
+      });
+    }
+
+    // 欄位接收拖放
+    col.addEventListener('dragover',e=>{e.preventDefault();col.classList.add('drag-over');});
+    col.addEventListener('dragleave',()=>col.classList.remove('drag-over'));
+    col.addEventListener('drop',e=>{
+      e.preventDefault();
+      col.classList.remove('drag-over');
+      const draggedId=parseInt(e.dataTransfer.getData('text/plain'));
+      const proj=getProject(draggedId);
+      if(!proj)return;
+      const newStatus=col.dataset.status;
+      if(proj.status===newStatus)return;
+      DB.upd('projects',draggedId,{status:newStatus,doneDate:newStatus==='done'?new Date().toISOString().split('T')[0]:undefined});
+      showToast('✅ 「'+proj.name+'」狀態已更新為「'+PROJECT_STATUS[newStatus].label+'」');
+      renderProjectsKanban();
+      if(typeof renderDashboard==='function')renderDashboard();
+    });
+
+    row.appendChild(col);
+  });
+}
+
+
+function toggleProjectArchive(id){
+  const p=getProject(id);if(!p)return;
+  DB.upd('projects',id,{archived:!p.archived});
+  renderProjects();
+  showToast(p.archived?'✅ 已從封存取出':'📦 案場已封存（可在「已封存」分類找到）');
+}
+
+function deleteProjectCard(id,name){
+  confirmAction('刪除案場「'+name+'」？此案場的報價、合約、帳款紀錄不會被刪除，但會失去案場歸屬。',()=>{
+    DB.softDel('projects',id);
+    renderProjects();
+    if(typeof renderDashboard==='function')renderDashboard();
+    showToast('✅ 案場已刪除（可在系統設定→垃圾桶復原）');
+  });
+}
+
 
 // ── 新增/編輯案場 Modal ────────────────────────────────────
 let projEditId=null;
@@ -424,6 +563,14 @@ function updateProjectStatus(id,status){
   DB.upd('projects',id,{status,doneDate:status==='done'?new Date().toISOString().split('T')[0]:undefined});
   renderProjectDetail(id,'overview');
   showToast('✅ 案場狀態已更新：'+PROJECT_STATUS[status].label);
+  if(status==='done'&&typeof showNextStep==='function'){
+    setTimeout(()=>{
+      showNextStep('案場已完工！要不要封存它？', [
+        {label:'📦 封存（案場總覽不再顯示）',action:()=>{toggleProjectArchive(id);renderProjectDetail(id,'overview');}},
+        {label:'先不要，繼續留在列表',action:()=>{}},
+      ]);
+    },600);
+  }
 }
 
 // ── 案場報價 Tab ──────────────────────────────────────────

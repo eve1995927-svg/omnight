@@ -80,7 +80,7 @@ function renderProgress(){
       document.getElementById('progModalTitle').innerHTML='編輯進度：'+p.caseN+' <button class="mcl" data-close="progressModal">✕</button>';
       renderProgItems();openModal('progressModal');
     });
-    card.querySelector('[data-pdel]')?.addEventListener('click',()=>{if(!confirm('確定刪除「'+p.caseN+'」進度？'))return;DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});
+    card.querySelector('[data-pdel]')?.addEventListener('click',()=>{confirmAction('刪除「'+p.caseN+'」進度？',()=>{DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});});
     list.appendChild(card);
   });
 }
@@ -711,10 +711,11 @@ document.getElementById('clrCs')?.addEventListener('click',()=>{
 });
 document.getElementById('clearCsBtn')?.addEventListener('click',()=>{
   if(!curClientId)return;
-  if(!confirm('確定清除此客戶的對話記錄？'))return;
-  const ms=document.getElementById('ms-cs-'+curClientId);
-  if(ms)ms.innerHTML='';
-  showToast('✅ 對話已清除');
+  confirmAction('清除此客戶的所有對話記錄？',()=>{
+    const ms=document.getElementById('ms-cs-'+curClientId);
+    if(ms)ms.innerHTML='';
+    showToast('✅ 對話已清除');
+  });
 });
 
 document.getElementById('cpRpl')?.addEventListener('click',()=>{
