@@ -45,7 +45,7 @@
 <!-- ══ APP ══ -->
 <div id="app">
  <div class="tb">
-  <div class="tlogo">澤居</div>
+  <div class="tlogo"><span class="tlogo-mark"></span><span id="tlogoText">澤居</span></div>
   <div class="rtabs" id="rTabs"></div>
   <div class="tright">
    <div id="syncDot" onclick="showFirebaseStatus()" title="點擊查看同步詳情"
@@ -68,7 +68,8 @@
  </div>
  <div id="bn"></div>
  <div class="ml">
-  <div class="sb" id="sidebar">
+  <div class="sb" id="sidebar" style="position:relative">
+   <button class="sb-collapse-btn" id="sbCollapseBtn" title="收合側邊欄">‹</button>
    <div id="sNav"></div>
 
    <div class="sb-foot"><div class="sb-fn" id="aName"></div><div class="sb-fr" id="aRole"></div></div>
@@ -137,15 +138,26 @@
 <div class="panel" id="p-projects">
  <div class="ph">
   <div><div class="ptit">🏗️ 案場總覽</div><div class="psub">所有案場，點進去看完整資料</div></div>
-  <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
+  <div style="display:flex;gap:8px;align-items:center">
+   <div class="view-toggle" id="projViewToggle">
+    <button class="vt-btn on" data-view="list" onclick="setProjView('list')">☰ 列表</button>
+    <button class="vt-btn" data-view="kanban" onclick="setProjView('kanban')">▦ 看板</button>
+   </div>
+   <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
+  </div>
  </div>
- <div class="ledger-tab" style="margin-bottom:16px">
+ <div style="margin-bottom:14px;position:relative">
+  <input type="text" id="projSearchInp" placeholder="🔍 搜尋案場名稱、業主、地址…" oninput="searchProjects(this.value)" style="width:100%;padding:11px 16px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.88rem;font-family:inherit;box-sizing:border-box">
+ </div>
+ <div class="ledger-tab" style="margin-bottom:16px" id="projFilterTabs">
   <div class="ltab on" data-filter="all" onclick="filterProjects('all',this)">全部 <span id="proj-cnt-all">0</span></div>
   <div class="ltab" data-filter="progress" onclick="filterProjects('progress',this)">施工中 <span id="proj-cnt-active">0</span></div>
   <div class="ltab" data-filter="inquiry" onclick="filterProjects('inquiry',this)">洽談中 <span id="proj-cnt-inquiry">0</span></div>
   <div class="ltab" data-filter="done" onclick="filterProjects('done',this)">完工 <span id="proj-cnt-done">0</span></div>
+  <div class="ltab" data-filter="archived" onclick="filterProjects('archived',this)">📦 已封存 <span id="proj-cnt-archived">0</span></div>
  </div>
  <div id="projectList"></div>
+ <div id="projectKanban" style="display:none"></div>
 </div>
 
 <!-- ══ PROJECT DETAIL 案場詳情 ══ -->
@@ -847,6 +859,43 @@
 <div class="panel" id="p-settings">
  <div class="ph"><div><div class="ptit">🔧 系統設定</div><div class="psub">自訂分類、帳號設定、繳費資訊</div></div></div>
 
+ <!-- 公司資料設定（品牌與業務資訊，AI 對話會自動套用）-->
+ <div class="settings-section">
+  <div class="ss-title">🏢 公司資料設定</div>
+  <p style="font-size:.82rem;color:var(--g400);margin-bottom:14px">這裡的資料會自動套用到 AI 客服、行銷貼文等對話內容，換公司資料不用改程式碼</p>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">公司全名</label><input class="fi" id="cpName" placeholder="例：澤居室內裝修"></div>
+   <div class="field" style="margin:0"><label class="fl">公司簡稱（用於#Hashtag）</label><input class="fi" id="cpShortName" placeholder="例：澤居"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">電話</label><input class="fi" id="cpPhone" placeholder="03-2605199"></div>
+   <div class="field" style="margin:0"><label class="fl">Email</label><input class="fi" id="cpEmail" placeholder="example@gmail.com"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">Instagram</label><input class="fi" id="cpIg" placeholder="@yourbrand"></div>
+   <div class="field" style="margin:0"><label class="fl">LINE 官方帳號</label><input class="fi" id="cpLine" placeholder="@yourline"></div>
+  </div>
+  <div class="field" style="margin-bottom:12px"><label class="fl">服務地區</label><input class="fi" id="cpAreas" placeholder="例：台北、新北、桃園"></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">全室翻新報價（每坪）</label><input class="fi" id="cpPriceFull" placeholder="18,000–28,000元"></div>
+   <div class="field" style="margin:0"><label class="fl">老屋加價</label><input class="fi" id="cpOldHouse" placeholder="20%"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">廚房報價</label><input class="fi" id="cpPriceKitchen" placeholder="15–35萬"></div>
+   <div class="field" style="margin:0"><label class="fl">浴室報價</label><input class="fi" id="cpPriceBath" placeholder="8–20萬"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">全室工期</label><input class="fi" id="cpDurationFull" placeholder="45–60天"></div>
+   <div class="field" style="margin:0"><label class="fl">局部工期</label><input class="fi" id="cpDurationPartial" placeholder="2–3週"></div>
+  </div>
+  <div class="field" style="margin-bottom:12px"><label class="fl">付款條件</label><input class="fi" id="cpPaymentTerms" placeholder="簽約30%/開工30%/七成完工30%/驗收10%"></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">管理費率</label><input class="fi" id="cpMgmtFee" placeholder="8%"></div>
+   <div class="field" style="margin:0"><label class="fl">AI 客服助理名稱</label><input class="fi" id="cpAiName" placeholder="例：小澤"></div>
+  </div>
+  <button class="btn bg bsm" onclick="saveCompanyProfileForm()">💾 儲存公司資料</button>
+ </div>
+
  <!-- 報價分類設定 -->
  <div class="settings-section">
   <div class="ss-title">📋 報價工程分類設定</div>
@@ -1127,6 +1176,53 @@
 
 <!-- ══ CONTRACT MODAL ══ -->
 <!-- ══ PROJECT MODAL 案場新增/編輯 ══ -->
+<!-- ══ 新手設定精靈 ══ -->
+<div class="mov" id="setupWizardModal">
+ <div class="modal" style="max-width:520px">
+  <div class="wiz-crumb" id="wizCrumb">
+   <div class="wiz-step on" data-step="1"><span class="wiz-num">1</span>公司資料</div>
+   <div class="wiz-line"></div>
+   <div class="wiz-step" data-step="2"><span class="wiz-num">2</span>第一個案場</div>
+   <div class="wiz-line"></div>
+   <div class="wiz-step" data-step="3"><span class="wiz-num">3</span>完成</div>
+  </div>
+
+  <div class="wiz-panel on" id="wizPanel1">
+   <div class="mtit" style="border:none;padding:0;margin-bottom:6px">👋 歡迎使用！先填公司基本資料</div>
+   <p style="font-size:.85rem;color:var(--g500);margin-bottom:18px">這些資料會自動套用到 AI 客服、行銷貼文，之後隨時可以在「系統設定」修改</p>
+   <div class="field"><label class="fl">公司全名 *</label><input class="fi" id="wizCompanyName" placeholder="例：澤居室內裝修"></div>
+   <div class="g2">
+    <div class="field" style="margin:0"><label class="fl">聯絡電話</label><input class="fi" id="wizCompanyPhone" placeholder="03-2605199"></div>
+    <div class="field" style="margin:0"><label class="fl">服務地區</label><input class="fi" id="wizCompanyAreas" placeholder="例：台北、新北"></div>
+   </div>
+   <div style="display:flex;justify-content:flex-end;margin-top:20px">
+    <button class="btn bg" onclick="wizNextStep(1)">下一步 →</button>
+   </div>
+  </div>
+
+  <div class="wiz-panel" id="wizPanel2">
+   <div class="mtit" style="border:none;padding:0;margin-bottom:6px">🏗️ 建立第一個案場</div>
+   <p style="font-size:.85rem;color:var(--g500);margin-bottom:18px">案場是系統的核心，報價、合約、帳款都會歸在案場裡。先隨便填一個練習看看，之後可以刪掉重建</p>
+   <div class="field"><label class="fl">案場名稱 *</label><input class="fi" id="wizProjName" placeholder="例：林小姐-大安區翻新"></div>
+   <div class="field"><label class="fl">業主姓名</label><input class="fi" id="wizProjClient" placeholder="例：林小姐"></div>
+   <div style="display:flex;justify-content:space-between;margin-top:20px">
+    <button class="btn bo" onclick="wizSkipStep(2)">先跳過</button>
+    <button class="btn bg" onclick="wizNextStep(2)">下一步 →</button>
+   </div>
+  </div>
+
+  <div class="wiz-panel" id="wizPanel3">
+   <div style="text-align:center;padding:10px 0">
+    <div style="font-size:3rem;margin-bottom:14px">🎉</div>
+    <div class="mtit" style="border:none;padding:0;margin-bottom:8px;justify-content:center">設定完成！</div>
+    <p style="font-size:.88rem;color:var(--g500);margin-bottom:24px">接下來可以試試看：填報價單、上傳合約、記一筆帳。<br>有任何問題都可以在「系統設定」調整。</p>
+    <button class="btn bg" onclick="wizFinish()" style="width:100%">開始使用 →</button>
+   </div>
+  </div>
+
+ </div>
+</div>
+
 <div class="mov" id="projModal">
  <div class="modal" style="max-width:560px">
   <div class="mtit" id="projModalTitle">新增案場 <button class="mcl" data-close="projModal">✕</button></div>
