@@ -395,41 +395,6 @@ function renderPunchRec(){
   }
 }
 
-// ══ 手機底部導覽 ═══════════════════════════════════════
-function initMobileNav(role){
-  const nav=document.getElementById('mobileNav');
-  if(!nav)return;
-  // 只在手機（小於768px）顯示
-  if(window.innerWidth>=768){nav.style.display='none';return;}
-  nav.style.display='flex';
-
-  const items=role==='punch'?[
-    {icon:'🕐',label:'打卡',panel:'punch-clock'},
-  ]:[
-    {icon:'🏠',label:'總覽',panel:'overview'},
-    {icon:'💬',label:'客服',panel:'cs-chat'},
-    {icon:'📋',label:'報價',panel:'ad-settings'},
-    {icon:'💰',label:'帳款',panel:'ac-overview'},
-    {icon:'👥',label:'人資',panel:'hr-settings'},
-  ];
-
-  nav.innerHTML='';
-  items.forEach(it=>{
-    const el=document.createElement('div');
-    el.className='bnav-item';
-    el.dataset.panel=it.panel;
-    el.innerHTML=`<span class="bni">${it.icon}</span>${it.label}`;
-    el.addEventListener('click',()=>{
-      showPanel(it.panel);
-      nav.querySelectorAll('.bnav-item').forEach(b=>b.classList.remove('on'));
-      el.classList.add('on');
-    });
-    nav.appendChild(el);
-  });
-  // 設定第一個 active
-  nav.querySelector('.bnav-item')?.classList.add('on');
-}
-
 
 // ══ Firebase 同步狀態顯示 ═══════════════════════════════
 

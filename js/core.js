@@ -747,7 +747,8 @@ function setupApp(role){
   initAdQuote();
   initContractListeners();
   initMultiClientChat();
-  initMobileNav(role);
+  // 注意：手機底部導覽已由 buildBN() 統一處理（含案場返回鍵、即時 GROUPS 資料），
+  // 不再呼叫舊版 initMobileNav()，避免兩套導覽互相覆蓋
   // 案場系統
   if(typeof renderDashboard==='function') renderDashboard();
   if(typeof renderProjects==='function'){
@@ -842,19 +843,19 @@ function buildSidebar(role, activeGrp){
   updateHRBadge();
 }
 function buildBN(role){
-  const bn=document.getElementById('bn');bn.innerHTML='';
+  const bn=document.getElementById('bn');bn.innerHTML='';bn.className='bnav';
   // 案場詳情頁：顯示返回按鈕
   const isInProject=document.getElementById('p-project-detail')?.classList.contains('on');
   if(isInProject){
     const backBtn=document.createElement('button');
-    backBtn.className='bni';
-    backBtn.innerHTML='<span class="bnic">←</span><span>返回</span>';
+    backBtn.className='bnav-item';
+    backBtn.innerHTML='<span class="bni">←</span><span>返回</span>';
     backBtn.addEventListener('click',()=>showPanel('projects'));
     bn.appendChild(backBtn);
   }
   GROUPS[role].flatMap(g=>g.items).slice(0,isInProject?5:6).forEach(item=>{
-    const b=document.createElement('button');b.className='bni';b.id='bn-'+item.id;
-    b.innerHTML='<span class="bnic">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
+    const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
+    b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
   });
   updateHRBadge();
@@ -886,7 +887,7 @@ function showPanel(id){
     const btn=document.getElementById('adSave');
     if(btn)btn._bound=false;
     setTimeout(()=>initAdQuote(),50);
-  }document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.ni,.bni').forEach(n=>n.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');document.getElementById('nav-'+id)?.classList.add('on');document.getElementById('bn-'+id)?.classList.add('on');document.querySelector('.ws')?.scrollTo(0,0);syncTabActive(id);}
+  }document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.ni,.bnav-item').forEach(n=>n.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');document.getElementById('nav-'+id)?.classList.add('on');document.getElementById('bn-'+id)?.classList.add('on');document.querySelector('.ws')?.scrollTo(0,0);syncTabActive(id);}
 
 // ══ HISTORY ══════════════════════════════════════════════
 function renderHistory(){

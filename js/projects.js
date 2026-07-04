@@ -286,7 +286,7 @@ function searchProjects(val){
 }
 
 // ── 看板檢視（拖拉卡片切換案場狀態）─────────────────────────
-const KANBAN_STATUSES=['inquiry','quoting','signed','progress','done'];
+const KANBAN_STATUSES=['inquiry','quoting','signed','progress','paused','done'];
 
 function renderProjectsKanban(){
   const el=document.getElementById('projectKanban');if(!el)return;
@@ -345,8 +345,7 @@ function renderProjectsKanban(){
       if(!proj)return;
       const newStatus=col.dataset.status;
       if(proj.status===newStatus)return;
-      DB.upd('projects',draggedId,{status:newStatus,doneDate:newStatus==='done'?new Date().toISOString().split('T')[0]:undefined});
-      showToast('✅ 「'+proj.name+'」狀態已更新為「'+PROJECT_STATUS[newStatus].label+'」');
+      updateProjectStatus(draggedId,newStatus);
       renderProjectsKanban();
       if(typeof renderDashboard==='function')renderDashboard();
     });
@@ -359,7 +358,8 @@ function renderProjectsKanban(){
 function toggleProjectArchive(id){
   const p=getProject(id);if(!p)return;
   DB.upd('projects',id,{archived:!p.archived});
-  renderProjects();
+  if(typeof curProjView!=='undefined'&&curProjView==='kanban')renderProjectsKanban();
+  else renderProjects();
   showToast(p.archived?'✅ 已從封存取出':'📦 案場已封存（可在「已封存」分類找到）');
 }
 
@@ -561,12 +561,16 @@ function renderProjOverview(id,p,c){
 
 function updateProjectStatus(id,status){
   DB.upd('projects',id,{status,doneDate:status==='done'?new Date().toISOString().split('T')[0]:undefined});
-  renderProjectDetail(id,'overview');
+  // 只在目前正顯示這個案場的詳情頁時才重繪，避免從案場總覽（列表/看板）呼叫時做多餘的DOM操作
+  const detailPanel=document.getElementById('p-project-detail');
+  if(detailPanel&&detailPanel.classList.contains('on')&&curProjectId===id){
+    renderProjectDetail(id,'overview');
+  }
   showToast('✅ 案場狀態已更新：'+PROJECT_STATUS[status].label);
   if(status==='done'&&typeof showNextStep==='function'){
     setTimeout(()=>{
       showNextStep('案場已完工！要不要封存它？', [
-        {label:'📦 封存（案場總覽不再顯示）',action:()=>{toggleProjectArchive(id);renderProjectDetail(id,'overview');}},
+        {label:'📦 封存（案場總覽不再顯示）',action:()=>{toggleProjectArchive(id);if(detailPanel?.classList.contains('on'))renderProjectDetail(id,'overview');}},
         {label:'先不要，繼續留在列表',action:()=>{}},
       ]);
     },600);
