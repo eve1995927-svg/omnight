@@ -403,7 +403,7 @@ function addZejuSection(icon, name){
     icon, name,
     items: defaults.map(it=>({...it}))
   });
-  renderProQuote('adSections', adSections, {allowDelSec:true, totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+  renderProQuote('adSections', adSections, {allowDelSec:true, totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
   // 滾動到最新加入的分類
   setTimeout(()=>{
     const c=document.getElementById('adSections');
@@ -445,7 +445,7 @@ function setQuoteMode(mode){
   document.getElementById('modeInternal')?.classList.toggle('on', mode==='internal');
   document.getElementById('modeClient')?.classList.toggle('on', mode==='client');
   // 重繪報價單
-  renderProQuote('adSections', adSections, {allowDelSec:true, totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+  renderProQuote('adSections', adSections, {allowDelSec:true, totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
   updProfitBar();
 }
 
@@ -735,7 +735,7 @@ document.getElementById('qAddSec')?.addEventListener('click',()=>{
 
 document.getElementById('adAddSec')?.addEventListener('click',()=>{
   adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
-  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 });
 
 document.getElementById('qXls')?.addEventListener('click',()=>{

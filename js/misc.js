@@ -595,7 +595,7 @@ function renderZejuQuotes(filter){
       e.stopPropagation();
       confirmAction('載入「'+q.name+'」？目前報價內容將被替換。',()=>{
         adSections=JSON.parse(JSON.stringify(q.sections||[]));
-        renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+        renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
         if(typeof updProfitBar==='function')updProfitBar();
         if(q.clientName){const el=document.getElementById('adN');if(el)el.value=q.clientName;}
         if(q.caseN){const el=document.getElementById('adCase');if(el)el.value=q.caseN;}

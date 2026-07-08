@@ -120,6 +120,61 @@ function getSettingTags(key){
   return DEFAULT_CATS[key]||[];
 }
 function saveSettingTags(key,arr){localStorage.setItem('zeju_tags_'+key,JSON.stringify(arr));}
+
+// ── 分類下拉選單：可直接在選單裡新增分類，不用先跑去系統設定 ──────
+// selectEl: <select> 元素本身；catKey: 分類儲存的 key（如 vendorCat/incomeCat/expenseCat）
+function buildCatSelectWithAdd(selectEl, catKey, selectedValue){
+  if(!selectEl)return;
+  const tags=getSettingTags(catKey);
+  selectEl.innerHTML=tags.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
+    '<option value="__add_new__">＋ 新增分類…</option>';
+  if(selectedValue&&tags.includes(selectedValue))selectEl.value=selectedValue;
+  if(!selectEl._catAddBound){
+    selectEl._catAddBound=true;
+    selectEl.addEventListener('change',()=>{
+      if(selectEl.value==='__add_new__'){
+        const prevValue=tags[0]||'';
+        selectEl.value=prevValue; // 先復原，等新增完成再正式選上新分類
+        quickAddCategory(catKey,(newName)=>{
+          buildCatSelectWithAdd(selectEl,catKey,newName);
+        });
+      }
+    });
+  }
+}
+
+function quickAddCategory(catKey,onAdded){
+  const old=document.getElementById('_qcBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_qcBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9600;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:340px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:800;font-size:.95rem;color:var(--g800);margin-bottom:12px">＋ 新增分類</div>'+
+    '<input type="text" id="_qcInput" placeholder="例：鐵工、系統家具…" style="width:100%;padding:11px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:14px;box-sizing:border-box">'+
+    '<div style="display:flex;gap:8px">'+
+    '<button id="_qcCancel" style="flex:1;padding:10px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.85rem;cursor:pointer;font-family:inherit">取消</button>'+
+    '<button id="_qcOk" style="flex:1;padding:10px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.85rem;cursor:pointer;font-family:inherit">新增</button>'+
+    '</div></div>';
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  const inp=document.getElementById('_qcInput');
+  setTimeout(()=>inp?.focus(),80);
+  const doAdd=()=>{
+    const name=inp.value.trim();
+    if(!name){showToast('⚠️ 請輸入分類名稱');return;}
+    const tags=getSettingTags(catKey);
+    if(tags.includes(name)){showToast('⚠️ 這個分類已經存在了');return;}
+    tags.push(name);
+    saveSettingTags(catKey,tags);
+    box.remove();
+    showToast('✅ 已新增分類「'+name+'」');
+    if(onAdded)onAdded(name);
+  };
+  document.getElementById('_qcOk').addEventListener('click',doAdd);
+  document.getElementById('_qcCancel').addEventListener('click',()=>box.remove());
+  inp.addEventListener('keydown',e=>{if(e.key==='Enter')doAdd();});
+}
+
 function renderSettingTags(key,containerId){
   const c=document.getElementById(containerId);if(!c)return;
   const tags=getSettingTags(key);c.innerHTML='';
@@ -411,8 +466,8 @@ function setLedgerDir(dir){
   const bl=curLedgerBook==='out'?'內帳':'外帳';
   const title=document.getElementById('ledgerModalTitle');
   if(title)title.innerHTML='＋ 新增'+(dir==='in'?'收入':'支出')+'記錄（'+bl+'）<button class="mcl" data-close="ledgerModal">✕</button>';
-  const cat=document.getElementById('ldCat');
-  if(cat)cat.innerHTML=getLedgerCats(dir).map(o=>'<option>'+o+'</option>').join('');
+  const catKey=dir==='in'?'incomeCat':'expenseCat';
+  if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('ldCat'),catKey);
 }
 function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
@@ -656,7 +711,7 @@ function initAdQuote(){
   const qbC=document.getElementById('adQbClient');if(qbC)qbC.textContent='—';
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
-  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 
   // ── 按鈕綁定（每次初始化都重綁，避免遺失）──
   const getN=()=>document.getElementById('adN')?.value||'業主';
@@ -703,7 +758,7 @@ function initAdQuote(){
     adAddSecBtn._bound=true;
     adAddSecBtn.addEventListener('click',()=>{
       adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
-      renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+      renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
     });
   }
 

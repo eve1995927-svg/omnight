@@ -601,11 +601,15 @@ function newProjQuote(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   showPanel('ad-newquote');
-  // 預填業主名稱
+  // 從案場資料預填業主、案場名稱、地址、工程類型，不用重複輸入
   setTimeout(()=>{
-    const qN=document.getElementById('qN');
-    if(qN&&p) qN.value=p.client||p.name||'';
-    showNextStep('記得填入業主姓名和工程類型', [{label:'開始填報價',action:()=>{}}]);
+    if(!p)return;
+    const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.value=v;};
+    set('adN',p.client||p.name);
+    set('adCase',p.name);
+    set('adAd',p.address);
+    set('adTp',p.type);
+    showToast('✅ 已從案場帶入業主與地址資料');
   }, 300);
 }
 
@@ -641,6 +645,7 @@ function openVendorForProject(projectId){
   document.getElementById('vTotal').textContent='NT$0';
   const vCs=document.getElementById('vCs');
   if(vCs&&p) vCs.value=p.name||'';
+  if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('vCat'),'vendorCat');
   openModal('vModal');
 }
 
@@ -672,6 +677,14 @@ function openContractForProject(projectId){
   if(p){
     const ctN=document.getElementById('ctName');if(ctN)ctN.value=p.name||'';
     const ctCl=document.getElementById('ctClient');if(ctCl)ctCl.value=p.client||'';
+    // 帶入這個案場最新一份報價單的總價，不用再手動重算重打一次
+    const quotes=DB.get('quotes').filter(q=>q.projectId===projectId).sort((a,b)=>b._id-a._id);
+    if(quotes.length){
+      const latest=quotes[0];
+      const {grand}=typeof calcQuoteTotals==='function'?calcQuoteTotals(latest.sections||[]):{grand:latest.total||0};
+      const ctAmt=document.getElementById('ctAmt');
+      if(ctAmt&&grand){ctAmt.value=grand;showToast('💡 已帶入報價單金額 NT$'+grand.toLocaleString()+'，可依實際簽約內容調整');}
+    }
   }
   openModal('contractModal');
 }

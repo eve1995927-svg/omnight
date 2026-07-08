@@ -181,12 +181,22 @@ function refreshGlobalTotals(containerId){
   if(containerId==='adSections')updProfitBar();
 }
 
+// ── 報價金額計算（畫面顯示與Excel匯出共用同一套公式，避免兩邊算出不同總價）──
+function calcQuoteTotals(sections){
+  const subtotal=calcAll(sections);
+  const mgmt=Math.round(subtotal*0.08);
+  const tax=Math.round((subtotal+mgmt)*0.05);
+  const grand=subtotal+mgmt+tax;
+  return {subtotal,mgmt,tax,grand};
+}
+
 function updProTotals(sections,ids){
-  const sub=calcAll(sections);const mgmt=sub*0.08;const total=sub+mgmt;
+  const {subtotal,mgmt,tax,grand}=calcQuoteTotals(sections);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
-  if(ids.sub)set(ids.sub,fmt(sub));
+  if(ids.sub)set(ids.sub,fmt(subtotal));
   if(ids.mgmt)set(ids.mgmt,fmt(mgmt));
-  if(ids.total)set(ids.total,fmt(ids.mgmt?total:sub));
+  if(ids.tax)set(ids.tax,fmt(tax));
+  if(ids.total)set(ids.total,fmt(ids.mgmt?grand:subtotal));
 }
 
 function addPqsItem(secId,containerId,sections,opts){
@@ -212,7 +222,7 @@ function delPqsSec(secId,containerId,sections){
 
 function getSectionOpts(cid){
   if(cid==='qSections')return{allowDelSec:true,totIds:{sub:'pqSub',total:'pqTotal'}};
-  if(cid==='adSections')return{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}};
+  if(cid==='adSections')return{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}};
   return{};
 }
 
@@ -295,7 +305,7 @@ document.getElementById('genAdQ').addEventListener('click',async()=>{
     else adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
   }catch{adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));}
   sp.classList.remove('show');
-  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
   openAllSecs('adSections');
 });
 
@@ -345,7 +355,7 @@ document.getElementById('importVendorBtn').addEventListener('click',()=>{
     }
     adSections.push(sec);
   });
-  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});
+  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
   updProfitBar&&updProfitBar();
   showToast('✅ 已置入廠商報價，廠商金額已填入成本欄，請填入對客報價！');
   selVendors.clear();
@@ -368,7 +378,7 @@ function renderQTable(){
       '<button class="btn brd bxs" data-qdel="'+q._id+'">🗑</button></div></td>';
     tbl.appendChild(tr);
   });
-  tbl.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
+  tbl.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
   tbl.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[]);});});
   tbl.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
 }
@@ -420,7 +430,9 @@ function dlXls(name,type,sections,mode){
       },0);
       sts.push(Math.round(t)); grand+=Math.round(t);
     });
-    const tax=Math.round(grand*0.05);
+    // 管理費、稅金計算跟畫面上完全一致（calcQuoteTotals 同一套公式），避免匯出金額跟畫面對不起來
+    const mgmtFee=Math.round(grand*0.08);
+    const tax=Math.round((grand+mgmtFee)*0.05);
 
     // ══ 主表：完全按照模板格式 ══
     const ws=wb.addWorksheet('澤居報價單');
@@ -440,16 +452,17 @@ function dlXls(name,type,sections,mode){
       if(opts.numFmt) c.numFmt=opts.numFmt;
     }
 
-    // R1 公司名
+    // R1 公司名（套用系統設定的公司資料，不寫死品牌名稱）
+    const _cp=typeof getCompanyProfile==='function'?getCompanyProfile():{name:'澤居室內裝修'};
     ws.getRow(1).height=34;
     ws.mergeCells('A1:G1');
-    setCell('A1','澤　居　室　內　裝　修',{bold:true,sz:12,h:'center',v:'middle',brd:'thin'});
+    setCell('A1',(_cp.name||'澤居室內裝修').split('').join('　'),{bold:true,sz:12,h:'center',v:'middle',brd:'thin'});
 
     // R2
     ws.getRow(2).height=16;
     ws.mergeCells('A2:D2'); setCell('A2','業主：'+(name||''),{sz:10,h:'left',v:'middle',brd:'thin'});
     ws.mergeCells('E2:F2'); setCell('E2','製表：',{sz:10,h:'left',v:'middle',brd:'thin'});
-    setCell('G2','陳鴻彬',{sz:10,h:'center',v:'middle',brd:'thin'});
+    setCell('G2','',{sz:10,h:'center',v:'middle',brd:'thin'});
 
     // R3
     ws.getRow(3).height=16;
@@ -493,45 +506,53 @@ function dlXls(name,type,sections,mode){
     ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((20+offset))).border=brd('thin'));
     const f20=ws.getCell('F'+(20+offset)); f20.value=grand; f20.numFmt='#,##0'; f20.alignment={horizontal:'right',vertical:'middle'};
 
-    // R21 稅金
+    // R21 工程管理費8%（先前版本漏掉這行，導致匯出金額比畫面上顯示的少8%，這次補上）
     ws.getRow((21+offset)).height=16;
     ws.mergeCells('A'+(21+offset)+':E'+(21+offset));
     ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((21+offset))).border=brd('thin'));
-    setCell('A'+(21+offset),'稅金5%',{sz:10,h:'center',v:'middle'});
-    const f21=ws.getCell('F'+(21+offset)); f21.value=tax; f21.numFmt='#,##0'; f21.alignment={horizontal:'right',vertical:'middle'};
+    setCell('A'+(21+offset),'工程管理費8%',{sz:10,h:'center',v:'middle'});
+    const fMgmt=ws.getCell('F'+(21+offset)); fMgmt.value=mgmtFee; fMgmt.numFmt='#,##0'; fMgmt.alignment={horizontal:'right',vertical:'middle'};
 
-    // R22 合計
-    ws.getRow((22+offset)).height=18;
+    // R22 稅金（原R21，因為插入管理費行而往下移一行）
+    ws.getRow((22+offset)).height=16;
     ws.mergeCells('A'+(22+offset)+':E'+(22+offset));
-    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((22+offset))).border=brd('medium'));
-    setCell('A'+(22+offset),'合計',{bold:true,sz:11,h:'center',v:'middle'});
-    const f22=ws.getCell('F'+(22+offset)); f22.value=grand+tax; f22.font={bold:true,size:11,color:{argb:'FF'+RED},name:'新細明體'}; f22.numFmt='#,##0'; f22.alignment={horizontal:'right',vertical:'middle'};
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((22+offset))).border=brd('thin'));
+    setCell('A'+(22+offset),'稅金5%',{sz:10,h:'center',v:'middle'});
+    const f21=ws.getCell('F'+(22+offset)); f21.value=tax; f21.numFmt='#,##0'; f21.alignment={horizontal:'right',vertical:'middle'};
 
-    // R23 備注（高度52，跟模板一樣）
-    ws.getRow((23+offset)).height=52;
-    ws.mergeCells('A'+(23+offset)+':G'+(23+offset));
-    const c23=ws.getCell('A'+(23+offset));
+    // R23 合計（原R22）
+    ws.getRow((23+offset)).height=18;
+    ws.mergeCells('A'+(23+offset)+':E'+(23+offset));
+    ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((23+offset))).border=brd('medium'));
+    setCell('A'+(23+offset),'合計',{bold:true,sz:11,h:'center',v:'middle'});
+    const f22=ws.getCell('F'+(23+offset)); f22.value=grand+mgmtFee+tax; f22.font={bold:true,size:11,color:{argb:'FF'+RED},name:'新細明體'}; f22.numFmt='#,##0'; f22.alignment={horizontal:'right',vertical:'middle'};
+
+    // R24 備注（原R23，高度52，跟模板一樣）
+    ws.getRow((24+offset)).height=52;
+    ws.mergeCells('A'+(24+offset)+':G'+(24+offset));
+    const c23=ws.getCell('A'+(24+offset));
     c23.value='備註：一. 付款方式：第一期簽約訂金支付總金額30%，第二期施工進場3天內支付30%，第三期工程完成7成時支付30%，第四期尾款驗收後10%\n二. 每期請款請於提出後3日內付清，否則保留停工之權利\n三. 此報價單確認無誤後請簽名回傳，即轉為正式合約';
     c23.font={size:9,name:'新細明體'}; c23.alignment={horizontal:'left',vertical:'top',wrapText:true}; c23.border=brd('thin');
 
-    // R24 空行
-    ws.getRow((24+offset)).height=10;
-    ws.mergeCells('A'+(24+offset)+':G'+(24+offset)); ws.getCell('A'+(24+offset)).border=brd('thin');
+    // R25 空行（原R24）
+    ws.getRow((25+offset)).height=10;
+    ws.mergeCells('A'+(25+offset)+':G'+(25+offset)); ws.getCell('A'+(25+offset)).border=brd('thin');
 
-    // R25 匯款
-    ws.getRow((25+offset)).height=14;
-    ws.mergeCells('A'+(25+offset)+':G'+(25+offset));
-    setCell('A'+(25+offset),'匯款資訊：銀行代碼：050　台灣企銀-八德分行　戶名：澤居室內裝修　帳號：7505400208531',{bold:true,sz:9,h:'left',v:'middle',brd:'thin'});
+    // R26 匯款（原R25，套用系統設定的收款帳號，沒設定過就用預設值）
+    const _bankInfo=localStorage.getItem('zeju_bank_acct')||'銀行代碼：050　台灣企銀-八德分行　戶名：'+(_cp.name||'澤居室內裝修')+'　帳號：7505400208531';
+    ws.getRow((26+offset)).height=14;
+    ws.mergeCells('A'+(26+offset)+':G'+(26+offset));
+    setCell('A'+(26+offset),'匯款資訊：'+_bankInfo,{bold:true,sz:9,h:'left',v:'middle',brd:'thin'});
 
-    // R26 蓋章（高度46，跟模板一樣）
-    ws.getRow((26+offset)).height=46;
-    ws.mergeCells('A'+(26+offset)+':C'+(26+offset)); setCell('A'+(26+offset),'公司蓋章處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
-    ws.mergeCells('D'+(26+offset)+':G'+(26+offset)); setCell('D'+(26+offset),'客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
+    // R27 蓋章（原R26，高度46，跟模板一樣）
+    ws.getRow((27+offset)).height=46;
+    ws.mergeCells('A'+(27+offset)+':C'+(27+offset)); setCell('A'+(27+offset),'公司蓋章處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
+    ws.mergeCells('D'+(27+offset)+':G'+(27+offset)); setCell('D'+(27+offset),'客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
 
     // 14個分類以內：強制縮放至A4單頁；超過則允許依內容自動分頁（避免字體過小）
     ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(offset>0?0:1),horizontalDpi:200,verticalDpi:200};
     ws.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
-    ws.pageSetup.printArea='A1:G'+(26+offset);
+    ws.pageSetup.printArea='A1:G'+(27+offset);
 
     // ══ 細項 Sheets ══
     const usedNames=['澤居報價單'];
@@ -630,7 +651,8 @@ function dlXlsFallback(name,today,sections,isInternal){
   const NUMS=['一','二','三','四','五','六','七','八','九','十','十一','十二','十三','十四'];
   let grand=0; const sts=[];
   (sections||[]).forEach(s=>{const t=(s.items||[]).reduce((a,it)=>a+(it.price||0)*(parseFloat((it.qty||1).toString().replace(/[^\d.]/g,''))||1),0);sts.push(Math.round(t));grand+=Math.round(t);});
-  const tax=Math.round(grand*0.05);
+  const mgmtFee=Math.round(grand*0.08);
+  const tax=Math.round((grand+mgmtFee)*0.05);
   const wb=XLSX.utils.book_new();
   const aoa=[['澤居室內裝修','','','','','',''],
     ['業主：'+name,'','','','製表：','','陳鴻彬'],
@@ -639,8 +661,9 @@ function dlXlsFallback(name,today,sections,isInternal){
     ['項次','工程種類別','單位','數量','單價','複價','備註']];
   for(let i=0;i<14;i++){const s=(sections||[])[i];aoa.push([NUMS[i],s?s.name:'','式',1,'',sts[i]||0,'']);}
   aoa.push(['','','','','',grand,'']);
+  aoa.push(['工程管理費8%','','','','',mgmtFee,'']);
   aoa.push(['稅金5%','','','','',tax,'']);
-  aoa.push(['合計','','','','',grand+tax,'']);
+  aoa.push(['合計','','','','',grand+mgmtFee+tax,'']);
   aoa.push(['備註：付款方式：訂金30%，進場30%，完成7成30%，驗收10%','','','','','','']);
   aoa.push(['匯款：050 台灣企銀 澤居室內裝修 7505400208531','','','','','','']);
   aoa.push(['公司蓋章處','','','客戶回簽處','','','']);
@@ -744,6 +767,7 @@ document.getElementById('openV')?.addEventListener('click',()=>{
   const prev=document.getElementById('vPrev');if(prev)prev.innerHTML='';
   const ok=document.getElementById('vOcrOk');if(ok)ok.style.display='none';
   setVType('image');
+  if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('vCat'),'vendorCat');
   openModal('vModal');
 });
 
