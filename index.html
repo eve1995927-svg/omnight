@@ -35,7 +35,9 @@
   </div>
 
   <input type="hidden" id="lUser" value="omnight">
-  <input class="linp" type="text" id="lEmpAccount" placeholder="個人帳號（選填）" autocomplete="username" style="display:none;margin-bottom:10px">
+  <select class="linp" id="lEmpSelect" style="display:none;margin-bottom:10px;cursor:pointer">
+   <option value="">共用帳號（不指定個人）</option>
+  </select>
   <input class="linp" type="password" id="lPass" placeholder="密碼" autocomplete="current-password">
   <button class="lbtn" id="lBtn">登　入</button>
   <div class="lerr" id="lErr">帳號或密碼不正確，請再試一次</div>
