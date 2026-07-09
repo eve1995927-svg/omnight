@@ -608,13 +608,23 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
   document.querySelectorAll('.lrb').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('lUser').value=ACCTS[curRole].user;
-  // 員工/公務角色：顯示個人帳號欄位
-  const empAccEl=document.getElementById('lEmpAccount');
-  if(empAccEl){
+  // 員工/公務角色：顯示員工姓名選單（不用打字，直接選是誰）
+  const empSelEl=document.getElementById('lEmpSelect');
+  if(empSelEl){
     const needAcc=(curRole==='punch'||curRole==='staff');
-    empAccEl.style.display=needAcc?'block':'none';
-    empAccEl.placeholder=curRole==='punch'?'打卡帳號（員工個人帳號，選填）':'員工帳號（選填，不填使用共用帳號）';
-    if(!needAcc)empAccEl.value='';
+    if(needAcc){
+      // 登入時 Firebase 可能還沒同步完成，先讀 localStorage 備份，讀不到才退回線上資料
+      let empList=[];
+      try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
+      if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
+      const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
+      empSelEl.innerHTML='<option value="">共用帳號（不指定個人）</option>'+
+        withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+      empSelEl.style.display='block';
+    } else {
+      empSelEl.style.display='none';
+      empSelEl.value='';
+    }
   }
 });
 document.getElementById('lBtn').addEventListener('click',doLogin);
@@ -639,7 +649,7 @@ function doLogin(){
     return empList.find(e=>e.account===acc&&e.password===pw&&!e.deleted)||null;
   }
 
-  const empAcc=(document.getElementById('lEmpAccount')?.value||'').trim();
+  const empAcc=(document.getElementById('lEmpSelect')?.value||'').trim();
 
   if(empAcc){
     // 個人帳號登入（staff 或 punch）
@@ -648,7 +658,7 @@ function doLogin(){
     }
     const emp=findEmployee(empAcc,p);
     if(!emp){
-      err.style.display='block'; err.textContent='帳號或密碼不正確，請再試一次'; return;
+      err.style.display='block'; err.textContent='密碼不正確，請確認這位員工的登入密碼'; return;
     }
     _punchEmployee=emp;
   } else {
