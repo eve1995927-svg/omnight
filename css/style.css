@@ -164,6 +164,22 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 /* ── VIEW TOGGLE ── */
 .view-toggle{display:flex;border:1.5px solid var(--g200);border-radius:var(--rs);overflow:hidden;flex-shrink:0}
 
+/* ── 批次發票辨識卡片 ── */
+.inv-card{border:1.5px solid var(--g200);border-radius:var(--r);padding:14px;background:var(--w);transition:border-color var(--ease)}
+.inv-card.unclear{border-color:var(--warn-bd);background:var(--warn-bg)}
+.inv-card-top{display:flex;gap:12px;margin-bottom:10px}
+.inv-thumb{width:54px;height:54px;object-fit:cover;border-radius:var(--rxs);border:1.5px solid var(--g200);cursor:pointer;flex-shrink:0}
+.inv-card-info{flex:1;min-width:0}
+.inv-card-name{font-size:.82rem;font-weight:700;color:var(--g600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inv-badge{display:inline-flex;align-items:center;gap:4px;font-size:.7rem;font-weight:800;padding:2px 9px;border-radius:20px;margin-top:4px}
+.inv-badge.ok{background:var(--ok-bg);color:var(--ok)}
+.inv-badge.warn{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn-bd)}
+.inv-card-del{background:none;border:none;color:var(--g300);cursor:pointer;font-size:1rem;flex-shrink:0;padding:2px}
+.inv-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.inv-fields input,.inv-fields select{padding:8px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.82rem;font-family:inherit}
+.inv-reshoot-btn{margin-top:8px;font-size:.76rem;padding:6px 12px;border:1.5px solid var(--warn-bd);border-radius:20px;background:var(--w);color:var(--warn);cursor:pointer;font-family:inherit;font-weight:700}
+
+
 /* ── 新手設定精靈 ── */
 .wiz-crumb{display:flex;align-items:center;gap:0;margin-bottom:26px;padding:0 4px}
 .wiz-step{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:700;color:var(--g300);white-space:nowrap}
