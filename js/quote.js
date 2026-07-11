@@ -437,7 +437,7 @@ function dlXls(name,type,sections,mode){
     // ══ 主表：完全按照模板格式 ══
     const ws=wb.addWorksheet('澤居報價單');
     // 欄寬完全跟模板一樣
-    ws.columns=[{width:7},{width:28},{width:7},{width:7},{width:10},{width:10},{width:20}];
+    ws.columns=[{width:8},{width:33},{width:8},{width:8},{width:12},{width:12},{width:23}];
 
     function setCell(ref, val, opts={}){
       const c=ws.getCell(ref);
@@ -555,7 +555,14 @@ function dlXls(name,type,sections,mode){
     ws.mergeCells('D'+(27+offset)+':G'+(27+offset)); setCell('D'+(27+offset),'客戶回簽處',{bold:true,sz:11,h:'center',v:'middle',brd:'thin'});
 
     // 14個分類以內：強制縮放至A4單頁；超過則允許依內容自動分頁（避免字體過小）
-    ws.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(offset>0?0:1),horizontalDpi:200,verticalDpi:200};
+    ws.pageSetup.orientation='portrait';
+    ws.pageSetup.paperSize=9;
+    ws.pageSetup.fitToPage=true;
+    ws.pageSetup.fitToWidth=1;
+    ws.pageSetup.fitToHeight=(offset>0?0:1);
+    ws.pageSetup.scale=100;
+    ws.pageSetup.horizontalDpi=200;
+    ws.pageSetup.verticalDpi=200;
     ws.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
     ws.pageSetup.printArea='A1:G'+(27+offset);
 
@@ -628,7 +635,12 @@ function dlXls(name,type,sections,mode){
       });
       while(row<=totalRows){ ws2.getRow(row).height=DETAIL_ROW_HEIGHT; row++; }
       // 門檻對應新的列高(46pt)重新校正：一頁大約能放15筆細項，超過就自然換頁，不強行壓縮字體
-      ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(items.length>15?0:1)};
+      ws2.pageSetup.orientation='portrait';
+      ws2.pageSetup.paperSize=9;
+      ws2.pageSetup.fitToPage=true;
+      ws2.pageSetup.fitToWidth=1;
+      ws2.pageSetup.fitToHeight=(items.length>15?0:1);
+      ws2.pageSetup.scale=100;
       ws2.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
       ws2.pageSetup.printArea='A1:G'+totalRows;
     });
