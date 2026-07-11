@@ -1095,63 +1095,33 @@
 
 <!-- ══ INVOICE MODAL ══ -->
 <div class="mov" id="invModal">
- <div class="modal" style="max-width:640px">
+ <div class="modal" style="max-width:680px">
   <div class="mtit">新增發票 <button class="mcl" data-close="invModal">✕</button></div>
 
-  <!-- 上傳區 + 刪除 -->
+  <!-- 上傳區：可一次選多張 -->
   <div id="invUploadArea">
    <div class="upz" id="invZone" style="border-style:solid;border-width:2px">
     <span class="upz-ic">🧾</span>
-    <div class="upz-title">上傳發票照片</div>
-    <div class="upz-sub">拍照後上傳，AI 自動辨識所有資訊與細項</div>
-    <span style="display:inline-flex;align-items:center;gap:5px;background:var(--gold-pale);border:1px solid var(--gold-l);border-radius:20px;padding:4px 12px;font-size:.72rem;font-weight:800;color:var(--gold-d);margin-top:8px">🤖 自動辨識</span>
+    <div class="upz-title">上傳發票照片（可一次選多張）</div>
+    <div class="upz-sub">一次拍好幾張發票也沒問題，AI 會依序辨識，看不清楚的會提醒你</div>
+    <span style="display:inline-flex;align-items:center;gap:5px;background:var(--gold-pale);border:1px solid var(--gold-l);border-radius:20px;padding:4px 12px;font-size:.72rem;font-weight:800;color:var(--gold-d);margin-top:8px">🤖 批次自動辨識</span>
    </div>
-   <input type="file" id="invFile" accept="image/*" style="display:none">
+   <input type="file" id="invFile" accept="image/*" multiple style="display:none">
   </div>
 
-  <!-- 已上傳的檔案（顯示縮圖+刪除） -->
-  <div id="invFileCard" style="display:none;margin-top:10px">
-   <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--gray-50);border:1.5px solid var(--gray-200);border-radius:var(--r-sm)">
-    <img id="invThumb" src="" style="width:60px;height:60px;object-fit:cover;border-radius:var(--rxs);border:1.5px solid var(--gray-200);cursor:pointer" onclick="openLB(this.src)">
-    <div style="flex:1"><div style="font-size:.88rem;font-weight:700" id="invFileName">—</div><div style="font-size:.75rem;color:var(--gray-400);margin-top:2px" id="invFileStatus">已上傳</div></div>
-    <button class="btn brd bsm" id="invDelFile">🗑 刪除重新上傳</button>
+  <div class="ocrp" id="ocrProg" style="margin-top:10px;display:none"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> <span id="ocrProgText">AI 辨識發票中…</span></div>
+
+  <!-- 批次結果清單 -->
+  <div id="invBatchList" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
+
+  <div id="invBatchFoot" style="display:none;margin-top:16px">
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--rs);margin-bottom:12px">
+    <span style="font-size:.9rem;font-weight:800;color:var(--info)" id="invBatchSummary">共 0 張</span>
+    <span style="font-family:var(--mono);font-size:1.2rem;font-weight:900;color:var(--info)" id="invBatchTotal">NT$0</span>
    </div>
+   <button class="btn bg bfull" id="addInvBtn" style="padding:14px;font-size:.95rem">💾 全部確認並儲存</button>
   </div>
 
-  <div class="ocrp" id="ocrProg" style="margin-top:10px"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識發票中…</div>
-  <div id="ocrOk" style="display:none;margin-top:10px;padding:10px 14px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">✅ 辨識完成！以下是辨識結果，可直接修改</div>
-
-  <!-- 發票資訊（AI辨識後顯示） -->
-  <div id="invFormArea" style="display:none;margin-top:14px">
-   <div class="g2" style="margin-bottom:12px">
-    <div class="field" style="margin:0"><label class="fl">發票號碼</label><input class="fi" id="invNo" placeholder="AB-12345678"></div>
-    <div class="field" style="margin:0"><label class="fl">發票日期</label><input class="fi" id="invDt" type="date"></div>
-   </div>
-   <div class="g2" style="margin-bottom:12px">
-    <div class="field" style="margin:0"><label class="fl">金額（含稅）</label><input class="fi" id="invAmt" type="number" placeholder="52500" oninput="updInvTotal()"></div>
-    <div class="field" style="margin:0"><label class="fl">支出類別</label><select class="fi" id="invCat"><option>材料費</option><option>工資</option><option>設備費</option><option>管理費</option><option>其他</option></select></div>
-   </div>
-   <div class="field" style="margin-bottom:12px"><label class="fl">開立單位／說明</label><input class="fi" id="invDesc" placeholder="例：景平路案系統櫃材料費"></div>
-
-   <!-- 細項表格 -->
-   <div style="border:1.5px solid var(--gray-200);border-radius:var(--r-sm);overflow:hidden;margin-bottom:10px">
-    <div style="display:grid;grid-template-columns:1fr 80px 100px 36px;background:var(--g100);padding:9px 14px;border-bottom:1px solid var(--g200)">
-     <span style="font-size:.65rem;font-weight:900;color:var(--gray-400);text-transform:uppercase">費用項目</span>
-     <span style="font-size:.65rem;font-weight:900;color:var(--gray-400);text-transform:uppercase">數量</span>
-     <span style="font-size:.65rem;font-weight:900;color:var(--gray-400);text-transform:uppercase">金額</span>
-     <span></span>
-    </div>
-    <div id="invItemsTable"></div>
-   </div>
-   <button class="btn bo bsm" id="invAddItem" style="margin-bottom:14px">＋ 新增費用細項</button>
-
-   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--blue-pale,var(--info-bg));border:1.5px solid var(--info-bd);border-radius:var(--r-sm);margin-bottom:4px">
-    <span style="font-size:.9rem;font-weight:800;color:var(--info)">含稅總金額</span>
-    <span style="font-family:'DM Mono',monospace;font-size:1.2rem;font-weight:900;color:var(--info)" id="invTotalShow">NT$0</span>
-   </div>
-  </div>
-
-  <button class="btn bg bfull" id="addInvBtn" style="padding:14px;font-size:.95rem;margin-top:14px">💾 儲存發票記錄</button>
  </div>
 </div>
 
@@ -1403,6 +1373,18 @@
    <div class="g2" style="margin-bottom:4px">
     <div class="field" style="margin:0"><label class="fl">登入帳號</label><input class="fi" id="empAccount" placeholder="例：chen123" autocomplete="off"></div>
     <div class="field" style="margin:0"><label class="fl">登入密碼</label><input class="fi" id="empPassword" placeholder="例：1234" autocomplete="off"></div>
+   </div>
+  </div>
+  <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
+   <div style="font-size:.85rem;font-weight:800;color:var(--info);margin-bottom:8px">🔐 這個員工能用哪些功能？</div>
+   <p style="font-size:.78rem;color:var(--g500);margin:0 0 12px">只有設定了上面「打卡帳號」的員工才會套用這裡的權限；用共用員工帳號登入的人維持原本預設權限</p>
+   <div id="empPermList" style="display:flex;flex-direction:column;gap:9px">
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permProjects" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 案場總覽</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permMarketing" checked style="width:16px;height:16px;cursor:pointer"> 💬 客服行銷（諮詢、快速報價、貼文）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permQuote" checked style="width:16px;height:16px;cursor:pointer"> 📋 報價合約</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permVendor" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 廠商工程</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permAccounting" style="width:16px;height:16px;cursor:pointer"> 💰 會計（帳款、發票）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permSettings" style="width:16px;height:16px;cursor:pointer"> ⚙️ 系統設定</label>
    </div>
   </div>
   <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
