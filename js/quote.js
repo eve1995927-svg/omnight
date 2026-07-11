@@ -485,10 +485,15 @@ function dlXls(name,type,sections,mode){
       c.border=brd('medium');
     });
 
-    // R6~ 資料行（列高18，跟模板一樣，依分類數量動態擴充）
+    // R6~ 資料行
+    // 列高精算：A4可印高度276.7mm(=784.3pt，扣掉上下各0.4吋邊界)，扣掉表頭5列+小計/管理費/
+    // 稅金/合計4列+備註/空行/匯款/蓋章4列共288pt固定高度，剩餘496.3pt平均分給14個基本資料列
+    // = 每列35pt。這樣不管實際填了幾個工程分類，表格都會用空白列把整頁撐滿，不會留下大片空白。
+    // 超過14個分類時（offset>0）才會自然往下一頁延伸，不強行縮小字體塞進一頁。
+    const DATA_ROW_HEIGHT=35;
     for(let i=0;i<dataRows;i++){
       const r=6+i;
-      ws.getRow(r).height=18;
+      ws.getRow(r).height=DATA_ROW_HEIGHT;
       const sec=(sections||[])[i]; const st=sts[i]||0;
       ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+r).border=brd('thin'));
       setCell('A'+r,NUMS[i],{sz:10,h:'center',v:'middle'});
@@ -604,9 +609,12 @@ function dlXls(name,type,sections,mode){
       const g5=ws2.getCell('G5'); g5.value=st; g5.font={bold:true,size:10,color:{argb:'FF'+RED},name:'新細明體'};
       g5.fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF'+YELLOW}}; g5.numFmt='#,##0'; g5.alignment={horizontal:'right',vertical:'middle'};
 
+      // 細項表列高精算：固定列(R1-R5)共84pt，A4可用784.3pt扣掉後剩700.3pt，
+      // 平均分給最少15個細項列 = 每列46pt，同樣不管填幾筆細項都能撐滿整頁
+      const DETAIL_ROW_HEIGHT=46;
       let row=6;
       items.forEach((it,ii)=>{
-        ws2.getRow(row).height=18;
+        ws2.getRow(row).height=DETAIL_ROW_HEIGHT;
         const qty=parseFloat((it.qty||1).toString().replace(/[^\d.]/g,''))||1;
         const price=parseFloat(it.price)||0;
         sc2('A'+row,ii+1,{sz:10,h:'center',v:'middle'});
@@ -618,8 +626,9 @@ function dlXls(name,type,sections,mode){
         sc2('G'+row,it.note||'',{sz:9,h:'left',v:'middle',wrap:true});
         row++;
       });
-      while(row<=totalRows){ ws2.getRow(row).height=18; row++; }
-      ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(totalRows>30?0:1)};
+      while(row<=totalRows){ ws2.getRow(row).height=DETAIL_ROW_HEIGHT; row++; }
+      // 門檻對應新的列高(46pt)重新校正：一頁大約能放15筆細項，超過就自然換頁，不強行壓縮字體
+      ws2.pageSetup={orientation:'portrait',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:(items.length>15?0:1)};
       ws2.pageSetup.margins={left:0.4,right:0.4,top:0.4,bottom:0.4,header:0.2,footer:0.2};
       ws2.pageSetup.printArea='A1:G'+totalRows;
     });

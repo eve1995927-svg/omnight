@@ -108,55 +108,113 @@ function initContractListeners(){
   });
 }
 
-// ══ 發票上傳 AI 辨識 ══════════════════════════════════════
+// ══ 發票批次上傳 AI 辨識 ══════════════════════════════════
+let invBatch=[]; // [{id, imgUrl, fileName, no, date, amount, cat, desc, clear, status}]
+
 document.getElementById('invZone')?.addEventListener('click',()=>document.getElementById('invFile')?.click());
 document.getElementById('invFile')?.addEventListener('change',async e=>{
-  const f=e.target.files[0];if(!f)return;e.target.value='';
-  const rd=new FileReader();
-  rd.onload=async ev=>{
-    invImgUrl=ev.target.result;
-    const fc=document.getElementById('invFileCard');if(fc)fc.style.display='block';
-    const th=document.getElementById('invThumb');
-    if(th&&f.type.startsWith('image/')){th.src=invImgUrl;th.onclick=()=>openLB(invImgUrl);th.style.display='block';}
-    const fn=document.getElementById('invFileName');if(fn)fn.textContent=f.name;
-    const fs=document.getElementById('invFileStatus');if(fs)fs.textContent='已上傳';
-    const fa=document.getElementById('invFormArea');if(fa)fa.style.display='block';
-    const dt=document.getElementById('invDt');if(dt&&!dt.value)dt.value=new Date().toISOString().split('T')[0];
-    const ocr=document.getElementById('ocrProg');if(ocr)ocr.classList.add('show');
+  const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+  const prog=document.getElementById('ocrProg');const progText=document.getElementById('ocrProgText');
+  if(prog)prog.style.display='flex';
+
+  for(let i=0;i<files.length;i++){
+    const f=files[i];
+    if(progText)progText.textContent='AI 辨識發票中… ('+(i+1)+'/'+files.length+')';
+    let item=null;
     try{
-      const b64=invImgUrl.split(',')[1],mime=f.type.startsWith('image/')?f.type:'application/pdf';
+      const imgUrl=await new Promise((res,rej)=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.onerror=rej;rd.readAsDataURL(f);});
+      item={id:Date.now()+Math.random(),imgUrl,fileName:f.name,no:'',date:'',amount:0,cat:'材料費',desc:'',clear:true,status:'辨識中'};
+      invBatch.push(item);
+      renderInvBatchList();
+
+      const b64=imgUrl.split(',')[1],mime=f.type.startsWith('image/')?f.type:'application/pdf';
       const isImg=f.type.startsWith('image/');
       const parts=[
         isImg?{type:'image',source:{type:'base64',media_type:mime,data:b64}}:
               {type:'document',source:{type:'base64',media_type:'application/pdf',data:b64}},
-        {type:'text',text:'請辨識這張發票的所有資訊，只回覆純JSON（不加```）：{"no":"發票號碼","date":"YYYY-MM-DD","amount":含稅總金額數字,"desc":"開立單位或說明","items":[{"name":"費用項目","qty":數量,"amount":金額數字}]}。無法辨識的填空字串或0。'}
+        {type:'text',text:'請辨識這張發票的所有資訊，只回覆純JSON（不加```）：{"clear":true或false（照片是否清楚可辨識，模糊/反光/角度問題導致關鍵資訊無法確定就填false）,"no":"發票號碼","date":"YYYY-MM-DD","amount":含稅總金額數字,"desc":"開立單位或說明"}。無法辨識的欄位填空字串或0，並把clear設為false。'}
       ];
-      const rep=await callAI('ac',parts,3000);
+      const rep=await callAI('ac',parts,1200);
       const dat=JSON.parse(rep.replace(/```json|```/g,'').trim());
-      if(dat.no){const el=document.getElementById('invNo');if(el)el.value=dat.no;}
-      if(dat.date){const el=document.getElementById('invDt');if(el)el.value=dat.date;}
-      if(dat.amount){const el=document.getElementById('invAmt');if(el)el.value=dat.amount;}
-      if(dat.desc){const el=document.getElementById('invDesc');if(el)el.value=dat.desc;}
-      if(dat.items&&dat.items.length){invIItems=dat.items.map(x=>({...x}));renderInvItems();}
-      if(fs)fs.textContent='✅ AI辨識完成，請確認';
-      const ok=document.getElementById('ocrOk');if(ok)ok.style.display='block';
-      updInvTotal();
+      item.no=dat.no||''; item.date=dat.date||''; item.amount=dat.amount||0; item.desc=dat.desc||'';
+      // AI 自評不清楚，或關鍵欄位（金額、日期）缺漏，都視為「看不清楚」，提醒使用者請業主重拍
+      item.clear=(dat.clear!==false)&&!!item.amount&&!!item.date;
+      item.status=item.clear?'辨識完成':'看不清楚，建議請業主重新拍照';
     }catch(err){
-      const fs2=document.getElementById('invFileStatus');
-      if(fs2)fs2.textContent='AI辨識失敗，請手動填寫（'+friendlyAIError(err).replace('⚠️ ','')+'）';
+      if(item){item.clear=false;item.status='AI辨識失敗，請手動填寫（'+friendlyAIError(err).replace('⚠️ ','')+'）';}
     }
-    const ocr2=document.getElementById('ocrProg');if(ocr2)ocr2.classList.remove('show');
-  };rd.readAsDataURL(f);
+    renderInvBatchList();
+  }
+  if(prog)prog.style.display='none';
 });
-document.getElementById('invDelFile')?.addEventListener('click',()=>{
-  invImgUrl=null;invIItems=[];
-  const fc=document.getElementById('invFileCard');if(fc)fc.style.display='none';
-  const fa=document.getElementById('invFormArea');if(fa)fa.style.display='none';
-  const ok=document.getElementById('ocrOk');if(ok)ok.style.display='none';
-  const fi=document.getElementById('invFile');if(fi)fi.value='';
-  document.getElementById('invItemsTable')&&(document.getElementById('invItemsTable').innerHTML='');
-  document.getElementById('invTotalShow')&&(document.getElementById('invTotalShow').textContent='NT$0');
-});
+
+function renderInvBatchList(){
+  const list=document.getElementById('invBatchList');if(!list)return;
+  list.innerHTML='';
+  invBatch.forEach(item=>{
+    const card=document.createElement('div');
+    card.className='inv-card'+(item.clear?'':' unclear');
+    card.innerHTML=`
+      <div class="inv-card-top">
+        <img class="inv-thumb" src="${item.imgUrl}" onclick="openLB('${item.imgUrl}')">
+        <div class="inv-card-info">
+          <div class="inv-card-name">${esc(item.fileName)}</div>
+          <span class="inv-badge ${item.clear?'ok':'warn'}">${item.clear?'✅ 辨識完成':'⚠️ '+esc(item.status)}</span>
+        </div>
+        <button class="inv-card-del" data-del="${item.id}">🗑</button>
+      </div>
+      <div class="inv-fields">
+        <input placeholder="發票號碼" value="${esc(item.no)}" data-f="no" data-id="${item.id}">
+        <input type="date" value="${item.date}" data-f="date" data-id="${item.id}">
+        <input type="number" placeholder="金額" value="${item.amount||''}" data-f="amount" data-id="${item.id}">
+        <select data-f="cat" data-id="${item.id}">
+          ${['材料費','工資','設備費','管理費','其他'].map(c=>'<option'+(item.cat===c?' selected':'')+'>'+c+'</option>').join('')}
+        </select>
+      </div>
+      <input placeholder="開立單位／說明" value="${esc(item.desc)}" data-f="desc" data-id="${item.id}" style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.82rem;font-family:inherit;box-sizing:border-box">
+      ${!item.clear?'<button class="inv-reshoot-btn" data-reshoot="'+item.id+'">📋 複製提醒訊息，請業主重拍</button>':''}
+    `;
+    list.appendChild(card);
+  });
+
+  // 欄位編輯同步回 invBatch
+  list.querySelectorAll('[data-f]').forEach(el=>{
+    el.addEventListener('input',()=>{
+      const item=invBatch.find(x=>x.id==el.dataset.id);if(!item)return;
+      item[el.dataset.f]=el.type==='number'?parseFloat(el.value)||0:el.value;
+    });
+  });
+  list.querySelectorAll('[data-del]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      invBatch=invBatch.filter(x=>x.id!=btn.dataset.del);
+      renderInvBatchList();
+      updInvBatchFoot();
+    });
+  });
+  list.querySelectorAll('[data-reshoot]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const msg='您好，這張發票的照片不太清楚，麻煩重新拍一張清晰一點的給我，謝謝！📸';
+      navigator.clipboard.writeText(msg).then(()=>showToast('✅ 已複製提醒訊息，貼到LINE傳給業主/廠商')).catch(()=>showToast('⚠️ 複製失敗，請手動複製'));
+    });
+  });
+
+  updInvBatchFoot();
+}
+
+function updInvBatchFoot(){
+  const foot=document.getElementById('invBatchFoot');
+  const summary=document.getElementById('invBatchSummary');
+  const total=document.getElementById('invBatchTotal');
+  if(!foot)return;
+  if(!invBatch.length){foot.style.display='none';return;}
+  foot.style.display='block';
+  const clearCount=invBatch.filter(x=>x.clear).length;
+  const unclearCount=invBatch.length-clearCount;
+  if(summary)summary.textContent='共 '+invBatch.length+' 張'+(unclearCount?'（'+unclearCount+' 張待確認）':'');
+  const sum=invBatch.reduce((s,x)=>s+(x.amount||0),0);
+  if(total)total.textContent='NT$'+sum.toLocaleString();
+}
+
 document.getElementById('qSave')?.addEventListener('click',()=>{
   const n=document.getElementById('qN')?.value||'業主';
   const tp=document.getElementById('qTp')?.value||'全室裝修';

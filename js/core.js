@@ -40,15 +40,41 @@ const GROUPS={
     {l:'人資',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
     {l:'系統',     items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
+  // 員工可用的模組全集：實際登入時會依照 getEmployeePermissions() 過濾，只顯示老闆開放的部分
+  // 每個分組標記 _perm，對應人資管理裡的權限開關 key
   staff:[
-    {l:'行銷(客服)',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
-    {l:'行政',     items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'ad-newquote',l:'新建報價',ic:'➕'},{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
-    {l:'系統',     items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
+    {l:'案場',     _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'客服行銷', _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
+    {l:'報價合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'ad-newquote',l:'新建報價',ic:'➕'},{id:'contract',l:'合約管理',ic:'📝'}]},
+    {l:'廠商工程', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'會計',     _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-invoice',l:'發票管理',ic:'🧾'}]},
+    {l:'系統',     _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
   punch:[
     {l:'打卡',    items:[{id:'punch-clock',l:'上下班打卡',ic:'🕐'}]},
   ],
 };
+
+// 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
+const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
+
+function getEmployeePermissions(){
+  // 用共用「員工」帳號登入（沒有指定個人身份）：維持過去的預設行為，開放常用模組，會計/系統設定不開放
+  if(!_punchEmployee) return DEFAULT_STAFF_PERMISSIONS;
+  // 個人帳號登入：套用老闆在人資管理設定的權限，沒設定過的員工使用預設值
+  return {...DEFAULT_STAFF_PERMISSIONS, ...(_punchEmployee.permissions||{})};
+}
+
+// 依權限過濾 GROUPS.staff，只回傳老闆有開放的分組
+function getFilteredStaffGroups(){
+  const perms=getEmployeePermissions();
+  return GROUPS.staff.filter(g=>!g._perm||perms[g._perm]);
+}
+
+// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾）
+function groupsFor(role){
+  return role==='staff' ? getFilteredStaffGroups() : (GROUPS[role]||[]);
+}
 // ══ 公司資料設定（多租戶核心：換公司只要改這裡）═══════════════
 // 賣給新客戶時，這是唯一需要調整品牌/業務資料的地方（Firebase 專案設定另見文件說明）
 const DEFAULT_COMPANY_PROFILE = {
@@ -704,23 +730,34 @@ function setupApp(role){
   const uName=document.getElementById('uName');
   const aName=document.getElementById('aName');
   const aRole=document.getElementById('aRole');
-  // 個人打卡帳號登入：顯示員工本人姓名
+  // 個人帳號登入（員工或公務）：顯示本人姓名，並還原員工資料供權限判斷使用
   const empName=localStorage.getItem('zeju_punch_emp_name');
   const empId=localStorage.getItem('zeju_punch_emp_id');
-  const displayName=(role==='punch'&&empName)?empName:(a?.name||nameMap[role]||role);
+  const isIndividual=(role==='punch'||role==='staff')&&empName&&empId;
+  const displayName=isIndividual?empName:(a?.name||nameMap[role]||role);
   curPunchUser=(role==='punch'&&empId)?('emp_'+empId):role;
 
-  if(uDot)uDot.textContent=(role==='punch'&&empName)?empName.charAt(0):(a?.abbr||'?');
+  // 重新整理頁面後 _punchEmployee 會被重置為 null，這裡從資料庫還原，
+  // 避免員工的功能權限在重新整理後跳回預設值
+  if(isIndividual&&!_punchEmployee){
+    let empList=[];
+    try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
+    if(!empList.length) empList=DB.getAll('employees');
+    _punchEmployee=empList.find(e=>String(e._id)===String(empId))||null;
+  }
+  if(!isIndividual) _punchEmployee=null;
+
+  if(uDot)uDot.textContent=isIndividual?empName.charAt(0):(a?.abbr||'?');
   if(uName)uName.textContent=displayName;
   if(aName)aName.textContent=displayName;
-  if(aRole)aRole.textContent=(role==='punch'&&empName)?'員工打卡':(a?.role||'');
+  if(aRole)aRole.textContent=isIndividual?(role==='punch'?'員工打卡':'員工'):(a?.role||'');
 
   // 公務帳號：只顯示打卡介面
   if(role==='punch'){
     buildTabs(role);
-    buildSidebar(role,GROUPS[role]?.[0]?.l);
+    buildSidebar(role,groupsFor(role)?.[0]?.l);
     buildBN(role);
-    showPanel(GROUPS[role]?.[0]?.items?.[0]?.id||'punch-clock');
+    showPanel(groupsFor(role)?.[0]?.items?.[0]?.id||'punch-clock');
     initPunchClock();
     const pb=document.getElementById('ptsBar');if(pb)pb.style.display='none';
     return;
@@ -729,9 +766,9 @@ function setupApp(role){
   // 一般登入
   const pb=document.getElementById('ptsBar');if(pb)pb.style.display='';
   buildTabs(role);
-  buildSidebar(role,GROUPS[role]?.[0]?.l);
+  buildSidebar(role,groupsFor(role)?.[0]?.l);
   buildBN(role);
-  showPanel(GROUPS[role]?.[0]?.items?.[0]?.id||'owner-dash');
+  showPanel(groupsFor(role)?.[0]?.items?.[0]?.id||'owner-dash');
   initAllChats();
   initApiCard();
   renderHistory();
@@ -809,7 +846,7 @@ function buildTabs(role){
   const tabs=document.getElementById('rTabs');tabs.innerHTML='';
   if(role==='punch')return;
   // 每個分組顯示一個 Tab，點了展開到第一個功能
-  const grps=GROUPS[role]||[];
+  const grps=groupsFor(role);
   grps.forEach(grp=>{
     const b=document.createElement('button');
     b.className='rtab';b.dataset.grp=grp.l;
@@ -828,7 +865,7 @@ function buildTabs(role){
 }
 function syncTabActive(panelId){
   // 找這個 panel 屬於哪個分組
-  const role=curRole;const grps=GROUPS[role]||[];
+  const role=curRole;const grps=groupsFor(role);
   const grp=grps.find(g=>g.items.some(i=>i.id===panelId));
   if(!grp)return;
   document.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('on',t.dataset.grp===grp.l));
@@ -836,7 +873,7 @@ function syncTabActive(panelId){
 }
 function buildSidebar(role, activeGrp){
   const nav=document.getElementById('sNav');nav.innerHTML='';
-  const grps=GROUPS[role]||[];
+  const grps=groupsFor(role);
   // 只顯示當前分組的側欄項目
   const showGrp=activeGrp||grps[0]?.l;
   const grp=grps.find(g=>g.l===showGrp)||grps[0];
@@ -863,7 +900,7 @@ function buildBN(role){
     backBtn.addEventListener('click',()=>showPanel('projects'));
     bn.appendChild(backBtn);
   }
-  GROUPS[role].flatMap(g=>g.items).slice(0,isInProject?5:6).forEach(item=>{
+  groupsFor(role).flatMap(g=>g.items).slice(0,isInProject?5:6).forEach(item=>{
     const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
     b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
@@ -889,7 +926,7 @@ function updateHRBadge(){
     } else if(badge){badge.remove();}
   });
 }
-function switchRole(role){curRole=role;const a=ACCTS[role];document.getElementById('uDot').textContent=a.abbr;document.getElementById('uName').textContent=a.name;document.getElementById('aName').textContent=a.name;document.getElementById('aRole').textContent=a.role;buildTabs(role);buildSidebar(role,GROUPS[role]?.[0]?.l);buildBN(role);showPanel(GROUPS[role]?.[0]?.items[0]?.id||'owner-dash');}
+function switchRole(role){curRole=role;const a=ACCTS[role];document.getElementById('uDot').textContent=a.abbr;document.getElementById('uName').textContent=a.name;document.getElementById('aName').textContent=a.name;document.getElementById('aRole').textContent=a.role;buildTabs(role);buildSidebar(role,groupsFor(role)?.[0]?.l);buildBN(role);showPanel(groupsFor(role)?.[0]?.items[0]?.id||'owner-dash');}
 function showPanel(id){
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
   // 切換到新建報價時重設按鈕綁定

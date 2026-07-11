@@ -118,8 +118,24 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   document.getElementById('empOther').value='0';
   document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
   document.getElementById('empModalTitle').innerHTML='新增員工 <button class="mcl" data-close="empModal">✕</button>';
+  setEmpPermCheckboxes(DEFAULT_STAFF_PERMISSIONS);
   calcSalaryInsurance();openModal('empModal');
 });
+
+// ── 權限checkbox 讀寫小工具 ──────────────────────────────
+const PERM_CHECKBOX_MAP={projects:'permProjects',marketing:'permMarketing',quote:'permQuote',vendor:'permVendor',accounting:'permAccounting',settings:'permSettings'};
+function setEmpPermCheckboxes(perms){
+  Object.entries(PERM_CHECKBOX_MAP).forEach(([key,id])=>{
+    const el=document.getElementById(id);if(el)el.checked=!!(perms&&perms[key]);
+  });
+}
+function readEmpPermCheckboxes(){
+  const perms={};
+  Object.entries(PERM_CHECKBOX_MAP).forEach(([key,id])=>{
+    const el=document.getElementById(id);perms[key]=el?el.checked:false;
+  });
+  return perms;
+}
 
 document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   const name=document.getElementById('empName').value.trim();
@@ -140,7 +156,8 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
     if(dup){showToast('⚠️ 此打卡帳號已被「'+dup.name+'」使用，請換一個');return;}
     if(!password){showToast('⚠️ 設定了帳號就需要設定密碼');return;}
   }
-  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,labor,health,retire,net,account,password,summary:'員工 '+name};
+  const permissions=readEmpPermCheckboxes();
+  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,labor,health,retire,net,account,password,permissions,summary:'員工 '+name};
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
@@ -192,6 +209,7 @@ function renderEmployees(){
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
+      setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
       document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
@@ -632,49 +650,58 @@ setTimeout(()=>{
 
 // ── 發票管理 ──────────────────────────────────────────────
 document.getElementById('openInv')?.addEventListener('click',()=>{
-  invImgUrl=null; invIItems=[];
-  const fc=document.getElementById('invFileCard'); if(fc)fc.style.display='none';
-  const fa=document.getElementById('invFormArea'); if(fa)fa.style.display='none';
-  const op=document.getElementById('ocrProg'); if(op)op.classList.remove('show');
-  const ok=document.getElementById('ocrOk'); if(ok)ok.style.display='none';
-  const it=document.getElementById('invItemsTable'); if(it)it.innerHTML='';
-  const ts=document.getElementById('invTotalShow'); if(ts)ts.textContent='NT$0';
-  ['invNo','invAmt','invDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  const dt=document.getElementById('invDt'); if(dt)dt.value=new Date().toISOString().split('T')[0];
+  invBatch=[];
+  const list=document.getElementById('invBatchList'); if(list)list.innerHTML='';
+  const foot=document.getElementById('invBatchFoot'); if(foot)foot.style.display='none';
+  const op=document.getElementById('ocrProg'); if(op)op.style.display='none';
   const fi=document.getElementById('invFile'); if(fi)fi.value='';
   openModal('invModal');
 });
 
-document.getElementById('invAddItem')?.addEventListener('click',()=>{
-  invIItems.push({name:'',qty:1,amount:0});
-  renderInvItems();
-});
-
 document.getElementById('addInvBtn')?.addEventListener('click',()=>{
-  const no=(document.getElementById('invNo')?.value||'').trim()||'—';
-  const dt=document.getElementById('invDt')?.value||'';
-  const amt=parseInt(document.getElementById('invAmt')?.value||0)||invIItems.reduce((s,it)=>s+(it.amount||0),0);
-  const cat=document.getElementById('invCat')?.value||'材料費';
-  const desc=(document.getElementById('invDesc')?.value||'').trim();
-  DB.push('invoices',{summary:'發票 '+no+' '+cat+' '+fmt(amt),no,date:dt,amount:amt,cat,desc,items:[...invIItems],imgDataUrl:invImgUrl});
-  closeModal('invModal');
-  renderInvoices(document.getElementById('invSrch')?.value||'');
-  updStats(); renderHistory();
-  showToast('✅ 發票已儲存！');
+  if(!invBatch.length){showToast('⚠️ 請先上傳發票照片');return;}
+  const unclearCount=invBatch.filter(x=>!x.clear).length;
+  const doSave=()=>{
+    invBatch.forEach(item=>{
+      const no=item.no||'—';
+      DB.push('invoices',{summary:'發票 '+no+' '+item.cat+' '+fmt(item.amount||0),no,date:item.date,amount:item.amount||0,cat:item.cat,desc:item.desc,imgDataUrl:item.imgUrl});
+    });
+    const count=invBatch.length;
+    invBatch=[];
+    closeModal('invModal');
+    renderInvoices(document.getElementById('invSrch')?.value||'');
+    updStats();
+    showToast('✅ 已儲存 '+count+' 張發票！');
+  };
+  if(unclearCount>0){
+    confirmAction('有 '+unclearCount+' 張發票標示「看不清楚」，還是要一起儲存嗎？之後可以再回來補正確金額。',doSave,false);
+  } else {
+    doSave();
+  }
 });
 
-// ── 發票編輯 ──────────────────────────────────────────────
+// ── 編輯已存的發票（原本按鈕會呼叫這個函式，但先前沒有實作，點了沒反應）──
+let _ieEditId=null;
+function openInvEdit(id){
+  const inv=DB.get('invoices').find(x=>x._id===id);if(!inv)return;
+  _ieEditId=id;
+  const set=(sel,v)=>{const el=document.getElementById(sel);if(el)el.value=v||'';};
+  set('ieNo',inv.no); set('ieDt',inv.date); set('ieAmt',inv.amount); set('ieCat',inv.cat); set('ieDesc',inv.desc);
+  openModal('invEditModal');
+}
 document.getElementById('ieBtn')?.addEventListener('click',()=>{
-  if(!ieId)return;
-  const no=(document.getElementById('ieNo')?.value||'').trim();
-  const amt=parseInt(document.getElementById('ieAmt')?.value||0);
+  if(!_ieEditId)return;
+  const no=(document.getElementById('ieNo')?.value||'').trim()||'—';
+  const date=document.getElementById('ieDt')?.value||'';
+  const amount=parseInt(document.getElementById('ieAmt')?.value||0)||0;
   const cat=document.getElementById('ieCat')?.value||'材料費';
   const desc=(document.getElementById('ieDesc')?.value||'').trim();
-  DB.upd('invoices',ieId,{no,date:document.getElementById('ieDt')?.value||'',amount:amt,cat,desc,summary:'發票 '+no+' '+cat+' '+fmt(amt)});
+  DB.upd('invoices',_ieEditId,{no,date,amount,cat,desc,summary:'發票 '+no+' '+cat+' '+fmt(amount)});
   closeModal('invEditModal');
   renderInvoices(document.getElementById('invSrch')?.value||'');
-  updStats(); renderHistory();
+  updStats();
   showToast('✅ 發票已更新！');
+  _ieEditId=null;
 });
 
 // ── 合約刪除上傳 ──────────────────────────────────────────

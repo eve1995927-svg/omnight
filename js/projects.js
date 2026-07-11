@@ -521,6 +521,7 @@ function renderProjectDetail(id, activeTab='overview'){
 function renderProjOverview(id,p,c){
   const quotes=DB.get('quotes').filter(q=>q.projectId===id);
   const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
   const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
   const income=ledgerItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
   const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
@@ -538,7 +539,7 @@ function renderProjOverview(id,p,c){
       ${[
         {icon:'📋',label:'報價單',count:quotes.length,action:`renderProjectDetail(${id},'quote')`,btn:'查看報價',color:'var(--info)'},
         {icon:'🏗️',label:'廠商報價',count:vendors.length,action:`renderProjectDetail(${id},'vendor')`,btn:'查看廠商',color:'var(--warn)'},
-        {icon:'📝',label:'合約',count:p.contractId?1:0,action:`renderProjectDetail(${id},'contract')`,btn:'查看合約',color:'var(--ok)'},
+        {icon:'📝',label:'合約',count:contracts.length,action:`renderProjectDetail(${id},'contract')`,btn:'查看合約',color:'var(--ok)'},
         {icon:'💰',label:'帳款紀錄',count:ledgerItems.length,action:`renderProjectDetail(${id},'ledger')`,btn:'查看帳款',color:'var(--gold-d)'},
       ].map(item=>`
         <div onclick="${item.action}" style="padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r);cursor:pointer;transition:all var(--ease)" 
