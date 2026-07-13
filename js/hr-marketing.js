@@ -380,7 +380,7 @@ function renderMonthSalary(monthKey){
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
         <div style="flex:1">
-          <div style="font-size:.9rem;font-weight:900">${e.name}</div>
+          <div style="font-size:.9rem;font-weight:900">${esc(e.name)}</div>
           <div style="font-size:.75rem;color:var(--g400)">${e.title||'員工'} ${workDays?'· 出勤 '+workDays+' 天':''}</div>
         </div>
         <div style="text-align:right;margin-right:6px">

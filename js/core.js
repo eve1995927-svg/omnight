@@ -266,6 +266,27 @@ function initFirebase(){
   }
 }
 
+// ── 匿名登入 Firebase Auth ──────────────────────────────────
+// 為什麼需要這個：資料庫安全規則設成「.read/.write 需要 auth != null」，
+// 這樣可以擋掉最基本的「直接對資料庫網址發request」的攻擊方式（不會用 SDK、只是亂槍打鳥的掃描機器人）。
+// 老實說明這不是完美的安全機制：因為 Firebase 設定本身是公開可見的，
+// 真的懂技術的人一樣可以自己呼叫 signInAnonymously() 取得 auth，繞過這層防護。
+// 這是「先擋住最省事的攻擊」的第一道關卡，不是最終解法，真正的解法是換成
+// 綁定真實身份的 Firebase Authentication（email/password 或自訂 token），這是之後要做的加強項目。
+function _ensureFirebaseAuth(){
+  return new Promise((resolve)=>{
+    if(typeof firebase==='undefined'||!firebase.auth){resolve(false);return;}
+    try{
+      firebase.auth().signInAnonymously()
+        .then(()=>resolve(true))
+        .catch((e)=>{console.warn('Firebase Auth 匿名登入失敗：',e.message);resolve(false);});
+    }catch(e){
+      console.warn('Firebase Auth 初始化失敗：',e.message);
+      resolve(false);
+    }
+  });
+}
+
 const _cache = {};
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
@@ -276,6 +297,9 @@ const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','
 async function initCloudDB(){
   // 先嘗試 Firebase
   if(initFirebase()){
+    // 先完成匿名登入，資料庫安全規則要求 auth != null 才能讀寫，
+    // 沒有這一步，規則設好之後資料反而會讀不到（不是資安漏洞了，但變成功能壞掉）
+    await _ensureFirebaseAuth();
     return new Promise(res=>{
       _fbDB.ref('zeju_data').once('value', snap=>{
         const data=snap.val()||{};
