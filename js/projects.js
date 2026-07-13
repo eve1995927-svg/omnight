@@ -735,37 +735,124 @@ function openProjLedgerModal(projectId, dir){
 // ── 案場進度 Tab ──────────────────────────────────────────
 function renderProjProgress(id,p,c){
   const items=DB.get('progress').filter(r=>r.projectId===id).sort((a,b)=>a._id-b._id);
+  const nextItem=items.find(x=>!x.done);
+
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">工程進度</div>
-      <button class="btn bg bsm" onclick="openProgressForProject(${id})">＋ 新增進度</button>
+      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">📷 新增進度</button>
     </div>
+    ${nextItem?`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);margin-bottom:18px">
+      <span style="font-size:1.4rem">👉</span>
+      <div><div style="font-size:.7rem;font-weight:900;color:var(--gold-d);letter-spacing:.06em">下一步</div><div style="font-weight:800;color:var(--g800);font-size:.92rem">${esc(nextItem.text)}</div></div>
+    </div>`:''}
     <div style="position:relative;padding-left:20px">
       ${items.length?items.map((item,i)=>`
         <div style="position:relative;margin-bottom:20px">
           <div style="position:absolute;left:-20px;top:4px;width:12px;height:12px;border-radius:50%;background:${item.done?'var(--ok)':'var(--gold)'};border:2px solid var(--w);box-shadow:var(--sh1)"></div>
           ${i<items.length-1?`<div style="position:absolute;left:-14px;top:16px;width:1px;height:calc(100% + 4px);background:var(--g200)"></div>`:''}
           <div class="card" style="padding:12px 14px">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start">
-              <div>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+              <div style="min-width:0">
                 <div style="font-weight:800;font-size:.88rem">${esc(item.text||item.name||'進度')}</div>
                 <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${item.date||''}</div>
               </div>
-              <span style="font-size:.72rem;padding:2px 8px;border-radius:20px;background:${item.done?'var(--ok-bg)':'var(--warn-bg)'};color:${item.done?'var(--ok)':'var(--warn)'}">${item.done?'✅ 完成':'進行中'}</span>
+              <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
+                <span style="font-size:.72rem;padding:2px 8px;border-radius:20px;background:${item.done?'var(--ok-bg)':'var(--warn-bg)'};color:${item.done?'var(--ok)':'var(--warn)'};white-space:nowrap">${item.done?'✅ 完成':'進行中'}</span>
+                <button onclick="openAddProgressEntry(${id},${item._id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;padding:2px">✏️</button>
+                <button onclick="deleteProgressEntry(${item._id},${id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;padding:2px">🗑</button>
+              </div>
             </div>
             ${item.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(item.note)}</div>`:''}
+            ${item.photoUrl?`<img src="${item.photoUrl}" onclick="openLB('${item.photoUrl}')" style="max-width:100%;max-height:200px;border-radius:var(--rxs);margin-top:8px;cursor:pointer;object-fit:cover">`:''}
           </div>
-        </div>`).join(''):'<div class="empty-state"><div class="es-ic">🔨</div><div class="es-t">尚無進度記錄</div></div>'}
+        </div>`).join(''):'<div class="empty-state"><div class="es-ic">🔨</div><div class="es-t">尚無進度記錄</div><div class="es-s">拍張現場照片，記錄今天做到哪</div></div>'}
     </div>`;
 }
 
 function openProgressForProject(projectId){
-  curProjectId=projectId;
-  showPanel('ad-progress');
-  setTimeout(()=>{
-    const addBtn=document.getElementById('addProgressBtn');
-    if(addBtn) addBtn.click();
-  }, 300);
+  openAddProgressEntry(projectId);
+}
+
+// ══ 案場進度記錄（含照片上傳）══════════════════════════════
+// 注意：這是「進度」分頁專用的簡易記錄，跟舊的「行政→工程進度」整案清單勾選表是不同系統，
+// 各自對應不同用途，這裡只處理案場詳情頁的進度時間軸（也是業主端QR Code看到的內容）
+function openAddProgressEntry(projectId, editId){
+  const p=getProject(projectId);if(!p)return;
+  const existing=editId?DB.get('progress').find(r=>r._id===editId):null;
+
+  const old=document.getElementById('_progBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_progBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9600;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:420px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);max-height:88vh;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="font-weight:800;font-size:.98rem;color:var(--g800);margin-bottom:4px">${editId?'✏️ 編輯進度':'🔨 新增工程進度'}</div>
+    <div style="font-size:.78rem;color:var(--g400);margin-bottom:16px">${esc(p.name)}</div>
+
+    <input type="text" id="_progText" placeholder="例：水電配管完成、木作進場…" value="${existing?esc(existing.text||''):''}" style="width:100%;padding:11px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
+    <input type="date" id="_progDate" value="${existing?existing.date||'':new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
+    <textarea id="_progNote" placeholder="補充說明（選填，業主也看得到）" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box;resize:none">${existing?esc(existing.note||''):''}</textarea>
+
+    <div style="margin-bottom:10px">
+      <div id="_progPhotoZone" style="border:2px dashed var(--g200);border-radius:var(--rs);padding:16px;text-align:center;cursor:pointer;transition:border-color var(--ease)">
+        <div id="_progPhotoPreview" style="${existing?.photoUrl?'':'display:none'}margin-bottom:8px">
+          <img src="${existing?.photoUrl||''}" style="max-width:100%;max-height:160px;border-radius:var(--rxs);object-fit:cover">
+        </div>
+        <div id="_progPhotoHint" style="font-size:.82rem;color:var(--g400)${existing?.photoUrl?';display:none':''}">📷 點這裡上傳現場照片（選填，業主可以看到）</div>
+      </div>
+      <input type="file" id="_progPhotoFile" accept="image/*" style="display:none">
+    </div>
+
+    <label style="display:flex;align-items:center;gap:9px;font-size:.86rem;color:var(--g600);cursor:pointer;margin-bottom:16px">
+      <input type="checkbox" id="_progDone" ${existing?.done?'checked':''} style="width:17px;height:17px;cursor:pointer;accent-color:var(--ok)"> 這個項目已經完成
+    </label>
+
+    <div style="display:flex;gap:8px">
+      <button id="_progCancel" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.86rem;cursor:pointer;font-family:inherit">取消</button>
+      <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
+    </div>
+  </div>`;
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+
+  let photoUrl=existing?.photoUrl||null;
+  const zone=document.getElementById('_progPhotoZone');
+  const fileInp=document.getElementById('_progPhotoFile');
+  zone.addEventListener('click',()=>fileInp.click());
+  fileInp.addEventListener('change',async e=>{
+    const f=e.target.files[0];if(!f)return;
+    zone.querySelector('#_progPhotoHint').textContent='壓縮處理中…';
+    const compressed=await compressImage(f,1280,0.7);
+    photoUrl=compressed;
+    const prev=document.getElementById('_progPhotoPreview');
+    prev.style.display='block';prev.querySelector('img').src=photoUrl;
+    document.getElementById('_progPhotoHint').style.display='none';
+  });
+
+  document.getElementById('_progCancel').addEventListener('click',()=>box.remove());
+  document.getElementById('_progSave').addEventListener('click',()=>{
+    const text=document.getElementById('_progText').value.trim();
+    if(!text){showToast('⚠️ 請填入進度說明');return;}
+    const data={
+      projectId,text,
+      date:document.getElementById('_progDate').value,
+      note:document.getElementById('_progNote').value.trim(),
+      done:document.getElementById('_progDone').checked,
+      photoUrl,
+    };
+    if(editId){DB.upd('progress',editId,data);showToast('✅ 進度已更新');}
+    else{DB.push('progress',{...data,summary:'進度 '+p.name+' '+text});showToast('✅ 進度已新增');}
+    box.remove();
+    renderProjectDetail(projectId,'progress');
+  });
+}
+
+function deleteProgressEntry(id,projectId){
+  confirmAction('刪除這筆進度記錄？',()=>{
+    DB.del('progress',id);
+    renderProjectDetail(projectId,'progress');
+    showToast('✅ 已刪除');
+  });
 }
 
 // ══ 工班付款管理（參考 QuickBooks 帳單付款）══════════════
