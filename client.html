@@ -167,14 +167,9 @@ function render(p,progress,payments,contracts){
   const st=STATUS[p.status||'inquiry']||STATUS.inquiry;
   const pct=STATUS_PCT[p.status||'inquiry']||0;
 
-  // 進度時間軸：合併所有 progress 記錄的 items
-  let allSteps=[];
-  progress.forEach(pr=>{
-    if(pr.items&&pr.items.length){
-      pr.items.forEach(it=>allSteps.push(it));
-    }
-  });
-  // 若無細項，用案場狀態做預設里程碑
+  // 進度時間軸：每一筆 progress 記錄就是一個時間軸項目（拍照現場記錄）
+  let allSteps=progress.slice().sort((a,b)=>(a._id||0)-(b._id||0));
+  // 若還沒有任何現場記錄，用案場狀態顯示預設里程碑，至少讓業主知道大概進度
   if(!allSteps.length){
     const milestones=[
       {text:'簽約完成',status:['signed','progress','done']},
@@ -185,6 +180,7 @@ function render(p,progress,payments,contracts){
     allSteps=milestones.map(m=>({text:m.text,done:m.status.includes(p.status)}));
   }
 
+  const nextStep=allSteps.find(s=>!s.done);
   const totalPaid=payments.reduce((s,l)=>s+(l.amount||0),0);
 
   let html='';
@@ -207,6 +203,15 @@ function render(p,progress,payments,contracts){
     '<div class="prog-bar"><div class="prog-fill" style="width:0%" data-w="'+pct+'"></div></div>'+
   '</div>';
 
+  // 下一步
+  if(nextStep){
+    html+='<div class="card reveal" style="animation-delay:.05s;background:#FFFBEE;border-color:#E8C870"><div style="display:flex;align-items:center;gap:12px">'+
+      '<span style="font-size:1.5rem">👉</span>'+
+      '<div><div style="font-size:.68rem;font-weight:900;color:#9A7830;letter-spacing:.06em">下一步</div>'+
+      '<div style="font-weight:800;color:#28241C;font-size:.95rem">'+esc(nextStep.text||nextStep.name||'')+'</div></div>'+
+    '</div></div>';
+  }
+
   // 進度時間軸
   html+='<div class="card reveal" style="animation-delay:.08s"><div class="card-t">🔨 施工里程碑</div><div class="tl">';
   if(allSteps.length){
@@ -221,6 +226,7 @@ function render(p,progress,payments,contracts){
         '<div class="tl-title">'+esc(step.text||step.name||'進度')+'</div>'+
         (step.date?'<div class="tl-date">'+esc(step.date)+'</div>':'')+
         (step.note?'<div class="tl-note">'+esc(step.note)+'</div>':'')+
+        (step.photoUrl?'<img src="'+step.photoUrl+'" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px;object-fit:cover;display:block">':'')+
       '</div>';
     });
   }else{
