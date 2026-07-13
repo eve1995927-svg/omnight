@@ -119,7 +119,7 @@ const STATUS={
 // 各狀態對應的完成百分比（給進度條）
 const STATUS_PCT={inquiry:5,quoting:15,signed:30,progress:65,done:100,paused:50};
 
-function esc(s){return(s||'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function esc(s){return(s===null||s===undefined?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 function fmt(n){return'NT$'+Math.round(n||0).toLocaleString();}
 
 function getToken(){

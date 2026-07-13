@@ -41,11 +41,15 @@
    <div class="lrb" data-role="punch"><span class="ri">🕐</span>公務</div>
   </div>
 
+  <input class="linp" type="text" id="lAccount" placeholder="帳號" autocomplete="username" style="display:none">
   <input type="hidden" id="lUser" value="omnight">
   <select class="linp" id="lEmpSelect" style="display:none;margin-bottom:10px;cursor:pointer">
    <option value="">共用帳號（不指定個人）</option>
   </select>
   <input class="linp" type="password" id="lPass" placeholder="密碼" autocomplete="current-password">
+  <label id="lRememberWrap" style="display:none;align-items:center;gap:8px;font-size:.85rem;color:var(--g500);font-weight:600;margin:-2px 0 14px 2px;cursor:pointer">
+   <input type="checkbox" id="lRemember" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer">記住帳號
+  </label>
   <button class="lbtn" id="lBtn">登　入</button>
   <div class="lerr" id="lErr">帳號或密碼不正確，請再試一次</div>
 
