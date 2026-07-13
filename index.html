@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>澤居 AI 智能後台</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0F2237">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css">
@@ -716,7 +722,7 @@
  <div class="rpt-card" id="rptCard" style="display:none">
   <div class="rpt-hd"><div><div class="rpt-title" id="rptTit"></div><div id="rptMet" style="font-size:.75rem;color:var(--gray-400);margin-top:3px;font-family:'DM Mono',monospace"></div></div><div style="font-size:.75rem;color:var(--gray-400)">澤居室內裝修</div></div>
   <div id="rptBd"></div>
-  <div style="display:flex;gap:8px;margin-top:18px"><button class="btn bg bsm" onclick="window.print()">🖨 列印</button><button class="btn bo bsm" id="svRpt">💾 儲存</button></div>
+  <div style="display:flex;gap:8px;margin-top:18px"><button class="btn bg bsm" onclick="window.print()">🖨 列印</button><button class="btn bg bsm" id="exportRpt">📥 匯出Excel</button><button class="btn bo bsm" id="svRpt">💾 儲存紀錄</button></div>
  </div>
 </div>
 
@@ -807,9 +813,30 @@
   <button class="btn bo bfull" onclick="openPunchRequest()" style="padding:14px;font-size:.9rem;border-radius:12px">✏️ 申請補打卡 / 修改記錄</button>
  </div>
 
+ <!-- 休假 -->
+ <div style="margin:20px 4px 0;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;overflow:hidden">
+  <div style="padding:10px 16px;background:var(--g50);border-bottom:1px solid var(--g100);font-size:.78rem;font-weight:900;color:var(--g500);letter-spacing:.06em">🏖️ 我的休假</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--g100)" id="leaveQuotaCard">
+   <div style="padding:16px;text-align:center;border-right:1px solid var(--g100)">
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">剩餘特休</div>
+    <div style="font-size:1.6rem;font-weight:900;color:var(--ok)" id="leaveRemainDays">—</div>
+    <div style="font-size:.68rem;color:var(--g400)">天</div>
+   </div>
+   <div style="padding:16px;text-align:center">
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">今年已使用</div>
+    <div style="font-size:1.6rem;font-weight:900;color:var(--g600)" id="leaveUsedDays">—</div>
+    <div style="font-size:.68rem;color:var(--g400)">天</div>
+   </div>
+  </div>
+  <div style="padding:12px 16px">
+   <button class="btn bg bfull" onclick="openLeaveRequestBox()" style="padding:12px;font-size:.88rem">🙋 申請休假</button>
+  </div>
+  <div id="myLeaveList" style="padding:0 16px 14px"></div>
+ </div>
+
 </div>
 <!-- ══ HR SETTINGS ══ -->
-<<div class="panel" id="p-hr-settings">
+<div class="panel" id="p-hr-settings">
 
  <!-- 頂部統計 -->
  <div class="ph">
@@ -827,6 +854,7 @@
  <div class="ledger-tab" id="hrTabBar" style="margin-bottom:16px">
   <div class="ltab on" data-ht="emp"     onclick="switchHRTab('emp')">👤 員工資料</div>
   <div class="ltab"    data-ht="salary"  onclick="switchHRTab('salary')">💰 薪資管理</div>
+  <div class="ltab"    data-ht="leave"   onclick="switchHRTab('leave')">🏖️ 休假管理 <span id="hrLeavePendingBadge" style="display:none;background:var(--bad);color:#fff;border-radius:20px;font-size:.66rem;padding:1px 7px;margin-left:3px;font-weight:900"></span></div>
   <div class="ltab"    data-ht="attend"  onclick="switchHRTab('attend')">📊 出勤統計</div>
   <div class="ltab"    data-ht="punch"   onclick="switchHRTab('punch')">🕐 打卡記錄</div>
   <div class="ltab"    data-ht="request" onclick="switchHRTab('request')">✏️ 修改申請</div>
@@ -839,6 +867,18 @@
 
  <div class="ledger-body" id="hrb-salary">
   <div id="salaryList"></div>
+ </div>
+
+ <div class="ledger-body" id="hrb-leave">
+  <div class="g3" style="margin-bottom:16px">
+   <div class="stat"><div class="sn" id="leavePendingCnt">0</div><div class="sl">待審核申請</div></div>
+   <div class="stat"><div class="sn" id="leaveApprovedThisMonth">0</div><div class="sl">本月已核准天數</div></div>
+   <div class="stat"><div class="sn" id="leaveEmpCnt">0</div><div class="sl">員工總覽</div></div>
+  </div>
+  <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">📋 待審核申請</div>
+  <div id="leavePendingList" style="margin-bottom:24px"></div>
+  <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">👥 每位員工休假總覽</div>
+  <div id="leaveEmpOverview"></div>
  </div>
 
  <div class="ledger-body" id="hrb-attend">
@@ -1443,5 +1483,13 @@
 <script src="js/hr-marketing.js"></script>
 <script src="js/billing-contracts.js"></script>
 <script src="js/misc.js"></script>
+<script>
+// 註冊 Service Worker，讓網頁可以「加到主畫面」變成類似App的體驗
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{}); // 註冊失敗不影響網頁本身運作
+  });
+}
+</script>
 </body>
 </html>

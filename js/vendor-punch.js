@@ -477,6 +477,7 @@ function initPunchClock(){
   }
   tick();if(punchInterval)clearInterval(punchInterval);punchInterval=setInterval(tick,1000);
   renderPunchRec();updatePunchBtn();
+  if(typeof renderMyLeaveStatus==='function')renderMyLeaveStatus();
 }
 
 function doPunch(){

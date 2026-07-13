@@ -991,8 +991,12 @@ function shareProjectToClient(id){
   if(!p.token){
     const token='zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
     DB.upd('projects',id,{token});
-    p.token=token;
   }
+  renderShareBox(id);
+}
+
+function renderShareBox(id){
+  const p=getProject(id);if(!p)return;
   const base=location.origin+location.pathname.replace(/[^/]*$/,'');
   const url=base+'client.html?c='+p.token;
 
@@ -1006,15 +1010,25 @@ function shareProjectToClient(id){
     <div style="font-size:.82rem;color:var(--g400);margin-bottom:18px">${esc(p.name)}</div>
     <div id="_qrImg" style="width:200px;height:200px;margin:0 auto 18px;background:var(--g50);border-radius:var(--rs);display:flex;align-items:center;justify-content:center;padding:10px"></div>
     <div style="font-size:.78rem;color:var(--g500);margin-bottom:8px;text-align:left;font-weight:700">業主專屬連結</div>
-    <div style="display:flex;gap:6px;margin-bottom:16px">
+    <div style="display:flex;gap:6px;margin-bottom:12px">
       <input id="_shareUrl" readonly value="${url}" style="flex:1;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:monospace;background:var(--g50);color:var(--g600);min-width:0">
       <button onclick="navigator.clipboard.writeText('${url}').then(()=>showToast('✅ 已複製連結'))" style="padding:10px 14px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">複製</button>
     </div>
+    <button id="_shareRegenBtn" style="width:100%;padding:9px;border:1.5px solid var(--bad-bd);border-radius:var(--rs);background:var(--bad-bg);color:var(--bad);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">🔄 重新產生連結（舊連結會立刻失效）</button>
     <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 業主打開連結就能看到：施工進度、收款紀錄、合約摘要。<br>看不到你的成本內帳，安全放心。</div>
     <button onclick="document.getElementById('_shareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
    </div>`;
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
+
+  document.getElementById('_shareRegenBtn').addEventListener('click',()=>{
+    confirmAction('重新產生連結後，舊的QR Code和連結會立刻失效，業主要重新掃新的才看得到進度。確定要換一組嗎？',()=>{
+      const newToken='zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
+      DB.upd('projects',id,{token:newToken});
+      showToast('✅ 已產生新連結，記得重新傳給業主');
+      renderShareBox(id);
+    });
+  });
 
   // 產生 QR Code（用免費 QR API）
   const qrDiv=document.getElementById('_qrImg');

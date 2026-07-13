@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>開始使用｜案場通</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{--ink:#0F2237;--ink-2:#1B344E;--paper:#F6F4EE;--gold:#C8A44A;--gold-d:#9A7830;--gold-l:#E8C870;--gold-pale:#FFFBEE;--steel:#5B6B7A;--steel-l:#94A2AF;--ok:#2E9E6B;--bad:#B04A3A;--bad-bg:#FBEEEB;--w:#fff}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--ink);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.wrap{max-width:440px;width:100%}
+.logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:30px}
+.logo-mark{width:30px;height:30px;border:2.5px solid var(--gold);border-radius:6px;position:relative}
+.logo-mark::before{content:"";position:absolute;inset:5px 5px auto 5px;height:2.5px;background:var(--gold)}
+.logo-mark::after{content:"";position:absolute;inset:auto 5px 5px 5px;height:2.5px;background:var(--gold);opacity:.55}
+.logo-t{font-weight:900;font-size:1.2rem}
+.card{background:var(--w);color:var(--ink);border-radius:20px;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.card h1{font-size:1.4rem;font-weight:900;margin-bottom:6px;text-align:center}
+.card p.sub{color:var(--steel);font-size:.88rem;text-align:center;margin-bottom:24px}
+.field{margin-bottom:14px}
+.field label{display:block;font-size:.78rem;font-weight:700;color:var(--steel);margin-bottom:6px}
+.field input{width:100%;padding:12px 14px;border:1.5px solid #E8E6DF;border-radius:10px;font-size:.9rem;font-family:inherit;box-sizing:border-box}
+.field input:focus{outline:none;border-color:var(--gold)}
+.price-box{background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:12px;padding:16px;margin:18px 0;text-align:center}
+.price-box .amt{font-size:1.7rem;font-weight:900;color:var(--gold-d)}
+.price-box .note{font-size:.76rem;color:var(--steel);margin-top:2px}
+.btn{width:100%;padding:14px;border:none;border-radius:10px;background:var(--gold);color:var(--ink);font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit;transition:transform .15s}
+.btn:hover{transform:translateY(-1px)}
+.btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+.fine{text-align:center;font-size:.74rem;color:var(--steel);margin-top:14px;line-height:1.6}
+.err{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:10px 12px;font-size:.82rem;margin-bottom:14px;display:none}
+.spin{width:16px;height:16px;border:2px solid rgba(15,34,55,.2);border-top-color:var(--ink);border-radius:50%;display:inline-block;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="logo"><span class="logo-mark"></span><span class="logo-t">案場通</span></div>
+  <div class="card">
+    <h1>開始 14 天免費試用</h1>
+    <p class="sub">不用信用卡也能開始，填完資料我們會盡快跟你聯繫開通</p>
+
+    <div class="err" id="errBox"></div>
+
+    <div class="field">
+      <label>公司名稱</label>
+      <input type="text" id="companyName" placeholder="例：澤居室內裝修">
+    </div>
+    <div class="field">
+      <label>聯絡 Email</label>
+      <input type="email" id="email" placeholder="you@example.com">
+    </div>
+    <div class="field">
+      <label>聯絡電話</label>
+      <input type="tel" id="phone" placeholder="09xx-xxx-xxx">
+    </div>
+
+    <div class="price-box">
+      <div class="amt">NT$1,280<span style="font-size:.9rem;font-weight:600">／月</span></div>
+      <div class="note">全部功能都有，14天免費試用</div>
+    </div>
+
+    <form id="signupForm" action="/.netlify/functions/newebpay-create-period" method="POST" target="_self">
+    <button type="submit" class="btn" id="submitBtn">開始免費試用 →</button>
+    </form>
+    <div class="fine">試用期間不會扣款・可以隨時取消<br>送出後會導向藍新金流頁面完成信用卡驗證（僅授權10元確認卡片有效，不會馬上收費）</div>
+  </div>
+</div>
+
+<script>
+document.getElementById('signupForm').addEventListener('submit', (e) => {
+  const companyName = document.getElementById('companyName').value.trim();
+  const email = document.getElementById('email').value.trim();
+  const errBox = document.getElementById('errBox');
+
+  errBox.style.display = 'none';
+  if (!companyName || !email) {
+    e.preventDefault();
+    errBox.textContent = '請填入公司名稱和 Email';
+    errBox.style.display = 'block';
+    return;
+  }
+
+  // 把欄位值帶進表單一起送出（隱藏欄位）
+  const form = e.target;
+  ['companyName', 'email', 'phone'].forEach((id) => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = id;
+    input.value = document.getElementById(id).value.trim();
+    form.appendChild(input);
+  });
+
+  const btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span>處理中…';
+});
+</script>
+</body>
+</html>
