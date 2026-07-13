@@ -4,117 +4,44 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>開始使用｜案場通</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
-:root{
-  --canvas:#F4F1FA; --fg:#332F3A; --muted:#635F69;
-  --violet:#7C3AED; --violet-l:#A78BFA; --violet-d:#5B21B6;
-  --emerald:#10B981; --emerald-l:#34D399;
-  --amber:#F59E0B; --amber-l:#FBBF24;
-  --bad:#DC2626; --bad-bg:#FEF2F2; --w:#fff;
-}
+:root{--ink:#0F2237;--ink-2:#1B344E;--paper:#F6F4EE;--gold:#C8A44A;--gold-d:#9A7830;--gold-l:#E8C870;--gold-pale:#FFFBEE;--steel:#5B6B7A;--steel-l:#94A2AF;--ok:#2E9E6B;--bad:#B04A3A;--bad-bg:#FBEEEB;--w:#fff}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Noto Sans CJK TC',sans-serif;font-weight:500;background:var(--canvas);color:var(--fg);min-height:100vh;padding:40px 20px;-webkit-font-smoothing:antialiased}
-.wrap{max-width:560px;margin:0 auto}
-.logo{display:flex;align-items:center;gap:12px;justify-content:center;margin-bottom:32px}
-.logo-tile{width:44px;height:44px;border-radius:14px;background:linear-gradient(155deg,#8B5CF6,var(--violet) 60%,var(--violet-d));display:flex;align-items:center;justify-content:center;font-size:20px;box-shadow:6px 6px 14px rgba(91,33,182,.3)}
-.logo-t{font-family:'Noto Sans CJK TC';font-weight:900;font-size:1.3rem}
-.card{background:var(--w);border-radius:36px;padding:36px 32px;box-shadow:20px 20px 44px rgba(160,150,180,.22),-12px -12px 28px rgba(255,255,255,.9)}
-.card h1{font-family:'Noto Sans CJK TC';font-weight:900;font-size:1.5rem;margin-bottom:6px;text-align:center}
-.card p.sub{color:var(--muted);font-size:.9rem;font-weight:600;text-align:center;margin-bottom:26px}
-
-/* 月繳/年繳切換 */
-.cycle-toggle{display:flex;background:var(--canvas);border-radius:20px;padding:5px;margin-bottom:24px}
-.cycle-btn{flex:1;padding:11px;border:none;background:none;border-radius:16px;font-family:inherit;font-weight:800;font-size:.88rem;color:var(--muted);cursor:pointer;transition:all .2s;position:relative}
-.cycle-btn.sel{background:var(--w);color:var(--violet);box-shadow:4px 4px 10px rgba(160,150,180,.2)}
-.cycle-badge{display:inline-block;background:var(--emerald);color:#fff;font-size:.65rem;font-weight:900;padding:2px 8px;border-radius:10px;margin-left:6px;vertical-align:2px}
-
-.plans{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
-.plan{border:2.5px solid #EDEAF5;border-radius:24px;padding:18px 20px;cursor:pointer;transition:all .2s;position:relative}
-.plan:hover{border-color:var(--violet-l)}
-.plan.sel{border-color:var(--violet);background:rgba(124,58,237,.04)}
-.plan-top{display:flex;justify-content:space-between;align-items:center}
-.plan-name{font-weight:900;font-size:1.02rem}
-.plan-price{font-weight:900;font-size:1.15rem;color:var(--violet);text-align:right}
-.plan-price span{font-size:.72rem;font-weight:700;color:var(--muted);display:block}
-.plan-desc{font-size:.8rem;color:var(--muted);font-weight:600;margin-top:4px}
-.plan-badge{position:absolute;top:-11px;left:20px;background:linear-gradient(155deg,#FBBF24,#F59E0B);color:#3A2400;font-weight:900;font-size:.68rem;padding:4px 12px;border-radius:14px}
-.plan-radio{position:absolute;top:18px;right:20px;width:22px;height:22px;border-radius:50%;border:2.5px solid #DDD8E8;transition:all .2s}
-.plan.sel .plan-radio{border-color:var(--violet);background:var(--violet);box-shadow:inset 0 0 0 4px #fff}
-
+body{font-family:'Noto Sans TC',sans-serif;background:var(--ink);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.wrap{max-width:440px;width:100%}
+.logo{display:flex;align-items:center;gap:10px;justify-content:center;margin-bottom:30px}
+.logo-mark{width:30px;height:30px;border:2.5px solid var(--gold);border-radius:6px;position:relative}
+.logo-mark::before{content:"";position:absolute;inset:5px 5px auto 5px;height:2.5px;background:var(--gold)}
+.logo-mark::after{content:"";position:absolute;inset:auto 5px 5px 5px;height:2.5px;background:var(--gold);opacity:.55}
+.logo-t{font-weight:900;font-size:1.2rem}
+.card{background:var(--w);color:var(--ink);border-radius:20px;padding:32px 28px;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.card h1{font-size:1.4rem;font-weight:900;margin-bottom:6px;text-align:center}
+.card p.sub{color:var(--steel);font-size:.88rem;text-align:center;margin-bottom:24px}
 .field{margin-bottom:14px}
-.field label{display:block;font-size:.8rem;font-weight:700;color:var(--muted);margin-bottom:6px}
-.field input{width:100%;padding:13px 16px;border:2px solid #EDEAF5;border-radius:14px;font-size:.92rem;font-family:inherit;box-sizing:border-box;transition:border-color .2s}
-.field input:focus{outline:none;border-color:var(--violet)}
-
-.btn{width:100%;padding:17px;border:none;border-radius:20px;background:linear-gradient(155deg,var(--violet-l),var(--violet));color:#fff;font-weight:800;font-size:1rem;cursor:pointer;font-family:inherit;transition:all .2s;box-shadow:10px 10px 22px rgba(124,58,237,.3),inset 2px 2px 6px rgba(255,255,255,.3)}
-.btn:hover{transform:translateY(-2px)}
-.btn:active{transform:scale(.97)}
+.field label{display:block;font-size:.78rem;font-weight:700;color:var(--steel);margin-bottom:6px}
+.field input{width:100%;padding:12px 14px;border:1.5px solid #E8E6DF;border-radius:10px;font-size:.9rem;font-family:inherit;box-sizing:border-box}
+.field input:focus{outline:none;border-color:var(--gold)}
+.price-box{background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:12px;padding:16px;margin:18px 0;text-align:center}
+.price-box .amt{font-size:1.7rem;font-weight:900;color:var(--gold-d)}
+.price-box .note{font-size:.76rem;color:var(--steel);margin-top:2px}
+.btn{width:100%;padding:14px;border:none;border-radius:10px;background:var(--gold);color:var(--ink);font-weight:800;font-size:.95rem;cursor:pointer;font-family:inherit;transition:transform .15s}
+.btn:hover{transform:translateY(-1px)}
 .btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.btn-outline{width:100%;padding:14px;border:2px solid #EDEAF5;border-radius:18px;background:none;color:var(--muted);font-weight:700;font-size:.9rem;cursor:pointer;font-family:inherit;margin-top:10px}
-.btn-outline:hover{border-color:var(--violet-l);color:var(--violet)}
-
-.fine{text-align:center;font-size:.78rem;color:var(--muted);font-weight:600;margin-top:16px;line-height:1.7}
-.err{background:var(--bad-bg);color:var(--bad);border-radius:14px;padding:12px 16px;font-size:.85rem;font-weight:700;margin-bottom:16px;display:none}
-.back{display:block;text-align:center;margin-top:20px;font-size:.85rem;font-weight:700;color:var(--muted);text-decoration:none}
-.back:hover{color:var(--violet)}
-
-/* Step 2：轉帳資訊 */
-.step2{display:none}
-.transfer-box{background:var(--canvas);border-radius:24px;padding:24px;margin-bottom:20px}
-.transfer-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:2px solid rgba(99,95,105,.08)}
-.transfer-row:last-child{border-bottom:none}
-.transfer-row .l{font-size:.82rem;color:var(--muted);font-weight:700}
-.transfer-row .v{font-weight:900;font-size:1rem}
-.transfer-row .v.big{color:var(--violet);font-size:1.3rem}
-.copy-btn{background:var(--w);border:1.5px solid #DDD8E8;border-radius:10px;padding:5px 12px;font-size:.75rem;font-weight:700;color:var(--violet);cursor:pointer;font-family:inherit;margin-left:8px}
-.step-badge{display:inline-flex;align-items:center;gap:8px;background:var(--canvas);padding:8px 18px;border-radius:20px;font-weight:800;font-size:.82rem;color:var(--violet);margin-bottom:18px}
-.success-box{display:none;text-align:center;padding:20px 0}
-.success-ico{font-size:3rem;margin-bottom:14px}
+.fine{text-align:center;font-size:.74rem;color:var(--steel);margin-top:14px;line-height:1.6}
+.err{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:10px 12px;font-size:.82rem;margin-bottom:14px;display:none}
+.spin{width:16px;height:16px;border:2px solid rgba(15,34,55,.2);border-top-color:var(--ink);border-radius:50%;display:inline-block;animation:sp .7s linear infinite;vertical-align:-3px;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <a href="index.html" class="logo"><span class="logo-tile">🏗️</span><span class="logo-t">案場通</span></a>
-
-  <!-- STEP 1：選方案 -->
-  <div class="card" id="step1">
+  <div class="logo"><span class="logo-mark"></span><span class="logo-t">案場通</span></div>
+  <div class="card">
     <h1>開始 14 天免費試用</h1>
-    <p class="sub">選一個方案，之後隨時可以更換</p>
+    <p class="sub">不用信用卡也能開始，填完資料我們會盡快跟你聯繫開通</p>
 
-    <div class="cycle-toggle">
-      <button type="button" class="cycle-btn sel" data-cycle="monthly">月繳</button>
-      <button type="button" class="cycle-btn" data-cycle="annual">年繳<span class="cycle-badge">省20%</span></button>
-    </div>
-
-    <div class="plans" id="plans">
-      <div class="plan" data-plan="light" data-m="580" data-y="5568">
-        <div class="plan-radio"></div>
-        <div class="plan-top">
-          <span class="plan-name">🏠 入門方案</span>
-          <span class="plan-price price-display">NT$580<span>/月</span></span>
-        </div>
-        <div class="plan-desc">案場無上限・報價合約・業主端分享・3人帳號</div>
-      </div>
-      <div class="plan sel" data-plan="full" data-m="1280" data-y="12288">
-        <div class="plan-badge">最多人選</div>
-        <div class="plan-radio"></div>
-        <div class="plan-top">
-          <span class="plan-name">💎 全包方案</span>
-          <span class="plan-price price-display">NT$1,280<span>/月</span></span>
-        </div>
-        <div class="plan-desc">入門方案全部功能＋薪資休假・無上限帳號</div>
-      </div>
-      <div class="plan" data-plan="enterprise" data-m="3980" data-y="38208">
-        <div class="plan-radio"></div>
-        <div class="plan-top">
-          <span class="plan-name">🏢 企業方案</span>
-          <span class="plan-price price-display">NT$3,980<span>/月</span></span>
-        </div>
-        <div class="plan-desc">15人以內帳號・LINE官方帳號整合・優先客服</div>
-      </div>
-    </div>
-
-    <div class="err" id="errBox1"></div>
+    <div class="err" id="errBox"></div>
 
     <div class="field">
       <label>公司名稱</label>
@@ -129,154 +56,45 @@ body{font-family:'Noto Sans CJK TC',sans-serif;font-weight:500;background:var(--
       <input type="tel" id="phone" placeholder="09xx-xxx-xxx">
     </div>
 
-    <button type="button" class="btn" id="toStep2Btn">下一步：查看轉帳資訊 →</button>
-    <div class="fine">14天免費試用期間可以先體驗系統，轉帳後我們確認即開通</div>
-  </div>
-
-  <!-- STEP 2：轉帳資訊 + 確認 -->
-  <div class="card step2" id="step2">
-    <div class="step-badge">← <span id="backToStep1">重新選擇方案</span></div>
-    <h1>完成轉帳，馬上開通</h1>
-    <p class="sub" id="planSummary">全包方案・月繳</p>
-
-    <div class="transfer-box">
-      <div class="transfer-row"><span class="l">戶名</span><span class="v">堅果創意有限公司</span></div>
-      <div class="transfer-row"><span class="l">銀行</span><span class="v">中國信託（822）</span></div>
-      <div class="transfer-row"><span class="l">帳號</span><span class="v">750540208531 <button type="button" class="copy-btn" id="copyAcctBtn">複製</button></span></div>
-      <div class="transfer-row"><span class="l">應付金額</span><span class="v big" id="payAmount">NT$1,280</span></div>
+    <div class="price-box">
+      <div class="amt">NT$1,280<span style="font-size:.9rem;font-weight:600">／月</span></div>
+      <div class="note">全部功能都有，14天免費試用</div>
     </div>
 
-    <div class="err" id="errBox2"></div>
-
-    <form name="signup" method="POST" data-netlify="true" id="signupForm">
-      <input type="hidden" name="form-name" value="signup">
-      <input type="hidden" name="companyName" id="hCompany">
-      <input type="hidden" name="email" id="hEmail">
-      <input type="hidden" name="phone" id="hPhone">
-      <input type="hidden" name="plan" id="hPlan">
-      <input type="hidden" name="billingCycle" id="hCycle">
-      <input type="hidden" name="amount" id="hAmount">
-
-      <div class="field">
-        <label>轉帳帳號後五碼</label>
-        <input type="text" name="last5" id="last5" placeholder="例：50208" inputmode="numeric" autocomplete="off">
-      </div>
-
-      <button type="submit" class="btn" id="submitBtn">送出，等待開通 →</button>
+    <form id="signupForm" action="/.netlify/functions/newebpay-create-period" method="POST" target="_self">
+    <button type="submit" class="btn" id="submitBtn">開始免費試用 →</button>
     </form>
-    <div class="fine">送出後我們會在1個工作天內核對轉帳並開通帳號，開通後會用 Email 通知你</div>
+    <div class="fine">試用期間不會扣款・可以隨時取消<br>送出後會導向藍新金流頁面完成信用卡驗證（僅授權10元確認卡片有效，不會馬上收費）</div>
   </div>
-
-  <!-- 完成畫面 -->
-  <div class="card success-box" id="successBox">
-    <div class="success-ico">🎉</div>
-    <h1>已收到你的申請！</h1>
-    <p class="sub" style="margin-top:10px">我們會核對轉帳款項，1個工作天內用 Email 通知你開通帳號</p>
-  </div>
-
-  <a href="index.html" class="back">← 回到首頁</a>
 </div>
 
 <script>
-let curCycle = 'monthly';
-let curPlan = null;
-
-const plans = document.querySelectorAll('.plan');
-function selectPlan(el){
-  plans.forEach(p => p.classList.remove('sel'));
-  el.classList.add('sel');
-  curPlan = el;
-}
-plans.forEach(p => p.addEventListener('click', () => selectPlan(p)));
-curPlan = document.querySelector('.plan.sel');
-
-// 月繳/年繳切換
-document.querySelectorAll('.cycle-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.cycle-btn').forEach(b => b.classList.remove('sel'));
-    btn.classList.add('sel');
-    curCycle = btn.dataset.cycle;
-    plans.forEach(p => {
-      const disp = p.querySelector('.price-display');
-      if (curCycle === 'monthly') {
-        disp.innerHTML = 'NT$' + Number(p.dataset.m).toLocaleString() + '<span>/月</span>';
-      } else {
-        disp.innerHTML = 'NT$' + Number(p.dataset.y).toLocaleString() + '<span>/年</span>';
-      }
-    });
-  });
-});
-
-// 支援從首頁帶 ?plan= 過來
-const urlParams = new URLSearchParams(window.location.search);
-const presetPlan = urlParams.get('plan');
-if (presetPlan) {
-  const match = document.querySelector('.plan[data-plan="' + presetPlan + '"]');
-  if (match) selectPlan(match);
-}
-
-// STEP 1 → STEP 2
-document.getElementById('toStep2Btn').addEventListener('click', () => {
+document.getElementById('signupForm').addEventListener('submit', (e) => {
   const companyName = document.getElementById('companyName').value.trim();
   const email = document.getElementById('email').value.trim();
-  const errBox = document.getElementById('errBox1');
+  const errBox = document.getElementById('errBox');
 
   errBox.style.display = 'none';
   if (!companyName || !email) {
+    e.preventDefault();
     errBox.textContent = '請填入公司名稱和 Email';
     errBox.style.display = 'block';
     return;
   }
 
-  const planName = curPlan.querySelector('.plan-name').textContent.trim();
-  const amount = curCycle === 'monthly' ? curPlan.dataset.m : curPlan.dataset.y;
-  const cycleLabel = curCycle === 'monthly' ? '月繳' : '年繳（已折8折）';
-
-  document.getElementById('planSummary').textContent = planName + '・' + cycleLabel;
-  document.getElementById('payAmount').textContent = 'NT$' + Number(amount).toLocaleString();
-
-  document.getElementById('hCompany').value = companyName;
-  document.getElementById('hEmail').value = email;
-  document.getElementById('hPhone').value = document.getElementById('phone').value.trim();
-  document.getElementById('hPlan').value = planName;
-  document.getElementById('hCycle').value = cycleLabel;
-  document.getElementById('hAmount').value = 'NT$' + Number(amount).toLocaleString();
-
-  document.getElementById('step1').style.display = 'none';
-  document.getElementById('step2').style.display = 'block';
-});
-
-document.getElementById('backToStep1').addEventListener('click', () => {
-  document.getElementById('step2').style.display = 'none';
-  document.getElementById('step1').style.display = 'block';
-});
-
-document.getElementById('copyAcctBtn').addEventListener('click', () => {
-  navigator.clipboard.writeText('750540208531').then(() => {
-    const btn = document.getElementById('copyAcctBtn');
-    const orig = btn.textContent;
-    btn.textContent = '已複製';
-    setTimeout(() => { btn.textContent = orig; }, 1500);
+  // 把欄位值帶進表單一起送出（隱藏欄位）
+  const form = e.target;
+  ['companyName', 'email', 'phone'].forEach((id) => {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = id;
+    input.value = document.getElementById(id).value.trim();
+    form.appendChild(input);
   });
-});
 
-// 表單送出（Netlify Forms 會自動收，不用另外接後端）
-document.getElementById('signupForm').addEventListener('submit', (e) => {
-  const last5 = document.getElementById('last5').value.trim();
-  const errBox = document.getElementById('errBox2');
-  errBox.style.display = 'none';
-
-  if (!/^[0-9]{5}$/.test(last5)) {
-    e.preventDefault();
-    errBox.textContent = '請輸入轉帳帳號後五碼（5位數字）';
-    errBox.style.display = 'block';
-    return;
-  }
-
-  // 讓 Netlify Forms 原生送出（不攔截），但先秀出處理中狀態
   const btn = document.getElementById('submitBtn');
   btn.disabled = true;
-  btn.textContent = '處理中…';
+  btn.innerHTML = '<span class="spin"></span>處理中…';
 });
 </script>
 </body>
