@@ -823,7 +823,7 @@ function setupApp(role){
   }
   if(!isIndividual) _punchEmployee=null;
 
-  if(uDot)uDot.textContent=isIndividual?empName.charAt(0):(a?.abbr||'?');
+  if(uDot)uDot.textContent=isIndividual?(empName||'?').charAt(0):(a?.abbr||'?');
   if(uName)uName.textContent=displayName;
   if(aName)aName.textContent=displayName;
   if(aRole)aRole.textContent=isIndividual?(role==='punch'?'員工打卡':'員工'):(a?.role||'');

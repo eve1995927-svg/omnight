@@ -504,10 +504,10 @@ function renderInvoices(filter){
     }else{thumb.className='ino';thumb.textContent='🧾';}
     card.innerHTML=
       '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:.88rem;font-weight:900;color:var(--info);font-family:monospace">'+(v.no||'—')+'</div>'+
-        '<div style="font-size:.85rem;font-weight:700;margin-top:3px">'+(v.desc||'—')+
-          ' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;border:1px solid var(--info-bd)">'+(v.cat||'')+'</span></div>'+
-        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px;font-family:monospace">'+(v.date||'')+' · '+(v._ts||'').split(' ')[0]+'</div>'+
+        '<div style="font-size:.88rem;font-weight:900;color:var(--info);font-family:monospace">'+esc(v.no||'—')+'</div>'+
+        '<div style="font-size:.85rem;font-weight:700;margin-top:3px">'+esc(v.desc||'—')+
+          ' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;border:1px solid var(--info-bd)">'+esc(v.cat||'')+'</span></div>'+
+        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px;font-family:monospace">'+esc(v.date||'')+' · '+esc((v._ts||'').split(' ')[0])+'</div>'+
       '</div>'+
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">'+
         '<div style="font-size:1rem;font-weight:900;font-family:monospace">'+fmt(v.amount||0)+'</div>'+
@@ -803,13 +803,13 @@ function renderClientList(filter){
     const el=document.createElement('div');
     el.style.cssText='padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--g100);transition:all var(--ease);position:relative;'+(isActive?'background:var(--gold-pale);border-left:3px solid var(--gold)':'border-left:3px solid transparent');
 
-    const initials=c.name.charAt(0);
+    const initials=(c.name||'?').charAt(0);
     el.innerHTML=
       '<div style="display:flex;align-items:center;gap:9px">'+
-        '<div style="width:32px;height:32px;border-radius:50%;background:'+(isActive?'linear-gradient(135deg,var(--gold-d),var(--gold))':'var(--g200)')+';color:'+(isActive?'var(--w)':'var(--g500)')+';font-size:.82rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--ease)">'+initials+'</div>'+
+        '<div style="width:32px;height:32px;border-radius:50%;background:'+(isActive?'linear-gradient(135deg,var(--gold-d),var(--gold))':'var(--g200)')+';color:'+(isActive?'var(--w)':'var(--g500)')+';font-size:.82rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--ease)">'+esc(initials)+'</div>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.name+'</div>'+
-          '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+(c.phone||'未填電話')+'</div>'+
+          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.name||'未命名客戶')+'</div>'+
+          '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+esc(c.phone||'未填電話')+'</div>'+
         '</div>'+
       '</div>';
 
@@ -839,7 +839,7 @@ function switchClient(id){
   const hd=document.getElementById('chatClientHeader');
   if(hd)hd.style.display='flex';
   const av=document.getElementById('chatClientAvatar');
-  if(av)av.textContent=client.name.charAt(0);
+  if(av)av.textContent=(client.name||'?').charAt(0);
   const nm=document.getElementById('chatClientName');
   if(nm)nm.textContent=client.name;
   // 初始化對話

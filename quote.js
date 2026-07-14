@@ -447,8 +447,8 @@ function dlXls(name,type,sections,mode){
 
     // ══ 主表：完全按照模板格式 ══
     const ws=wb.addWorksheet('澤居報價單');
-    // 欄寬完全跟模板一樣
-    ws.columns=[{width:8},{width:33},{width:8},{width:8},{width:12},{width:12},{width:23}];
+    // 欄寬：E、F（單價/複價）跟 C、D（單位/數量）同寬，騰出來的空間都給 G 備註欄用（客戶回饋原本 E、F 太寬、大小不協調）
+    ws.columns=[{width:8},{width:33},{width:8},{width:8},{width:8},{width:8},{width:31}];
 
     function setCell(ref, val, opts={}){
       const c=ws.getCell(ref);
