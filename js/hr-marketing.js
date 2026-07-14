@@ -49,8 +49,8 @@ function renderProgress(){
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+p.caseN+'</div>'+
-          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+p.client+'</div>':'')+
+          '<div style="font-size:.95rem;font-weight:900">'+esc(p.caseN)+'</div>'+
+          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
@@ -67,8 +67,8 @@ function renderProgress(){
         (p.items||[]).map(it=>
           '<div class="prog-item">'+
             '<div class="prog-dot '+(it.done?'done':it.date?'ing':'todo')+'"></div>'+
-            '<div style="flex:1;font-size:.85rem;font-weight:'+(it.done?'700':'500')+';color:'+(it.done?'var(--ok)':'var(--g700)')+'">'+it.text+'</div>'+
-            (it.date?'<div style="font-size:.72rem;color:var(--g400);font-family:\'DM Mono\',monospace">'+it.date+'</div>':'')+
+            '<div style="flex:1;font-size:.85rem;font-weight:'+(it.done?'700':'500')+';color:'+(it.done?'var(--ok)':'var(--g700)')+'">'+esc(it.text)+'</div>'+
+            (it.date?'<div style="font-size:.72rem;color:var(--g400);font-family:\'DM Mono\',monospace">'+esc(it.date)+'</div>':'')+
           '</div>'
         ).join('')+
       '</div>';
@@ -77,7 +77,7 @@ function renderProgress(){
       document.getElementById('progCase').value=p.caseN||'';
       document.getElementById('progClient').value=p.client||'';
       document.getElementById('progStatus').value=p.status||'pending';
-      document.getElementById('progModalTitle').innerHTML='編輯進度：'+p.caseN+' <button class="mcl" data-close="progressModal">✕</button>';
+      document.getElementById('progModalTitle').innerHTML='編輯進度：'+esc(p.caseN)+' <button class="mcl" data-close="progressModal">✕</button>';
       renderProgItems();openModal('progressModal');
     });
     card.querySelector('[data-pdel]')?.addEventListener('click',()=>{confirmAction('刪除「'+p.caseN+'」進度？',()=>{DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});});
@@ -183,8 +183,8 @@ function renderEmployees(){
     const card=document.createElement('div');card.className='emp-card';
     card.innerHTML=
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'+
-        '<div class="emp-avatar">'+e.name.charAt(0)+'</div>'+
-        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+e.name+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+( e.title||'員工')+' ｜ 到職：'+e.startDate+'</div></div>'+
+        '<div class="emp-avatar">'+esc((e.name||'?').charAt(0))+'</div>'+
+        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+esc(e.name||'未命名')+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+esc(e.title||'員工')+' ｜ 到職：'+esc(e.startDate||'—')+'</div></div>'+
         '<div style="display:flex;gap:5px">'+
           '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️ 編輯</button>'+
           '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
@@ -198,7 +198,7 @@ function renderEmployees(){
         '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+( e.retire||0).toLocaleString()+'</span></div>'+
         '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+( e.net||0).toLocaleString()+'</span></div>'+
       '</div>'+
-      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'')+
+      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+esc(e.bank)+'</div>':'')+
       (e.account?'<div style="font-size:.75rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'');
     card.querySelector('[data-eedit]')?.addEventListener('click',()=>{
       empEditId=e._id;
@@ -210,7 +210,7 @@ function renderEmployees(){
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
       setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
-      document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
+      document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
     card.querySelector('[data-edel]')?.addEventListener('click',()=>{confirmAction('刪除員工「'+e.name+'」？歷史打卡和薪資記錄仍會保留。',()=>{DB.upd('employees',e._id,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW')});renderEmployees();updHRStats();showToast('✅ 員工已移除，歷史記錄保留');});});
@@ -322,10 +322,15 @@ function savePayDate(v){localStorage.setItem('zeju_pay_date',v);showToast('✅ �
 // ══ 每月薪資記錄（含獎金、代墊費，存在雲端不再用 localStorage）══════
 // 取得（或建立預設值）某位員工某個月的薪資記錄
 function getSalaryRecord(empId, monthKey){
-  const existing=DB.get('salary_records').find(r=>r.empId===empId&&r.monthKey===monthKey);
+  // 修正重點：按鈕的 onclick="openSalaryEditBox('123',...)" 傳進來的 empId 一定是字串，
+  // 但員工 _id 是用 Date.now() 產生的數字，字串 '123' === 數字 123 永遠是 false，
+  // 導致「調整獎金」「標記匯款」這些按鈕點了完全沒反應（這就是薪資管理不能用的真正原因）。
+  // 這裡統一轉成字串比對，兩種型別都吃得下去。
+  empId=String(empId);
+  const existing=DB.get('salary_records').find(r=>String(r.empId)===empId&&r.monthKey===monthKey);
   if(existing)return existing;
   // 找不到就用員工當前的固定資料建立一筆預設記錄（獎金、代墊費預設為0，之後可個別調整）
-  const e=DB.get('employees').find(x=>x._id===empId);
+  const e=DB.get('employees').find(x=>String(x._id)===empId);
   if(!e)return null;
   const rec={
     empId, monthKey,
@@ -342,7 +347,7 @@ function getSalaryRecord(empId, monthKey){
 // 計算薪資記錄的實際數字（勞健保照員工當時設定的固定扣除額計算，獎金代墊費不計入勞健保級距，符合一般實務）
 function calcSalaryRecord(rec){
   const gross=(rec.baseSalary||0)+(rec.meal||0)+(rec.transport||0)+(rec.other||0)+(rec.bonus||0);
-  const e=DB.get('employees').find(x=>x._id===rec.empId)||{};
+  const e=DB.get('employees').find(x=>String(x._id)===String(rec.empId))||{};
   const laborDeduct=e.labor||0;
   const healthDeduct=e.health||0;
   const net=gross-laborDeduct-healthDeduct+(rec.reimbursement||0);
@@ -378,7 +383,7 @@ function renderMonthSalary(monthKey){
     card.style.cssText='background:var(--w);border:1.5px solid '+(rec.paid?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--rs);padding:14px 16px;margin-bottom:8px;transition:all var(--ease)';
     card.innerHTML=`
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
+        <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${esc((e.name||'?').charAt(0))}</div>
         <div style="flex:1">
           <div style="font-size:.9rem;font-weight:900">${esc(e.name)}</div>
           <div style="font-size:.75rem;color:var(--g400)">${e.title||'員工'} ${workDays?'· 出勤 '+workDays+' 天':''}</div>
@@ -437,7 +442,7 @@ function renderMonthSalary(monthKey){
 // 調整獎金/代墊費/備註的輕量彈窗
 function openSalaryEditBox(empId,monthKey){
   const rec=getSalaryRecord(empId,monthKey);if(!rec)return;
-  const e=DB.get('employees').find(x=>x._id===empId);
+  const e=DB.get('employees').find(x=>String(x._id)===String(empId));
 
   const old=document.getElementById('_salBox');if(old)old.remove();
   const box=document.createElement('div');
@@ -700,8 +705,8 @@ function renderAttendance(){
     card.style.cssText='background:var(--w);border:1px solid var(--g200);border-radius:var(--r);padding:16px 20px;margin-bottom:10px;box-shadow:var(--sh1)';
     card.innerHTML=
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'+
-        '<div class="emp-avatar" style="width:40px;height:40px;font-size:.9rem">'+emp.name.charAt(0)+'</div>'+
-        '<div style="flex:1"><div style="font-size:.9rem;font-weight:900">'+emp.name+'</div><div style="font-size:.75rem;color:var(--g400)">'+(emp.title||'員工')+'</div></div>'+
+        '<div class="emp-avatar" style="width:40px;height:40px;font-size:.9rem">'+esc((emp.name||'?').charAt(0))+'</div>'+
+        '<div style="flex:1"><div style="font-size:.9rem;font-weight:900">'+esc(emp.name||'未命名')+'</div><div style="font-size:.75rem;color:var(--g400)">'+esc(emp.title||'員工')+'</div></div>'+
         '<div style="font-family:monospace;font-size:1.1rem;font-weight:900;color:'+(pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--bad)')+'">'+pct+'%</div>'+
       '</div>'+
       '<div style="background:var(--g200);border-radius:4px;height:8px;margin-bottom:12px;overflow:hidden">'+
@@ -1261,7 +1266,7 @@ function renderLeaveManagement(){
       const row=document.createElement('div');
       row.style.cssText='display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--g100)';
       row.innerHTML=`
-        <div class="emp-avatar" style="width:32px;height:32px;font-size:.8rem">${e.name.charAt(0)}</div>
+        <div class="emp-avatar" style="width:32px;height:32px;font-size:.8rem">${esc((e.name||'?').charAt(0))}</div>
         <div style="flex:1;font-size:.85rem;font-weight:700">${esc(e.name)}</div>
         <div style="font-size:.78rem;color:var(--g500)">特休 ${quota} 天 · 已用 ${used} 天 · 剩 ${Math.max(0,quota-used)} 天</div>`;
       overviewEl.appendChild(row);

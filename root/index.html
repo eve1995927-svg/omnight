@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>澤居 AI 智能後台</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0F2237">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+<div id="lb"><div id="lbx">✕</div><img id="lbimg" src="" alt=""></div>
+<div id="toast"></div>
+<div id="ls">
+ <div class="lbox">
+  <div class="llogo">
+   <span class="lbrand">澤居</span>
+   <div class="ldivider"></div>
+   <span class="ltag">AI 智能後台 · 裝修管理平台</span>
+  </div>
+
+  <div id="lApiWarn" style="background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--rxs);padding:11px 15px;margin-bottom:16px;font-size:.78rem;color:var(--warn);font-weight:700;display:none">
+   ⚠️ 尚未設定 API Key — 請先登入老闆帳號，在儀表板頂部設定後即可使用所有 AI 功能
+  </div>
+
+  <span style="font-size:.78rem;font-weight:800;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;display:block">選擇您的身份</span>
+  <div class="lrg" id="lRoleGrid" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
+   <div class="lrb lrb-own on" data-role="owner"><span class="ri">👑</span>老闆</div>
+   <div class="lrb" data-role="staff"><span class="ri">👤</span>員工</div>
+   <div class="lrb" data-role="punch"><span class="ri">🕐</span>公務</div>
+  </div>
+
+  <input class="linp" type="text" id="lAccount" placeholder="帳號" autocomplete="username" style="display:none">
+  <input type="hidden" id="lUser" value="omnight">
+  <select class="linp" id="lEmpSelect" style="display:none;margin-bottom:10px;cursor:pointer">
+   <option value="">共用帳號（不指定個人）</option>
+  </select>
+  <input class="linp" type="password" id="lPass" placeholder="密碼" autocomplete="current-password">
+  <label id="lRememberWrap" style="display:none;align-items:center;gap:8px;font-size:.85rem;color:var(--g500);font-weight:600;margin:-2px 0 14px 2px;cursor:pointer">
+   <input type="checkbox" id="lRemember" style="width:16px;height:16px;accent-color:var(--gold);cursor:pointer">記住帳號
+  </label>
+  <button class="lbtn" id="lBtn">登　入</button>
+  <div class="lerr" id="lErr">帳號或密碼不正確，請再試一次</div>
+
+ </div>
+</div>
+<!-- ══ APP ══ -->
+<div id="app">
+ <div class="tb">
+  <div class="tlogo"><span class="tlogo-mark"></span><span id="tlogoText">澤居</span></div>
+  <div class="rtabs" id="rTabs"></div>
+  <div class="tright">
+   <div id="syncDot" onclick="showFirebaseStatus()" title="點擊查看同步詳情"
+     style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
+            font-size:.75rem;font-weight:700;cursor:pointer;margin-right:6px;
+            border:1.5px solid var(--g200);background:var(--w);transition:all var(--ease)">
+    <span id="syncIco" style="font-size:.9rem">⏳</span>
+    <span id="syncTxt" style="color:var(--g400)">連線中</span>
+    <span id="syncDot2" style="width:7px;height:7px;border-radius:50%;background:var(--g300);flex-shrink:0"></span>
+   </div>
+   <div class="pts-bar" id="ptsBar" title="點擊查看使用記錄" onclick="showPanel('ac-billing')" style="display:none">
+    <span>✨</span>
+    <span class="pts-num" id="ptsNum">90,000</span>
+    <span class="pts-label">點</span>
+   </div>
+   <div class="udot" id="uDot">老</div>
+   <span class="uname" id="uName">老闆</span>
+   <button class="obtn" id="outBtn">登出</button>
+  </div>
+ </div>
+ <div id="bn"></div>
+ <div class="ml">
+  <div class="sb" id="sidebar" style="position:relative">
+   <button class="sb-collapse-btn" id="sbCollapseBtn" title="收合側邊欄">‹</button>
+   <div id="sNav"></div>
+
+   <div class="sb-foot"><div class="sb-fn" id="aName"></div><div class="sb-fr" id="aRole"></div></div>
+  </div>
+  <div class="ws">
+
+<!-- ══ OWNER DASH ══ -->
+<div class="panel" id="p-owner-dash">
+ <div class="ph">
+  <div><div class="ptit">📊 今日總覽</div><div class="psub">最重要的事情，一眼看完</div></div>
+  <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
+ </div>
+
+ <!-- 四大統計 -->
+ <div class="g4" style="margin-bottom:20px">
+  <div class="stat"><div class="sn" id="dash-active" style="color:var(--gold-d)">0</div><div class="sl">🔨 施工中</div></div>
+  <div class="stat"><div class="sn" id="dash-month-income" style="color:var(--ok)">NT$0</div><div class="sl">本月收款</div></div>
+  <div class="stat"><div class="sn" id="dash-month-cost" style="color:var(--bad)">NT$0</div><div class="sl">本月成本</div></div>
+  <div class="stat"><div class="sn" id="dash-month-profit">—</div><div class="sl">📊 本月毛利</div></div>
+ </div>
+
+ <!-- 快速記帳 -->
+ <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em;margin-bottom:10px">💸 快速記一筆</div>
+ <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:24px">
+  <button onclick="quickExpense('材料費')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">🧱</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">材料費</span>
+  </button>
+  <button onclick="quickExpense('工資')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">👷</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">工資</span>
+  </button>
+  <button onclick="quickExpense('雜項')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">📦</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">雜項</span>
+  </button>
+  <button onclick="quickExpense('交通油錢')" style="padding:14px 8px;border:1.5px solid var(--g200);border-radius:var(--r);background:var(--w);cursor:pointer;font-family:inherit;transition:all var(--ease);display:flex;flex-direction:column;align-items:center;gap:4px" onmouseenter="this.style.borderColor='var(--gold-l)';this.style.background='var(--gold-pale)'" onmouseleave="this.style.borderColor='var(--g200)';this.style.background='var(--w)'">
+   <span style="font-size:1.4rem">⛽</span><span style="font-size:.78rem;font-weight:700;color:var(--g600)">油錢</span>
+  </button>
+ </div>
+
+ <!-- 待辦事項 -->
+ <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em;margin-bottom:10px">⚡ 需要處理</div>
+ <div id="dashTodos" style="margin-bottom:24px"></div>
+
+ <!-- 近期案場 -->
+ <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+  <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em">近期案場</div>
+  <button onclick="showPanel('p-projects')" style="background:none;border:none;color:var(--gold-d);font-size:.8rem;cursor:pointer;font-weight:700">查看全部 →</button>
+ </div>
+ <div id="dashRecentProjects"></div>
+
+ <!-- API 設定（隱藏在底部） -->
+ <details style="margin-top:24px">
+  <summary style="font-size:.78rem;color:var(--g400);cursor:pointer;user-select:none">⚙️ 進階設定（AI金鑰）</summary>
+  <div class="setup-card" id="apiCard" style="margin-top:12px">
+   <div class="sc-hd"><span class="sc-ic">🔑</span><div style="flex:1"><div class="sc-title">AI 金鑰設定</div><div class="sc-sub">輸入一次後永久記憶</div></div><div class="api-dot" id="apiDot">⚠️ 未設定</div></div>
+   <div class="sc-row">
+    <input type="password" class="sc-inp" id="apiInp" placeholder="sk-ant-api03-…" onkeydown="if(event.key==='Enter')apiSaveKey()">
+    <button class="btn bg bsm" onclick="apiSaveKey()">💾 儲存</button>
+    <button class="btn bo bsm" onclick="apiTestConn(event)">🔌 測試</button>
+    <button class="btn bo bsm" style="color:var(--bad)" onclick="apiClearKey()">🗑 清除</button>
+   </div>
+  </div>
+ </details>
+</div>
+
+<!-- ══ PROJECTS 案場總覽 ══ -->
+<div class="panel" id="p-projects">
+ <div class="ph">
+  <div><div class="ptit">🏗️ 案場總覽</div><div class="psub">所有案場，點進去看完整資料</div></div>
+  <div style="display:flex;gap:8px;align-items:center">
+   <div class="view-toggle" id="projViewToggle">
+    <button class="vt-btn on" data-view="list" onclick="setProjView('list')">☰ 列表</button>
+    <button class="vt-btn" data-view="kanban" onclick="setProjView('kanban')">▦ 看板</button>
+   </div>
+   <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
+  </div>
+ </div>
+ <div style="margin-bottom:14px;position:relative">
+  <input type="text" id="projSearchInp" placeholder="🔍 搜尋案場名稱、業主、地址…" oninput="searchProjects(this.value)" style="width:100%;padding:11px 16px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.88rem;font-family:inherit;box-sizing:border-box">
+ </div>
+ <div class="ledger-tab" style="margin-bottom:16px" id="projFilterTabs">
+  <div class="ltab on" data-filter="all" onclick="filterProjects('all',this)">全部 <span id="proj-cnt-all">0</span></div>
+  <div class="ltab" data-filter="progress" onclick="filterProjects('progress',this)">施工中 <span id="proj-cnt-active">0</span></div>
+  <div class="ltab" data-filter="inquiry" onclick="filterProjects('inquiry',this)">洽談中 <span id="proj-cnt-inquiry">0</span></div>
+  <div class="ltab" data-filter="done" onclick="filterProjects('done',this)">完工 <span id="proj-cnt-done">0</span></div>
+  <div class="ltab" data-filter="archived" onclick="filterProjects('archived',this)">📦 已封存 <span id="proj-cnt-archived">0</span></div>
+ </div>
+ <div id="projectList"></div>
+ <div id="projectKanban" style="display:none"></div>
+</div>
+
+<!-- ══ PROJECT DETAIL 案場詳情 ══ -->
+<div class="panel" id="p-project-detail">
+ <div id="projDetailHeader" style="margin-bottom:16px"></div>
+ <div class="ledger-tab" id="projDetailTabs" style="margin-bottom:16px"></div>
+ <div id="projDetailContent"></div>
+</div>
+
+<div class="panel" id="p-cs-chat">
+ <div class="ph">
+  <div><div class="ptit">💬 客戶諮詢</div><div class="psub">每位客戶獨立對話，歷史紀錄完整保留</div></div>
+  <select id="csChatProject" style="padding:6px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer;max-width:140px">
+   <option value="">連結案場...</option>
+  </select>
+ </div>
+ <div style="display:flex;gap:0;height:calc(100vh - 190px);min-height:460px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
+
+  <!-- 左側：客戶列表 -->
+  <div style="width:210px;flex-shrink:0;border-right:1px solid var(--g200);display:flex;flex-direction:column;background:var(--g50)">
+
+   <!-- 標題 -->
+   <div style="padding:14px 16px;border-bottom:1px solid var(--g200);background:linear-gradient(135deg,#1A1A1A,#2C2C2C)">
+    <div style="font-size:.88rem;font-weight:900;color:var(--gold);letter-spacing:.05em">澤居客服</div>
+    <div style="font-size:.68rem;color:rgba(255,255,255,.4);margin-top:2px">客戶對話管理</div>
+   </div>
+
+   <!-- 新增客戶按鈕 -->
+   <div style="padding:10px">
+    <button class="btn bg bfull" id="addClientBtn" style="padding:10px 14px;font-size:.82rem;border-radius:var(--rs)">
+     ＋ 新增客戶
+    </button>
+   </div>
+
+   <!-- 客戶列表 -->
+   <div id="clientList" style="flex:1;overflow-y:auto"></div>
+
+   <!-- 底部：客戶數量 -->
+   <div style="padding:10px 14px;border-top:1px solid var(--g200);font-size:.72rem;color:var(--g400)" id="clientCount">0 位客戶</div>
+  </div>
+
+  <!-- 右側：對話區 -->
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--w)">
+   <!-- 客戶資訊 header -->
+   <div id="chatClientHeader" style="padding:12px 18px;border-bottom:1px solid var(--g200);display:flex;align-items:center;gap:10px;background:var(--w);display:none">
+    <div id="chatClientAvatar" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:var(--w);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">？</div>
+    <div><div id="chatClientName" style="font-size:.92rem;font-weight:900;color:var(--g800)">—</div><div style="font-size:.72rem;color:var(--g400);margin-top:1px">AI 客服對話中</div></div>
+    <div style="margin-left:auto;display:flex;gap:6px">
+     <button class="btn bo bxs" id="clearCsBtn">🗑 清除對話</button>
+    </div>
+   </div>
+   <div id="cs-chat" style="flex:1;min-height:0"></div>
+  </div>
+ </div>
+ <div class="card" style="margin-top:14px">
+  <div class="ct">📤 一鍵產出回覆格式</div>
+  <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
+   <button class="btn bg bsm" data-fmt="line">💬 LINE 訊息</button>
+   <button class="btn bo bsm" data-fmt="email">📧 Email</button>
+   <button class="btn bo bsm" data-fmt="sms">📱 簡訊</button>
+   <button class="btn bo bsm" data-fmt="quote-summary">📄 報價摘要</button>
+  </div>
+  <div class="sp2" id="rplSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 整理中…</div>
+  <div id="rplBox" style="display:none">
+   <div class="reply-box" id="rplTxt" contenteditable="true"></div>
+   <div style="display:flex;gap:7px;margin-top:10px"><button class="btn bg bsm" id="cpRpl">📋 複製</button><button class="btn bo bsm" id="svRpl">💾 儲存</button></div>
+  </div>
+ </div>
+</div>
+
+<!-- ══ CS QUOTE (快速報價，可展開細項) ══ -->
+<div class="panel" id="p-cs-quote">
+ <div class="ph"><div><div class="ptit">📐 快速報價</div><div class="psub">每個大工項下可展開填細項，參考知名統包格式</div></div></div>
+ <div class="g2">
+  <div>
+   <div class="card">
+    <div class="ct">📋 工程資訊</div>
+    <div class="upz" id="qZone"><span class="upz-ic">📷</span><div class="upz-title">上傳現場照片或廠商報價單</div><div class="upz-sub">拖曳或點擊 · AI 自動分析</div></div>
+    <input type="file" id="qFile" accept="image/*,.pdf" multiple style="display:none">
+    <div class="ipg" id="qPrev"></div>
+    <div class="g2">
+     <div class="field"><label class="fl">客戶姓名</label><input class="fi" id="qN" placeholder="陳小姐"></div>
+     <div class="field"><label class="fl">坪數</label><input class="fi" id="qSz" type="number" placeholder="28" min="1"></div>
+    </div>
+    <div class="g2">
+     <div class="field"><label class="fl">工程類型</label><select class="fs" id="qTp"><option>全室翻新</option><option>廚房改裝</option><option>浴室翻修</option><option>局部改裝</option><option>老屋翻新</option></select></div>
+     <div class="field"><label class="fl">風格</label><select class="fs" id="qSt"><option>日式簡約</option><option>北歐極簡</option><option>現代輕奢</option><option>工業風</option><option>美式鄉村</option></select></div>
+    </div>
+    <div class="field"><label class="fl">補充說明</label><textarea class="ft" id="qNt" placeholder="例：含系統櫃廚具、需拆除舊設備…" rows="2"></textarea></div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px">
+     <div class="ai-chip" onclick="qChip('需要系統櫃跟廚具')">🪵 含系統櫃廚具</div>
+     <div class="ai-chip" onclick="qChip('老屋翻新，屋齡30年，需要防水處理')">🏚️ 老屋翻新</div>
+     <div class="ai-chip" onclick="qChip('只做廚房跟浴室，其他不動')">🍳 廚浴局部</div>
+    </div>
+    <button class="btn bg bfull" id="genQBtn" style="padding:14px;font-size:.95rem">🤖 AI 產生報價</button>
+    <div class="sp2" id="qSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 計算中…</div>
+   </div>
+  </div>
+  <div>
+   <!-- 專業報價單預覽（快速報價版） -->
+   <div class="pro-quote" id="qProWrap" style="display:none">
+    <div class="pq-header">
+     <div class="pq-logo">澤居室內裝修</div>
+     <div class="pq-sub">統包設計 · 台北新北桃園三峽</div>
+     <div class="pq-meta">
+      <div><span class="pq-ml">業主</span><span class="pq-mv" id="pqClient">—</span></div>
+      <div><span class="pq-ml">日期</span><span class="pq-mv" id="pqDate">—</span></div>
+      <div><span class="pq-ml">坪數</span><span class="pq-mv" id="pqSize">—</span></div>
+      <div><span class="pq-ml">類型</span><span class="pq-mv" id="pqType">—</span></div>
+     </div>
+    </div>
+    <div id="qSections"></div>
+    <div class="pq-footer">
+     <div class="pq-tot-row"><span>工程款小計</span><span class="pq-tot-val" id="pqSub">NT$0</span></div>
+     <div class="pq-tot-row main"><span>預估總價（含工）</span><span class="pq-tot-val" id="pqTotal">NT$0</span></div>
+     <div class="pq-note">付款：簽約30%·開工30%·七成完工30%·驗收10%　有效期30天<br>03-2605199 ｜ LINE @zj8888 ｜ IG @zeju0923</div>
+    </div>
+    <div class="pq-actions">
+     <button class="btn bg bsm" id="qSave">💾 儲存</button>
+     <button class="btn bgn bsm" id="qXls">📥 Excel</button>
+     <button class="btn bo bsm" id="qAddSec">＋ 新增分類</button>
+     <button class="btn bo bsm" onclick="window.print()">🖨 列印</button>
+    </div>
+   </div>
+   <div class="empty-hint" id="qEmptyHint">
+    <div style="font-size:2rem;margin-bottom:10px">📋</div>
+    <div style="font-weight:700;color:var(--gray-500)">填入資料後點「AI 產生報價」</div>
+    <div style="font-size:.8rem;margin-top:5px;color:var(--gray-400)">右側將顯示專業報價單預覽</div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ══ MK POST ══ -->
+<div class="panel" id="p-mk-post">
+ <div class="ph"><div><div class="ptit">✨ 社群貼文</div><div class="psub">生成貼文後可接著生成行銷圖片</div></div></div>
+ <div class="g2">
+  <div>
+   <div class="card">
+    <div class="ct">⚙️ 貼文設定</div>
+    <div class="field"><label class="fl">📍 以哪個案場為主題？</label>
+     <select class="fs" id="mkProject" onchange="fillMkFromProject()">
+      <option value="">不選案場（手動填寫）</option>
+     </select>
+    </div>
+    <div class="field"><label class="fl">平台</label><select class="fs" id="mkPl"><option>Instagram</option><option>Facebook</option><option>LINE 官方帳號</option></select></div>
+    <div class="field"><label class="fl">主題</label><select class="fs" id="mkTp"><option>案例分享 — 日式風格</option><option>案例分享 — 北歐極簡</option><option>施工現場直擊</option><option>裝修小知識</option><option>限時優惠活動</option><option>客戶好評分享</option></select></div>
+    <div class="field"><label class="fl">補充說明</label><textarea class="ft" id="mkNt" placeholder="例：大安區30坪完工，木質調…" rows="2"></textarea></div>
+    <div class="field"><label class="fl">語氣風格</label><select class="fs" id="mkTn"><option>溫暖親切</option><option>專業質感</option><option>活潑有趣</option><option>高端奢華</option></select></div>
+    <div style="display:flex;gap:8px">
+     <button class="btn bg" style="flex:1;padding:13px" id="genPst">✨ 生成貼文</button>
+     <button class="btn bo" style="flex:1;padding:13px" id="rgnPst">🔄 重新生成</button>
+    </div>
+    <div class="sp2" id="mkSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 撰寫中…</div>
+   </div>
+   <!-- 圖片生成區（貼文生成後顯示） -->
+   <div class="card" id="imgGenCard" style="display:none;margin-top:0">
+    <div class="ct">🎨 生成行銷圖片</div>
+    <div class="field"><label class="fl">修改文案方向（選填）</label><input class="fi" id="imgCaption" placeholder="例：突出質感、加入限時優惠文字…"></div>
+    <div class="field"><label class="fl">圖片風格</label>
+     <div style="display:flex;gap:7px;flex-wrap:wrap;margin-top:5px">
+      <div class="img-style-btn on" data-style="luxury">✨ 輕奢質感</div>
+      <div class="img-style-btn" data-style="minimal">⬜ 日式極簡</div>
+      <div class="img-style-btn" data-style="warm">🌿 溫暖自然</div>
+      <div class="img-style-btn" data-style="modern">🔷 現代幾何</div>
+     </div>
+    </div>
+    <!-- 快速風格預設 -->
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+     <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('luxury')">✨ 輕奢質感</div>
+     <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('minimal')">⬜ 日式極簡</div>
+     <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('warm')">🌿 溫暖自然</div>
+     <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('modern')">🔷 現代幾何</div>
+    </div>
+    <button class="btn bg bfull" id="genImgBtn" style="padding:13px">🎨 生成行銷圖片</button>
+    <div class="sp2" id="imgSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 設計中…</div>
+   </div>
+  </div>
+  <div>
+   <!-- 貼文預覽 -->
+   <div class="sp-wrap" id="pstPrev" style="display:none">
+    <div class="sp-hd"><div class="sp-av">澤</div><div><div style="font-size:.9rem;font-weight:800">澤居室內裝修</div><div id="pstHd" style="font-size:.75rem;color:var(--gray-400)">@zeju0923</div></div></div>
+    <div class="sp-im" id="pstEm">🏠</div>
+    <div class="sp-bd" id="pstBd" contenteditable="true" style="outline:none"></div>
+    <div class="sp-ac">
+     <span class="sp-a">❤️ 讚</span><span class="sp-a">💬 留言</span>
+     <span class="sp-a" id="cpPst">📋 複製</span>
+     <span class="sp-a" id="svPst" style="color:var(--gold-d);font-weight:800">💾 儲存記錄</span>
+     <span class="sp-a" id="viewPostHistory" style="color:var(--info);font-weight:700">📋 發文記錄</span>
+    </div>
+   </div>
+   <!-- 行銷圖片預覽 -->
+   <div id="imgPreviewWrap" style="display:none;margin-top:12px">
+    <div class="mk-img-canvas" id="mkImgCanvas"></div>
+    <div style="display:flex;gap:7px;margin-top:10px">
+     <button class="btn bg bsm" id="dlImgBtn">📥 下載圖片</button>
+     <button class="btn bo bsm" id="regenImgBtn">🔄 重新生成</button>
+    </div>
+   </div>
+  </div>
+ </div>
+ <div class="card" style="margin-top:14px;display:none" id="postHistoryCard">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="ct" style="margin:0">📋 發文記錄</div><button class="btn bo bxs" onclick="document.getElementById('postHistoryCard').style.display='none'">✕ 關閉</button></div>
+  <div id="postHistoryList"></div>
+ </div>
+<div class="card" style="margin-top:14px">
+  <div class="ct">💬 與 AI 編輯討論</div>
+  <div id="mk-chat" style="min-height:220px;display:flex;flex-direction:column"></div>
+ </div>
+</div>
+
+<!-- ══ AD QUOTE LIST ══ -->
+<div class="panel" id="p-ad-quote">
+ <div class="ph"><div><div class="ptit">📋 報價管理</div><div class="psub">所有報價記錄，可查詢、編輯與下載</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
+ <div class="g3" style="margin-bottom:16px">
+  <div class="stat"><div class="sn" id="qCnt">0</div><div class="sl">本月報價件數</div></div>
+  <div class="stat"><div class="sn" id="qSum">—</div><div class="sl">本月報價總額</div></div>
+  <div class="stat"><div class="sn">—</div><div class="sl">成交轉化率</div></div>
+ </div>
+ <div class="card"><div class="ct">📄 報價記錄</div>
+  <div class="tw"><table class="tbl"><thead><tr><th>客戶</th><th>類型</th><th>金額</th><th>日期</th><th>操作</th></tr></thead>
+  <tbody id="qTbl"><tr><td colspan="5"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></td></tr></tbody></table></div>
+ </div>
+</div>
+
+<!-- ══ AD NEW QUOTE ══ -->
+<div class="panel" id="p-ad-newquote">
+ <div class="ph"><div><div class="ptit">➕ 新建報價單</div><div class="psub">可置入廠商報價自動帶入，右側即時顯示專業報價單</div></div><button class="btn bo bsm" id="backQ">← 返回</button></div>
+ <div class="g2">
+  <div>
+   <div class="card" style="margin-bottom:12px">
+    <div class="ct">👤 業主資料</div>
+    <div class="g2">
+     <div class="field"><label class="fl">業主姓名</label><input class="fi" id="adN" placeholder="王先生"></div>
+     <div class="field"><label class="fl">案場名稱</label><input class="fi" id="adCase" placeholder="例：景平路案"></div>
+    </div>
+    <div class="field"><label class="fl">施工地址</label><input class="fi" id="adAd" placeholder="台北市大安區某路"></div>
+    <div class="g2">
+     <div class="field"><label class="fl">坪數</label><input class="fi" id="adSz" type="number" placeholder="25" min="1"></div>
+     <div class="field"><label class="fl">工程類型</label><select class="fs" id="adTp"><option>全室翻新</option><option>老屋翻新</option><option>局部裝修</option><option>新成屋裝修</option><option>商業空間</option><option>辦公室</option><option>廚衛翻修</option><option>其他</option></select></div>
+    </div>
+   </div>
+   <!-- 澤居自有報價保存區 -->
+   <div class="card" style="margin-bottom:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+     <div class="ct" style="margin:0">🏠 澤居報價庫</div>
+     <button class="btn bg bxs" onclick="openZejuQuoteModal()">＋ 儲存報價</button>
+    </div>
+    <!-- 案場篩選 -->
+    <select class="fs" id="zejuCaseFilter" style="margin-bottom:8px;font-size:.82rem" onchange="renderZejuQuotes()">
+     <option value="">全部案場</option>
+    </select>
+    <!-- 報價列表 -->
+    <div id="zejuQuoteList" style="max-height:180px;overflow-y:auto;border:1px solid var(--g200);border-radius:var(--rxs)">
+     <div style="padding:16px;text-align:center;font-size:.82rem;color:var(--g400)">尚無儲存的報價<br>點「＋ 儲存報價」保存目前報價</div>
+    </div>
+    <button class="btn bo bsm bfull" onclick="saveCurrentAsZejuQuote()" style="margin-top:8px">💾 儲存目前報價到報價庫</button>
+   </div>
+
+   <!-- 快速新增工程分類 -->
+   <div class="card" style="margin-bottom:12px">
+    <div class="ct">⚡ 快速新增工程</div>
+    <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
+     <button class="btn bo bxs" onclick="addZejuSection('🔨','拆除工程')">🔨 拆除</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🧱','泥作工程')">🧱 泥作</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🪵','木作工程')">🪵 木作</button>
+     <button class="btn bo bxs" onclick="addZejuSection('⚡','水電工程')">⚡ 水電</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🪟','系統傢俱')">🪟 系統</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🎨','油漆工程')">🎨 油漆</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🚿','衛浴工程')">🚿 衛浴</button>
+     <button class="btn bo bxs" onclick="addZejuSection('💡','燈具工程')">💡 燈具</button>
+    </div>
+    <div style="display:flex;gap:6px">
+     <input class="fi" id="customSecName" placeholder="自訂分類…" style="flex:1;padding:7px 10px;font-size:.82rem">
+     <button class="btn bg bsm" onclick="addCustomZejuSection()">＋</button>
+    </div>
+   </div>
+
+   <!-- 廠商報價置入 -->
+   <div class="card" style="margin-bottom:12px">
+    <div class="ct">🏗️ 置入廠商報價 <span style="font-size:.72rem;font-weight:500;color:var(--g400)">勾選後自動帶入明細</span></div>
+    <div class="vp-box" id="adVendorPicker">
+     <div class="vp-empty" id="adVpEmpty">尚無廠商報價 · 請先到「廠商報價」頁面上傳</div>
+    </div>
+    <button class="btn bg bsm bfull" id="importVendorBtn" style="margin-top:10px">📥 置入已選廠商報價到右側明細</button>
+   </div>
+   <div class="card">
+    <div class="ct">🤖 AI 整合分析</div>
+    <div class="upz" id="adZone" style="padding:16px">
+     <span class="upz-ic" style="font-size:1.8rem">📸</span>
+     <div class="upz-title" style="font-size:.88rem">上傳額外參考（選填）</div>
+     <div class="upz-sub">現場照片、平面圖</div>
+    </div>
+    <input type="file" id="adFile" accept="image/*,.pdf,.xlsx,.xls" multiple style="display:none">
+    <div class="ipg" id="adPrev"></div>
+    <div class="field"><label class="fl">特殊需求</label><textarea class="ft" id="adNt" placeholder="例：加計管理費8%、含稅…" rows="2"></textarea></div>
+    <button class="btn bg bfull" id="genAdQ" style="padding:13px">🤖 AI 整合產生完整報價</button>
+    <div class="sp2" id="adSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 整合中…</div>
+   </div>
+  </div>
+  <!-- 右側：專業報價單 -->
+  <div>
+   <div class="pro-quote" id="adQb">
+    <div class="pq-header">
+     <div class="pq-logo">澤居室內裝修</div>
+     <div class="pq-sub">統包設計 · 台北新北桃園三峽</div>
+     <div class="pq-meta">
+      <div><span class="pq-ml">業主</span><span class="pq-mv" id="adQbClient">—</span></div>
+      <div><span class="pq-ml">地址</span><span class="pq-mv" id="adQbAddr">—</span></div>
+      <div><span class="pq-ml">日期</span><span class="pq-mv" id="adQbDate">—</span></div>
+      <div><span class="pq-ml">有效期</span><span class="pq-mv">30 天</span></div>
+     </div>
+    </div>
+    <div id="adSections"></div>
+    <div class="pq-footer">
+     <div class="pq-tot-row"><span>工程款小計</span><span class="pq-tot-val" id="adSub">NT$0</span></div>
+     <div class="pq-tot-row"><span>管理費（8%）</span><span class="pq-tot-val" id="adMgmt">NT$0</span></div>
+     <div class="pq-tot-row"><span>營業稅（5%）</span><span class="pq-tot-val" id="adTax">NT$0</span></div>
+     <div class="pq-tot-row main"><span>工程總價</span><span class="pq-tot-val" id="adTotal">NT$0</span></div>
+     <div class="pq-note">付款：簽約30%·開工30%·七成完工30%·驗收10%<br>本報價有效期30天，實際以現場丈量為準<br>電話：03-2605199 ｜ LINE：@zj8888</div>
+    </div>
+    <!-- 毛利分析列 -->
+    <div class="profit-bar" id="adProfitBar">
+     <div class="profit-item"><span class="profit-label">廠商成本</span><span class="profit-value cost" id="adCostTotal">NT$0</span></div>
+     <div class="profit-item"><span class="profit-label">對客報價</span><span class="profit-value sell" id="adSellTotal">NT$0</span></div>
+     <div class="profit-item"><span class="profit-label">毛利</span><span class="profit-value profit" id="adGrossProfit">NT$0</span></div>
+     <div class="profit-item"><span class="profit-label">毛利率</span><span class="profit-value rate" id="adProfitRate">—</span></div>
+    </div>
+    <div class="pq-actions">
+     <div class="mode-toggle">
+      <button class="mode-btn on" id="modeInternal" onclick="setQuoteMode('internal')">🔒 內部版（含成本）</button>
+      <button class="mode-btn" id="modeClient" onclick="setQuoteMode('client')">📄 客戶版（報價單）</button>
+     </div>
+     <div style="display:flex;gap:7px;flex-wrap:wrap">
+      <button class="btn bg bsm" id="adSave">💾 儲存</button>
+      <button class="btn bgn bsm" id="adXls">📥 下載內部版</button>
+      <button class="btn bo bsm" id="adXlsClient">📄 下載客戶版</button>
+      <button class="btn bo bsm" id="adAddSec">＋ 新增分類</button>
+      <button class="btn bo bsm" onclick="window.print()">🖨 列印</button>
+     </div>
+    </div>
+   </div>
+  </div>
+ </div>
+</div>
+
+<!-- ══ AD VENDOR ══ -->
+<div class="panel" id="p-ad-vendor">
+ <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div>
+ <div class="g3" style="margin-bottom:16px">
+  <div class="stat"><div class="sn" id="vCnt">0</div><div class="sl">廠商報價件數</div></div>
+  <div class="stat"><div class="sn" id="vCatCnt">0</div><div class="sl">工程分類</div></div>
+  <div class="stat"><div class="sn" id="vTot">—</div><div class="sl">廠商報價總計</div></div>
+ </div>
+ <!-- 搜尋 -->
+ <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+  <input class="fi" id="vSearch" placeholder="🔍 搜尋廠商名稱、案場、關鍵字…" style="flex:1;min-width:200px;padding:9px 14px;font-size:.88rem" oninput="renderVendors(vCurrentFilter)">
+  <select class="fi" id="vCaseFilter" style="width:160px;padding:9px 14px;font-size:.88rem" onchange="renderVendors(vCurrentFilter)">
+   <option value="">全部案場</option>
+  </select>
+ </div>
+ <!-- 類別篩選 -->
+ <!-- 比價工具 -->
+ <div style="display:flex;gap:7px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+  <span style="font-size:.78rem;font-weight:700;color:var(--g400)">⚖️ 廠商比價：</span>
+  <button class="btn bo bsm" onclick="compareVendorsByCat('系統櫃')">🪵 系統櫃</button>
+  <button class="btn bo bsm" onclick="compareVendorsByCat('廚具')">🍳 廚具</button>
+  <button class="btn bo bsm" onclick="compareVendorsByCat('水電')">⚡ 水電</button>
+  <button class="btn bo bsm" onclick="compareVendorsByCat('泥作')">🧱 泥作</button>
+  <button class="btn bo bsm" onclick="compareVendorsByCat('油漆')">🎨 油漆</button>
+ </div>
+ <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap" id="vFilt">
+  <button class="btn bg bsm" data-cat="all">全部</button>
+  <button class="btn bo bsm" data-cat="系統櫃">🪵 系統櫃</button>
+  <button class="btn bo bsm" data-cat="廚具">🍳 廚具</button>
+  <button class="btn bo bsm" data-cat="玻璃">🪟 玻璃</button>
+  <button class="btn bo bsm" data-cat="水電">⚡ 水電</button>
+  <button class="btn bo bsm" data-cat="泥作">🧱 泥作</button>
+  <button class="btn bo bsm" data-cat="油漆">🎨 油漆</button>
+ </div>
+ <div id="vList"></div>
+</div>
+
+<!-- ══ AD PROGRESS ══ -->
+<div class="panel" id="p-ad-progress">
+ <div class="ph">
+  <div><div class="ptit">🔧 工程進度</div><div class="psub">每個案場的進度一目了然，可自行新增與修改</div></div>
+  <button class="btn bg bsm" id="addProgressBtn">＋ 新增案場</button>
+ </div>
+
+ <!-- 付款提醒 -->
+ <div id="paymentAlerts" style="display:none;margin-bottom:14px"></div>
+
+ <!-- 搜尋 -->
+ <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+  <input class="fi" id="progSearch" placeholder="🔍 搜尋案場或業主…" style="flex:1;min-width:180px;padding:9px 14px;font-size:.88rem" oninput="renderProgress()">
+  <select class="fi" id="progStatusFilter" style="width:130px;padding:9px 14px;font-size:.88rem" onchange="renderProgress()">
+   <option value="all">全部狀態</option>
+   <option value="pending">📋 未開始</option>
+   <option value="ing">🔨 進行中</option>
+   <option value="done">✅ 結案</option>
+  </select>
+ </div>
+
+ <div id="progressList"></div>
+
+ <div class="card" style="margin-top:14px">
+  <div class="ct">🤖 AI 工程助理</div>
+  <div id="ad-chat" style="min-height:300px"></div>
+ </div>
+</div>
+
+<!-- ══ CONTRACT MANAGEMENT ══ -->
+<div class="panel" id="p-contract">
+ <div class="ph">
+  <div><div class="ptit">📝 合約管理</div><div class="psub">上傳任何格式，自動儲存為 PDF，業主隨時可查看</div></div>
+  <button class="btn bg bsm" id="openContract">＋ 上傳合約</button>
+ </div>
+
+ <div class="how-card" style="margin-bottom:18px">
+  <div class="how-ic">📝</div>
+  <div>
+   <div class="how-title">合約管理使用方式</div>
+   <ol class="how-steps">
+    <li>點「＋ 上傳合約」，選照片 / PDF / Word 皆可</li>
+    <li>填入合約名稱、業主、金額、狀態（簽署中 / 已簽署）</li>
+    <li>系統自動轉成 PDF 方便日後查看</li>
+    <li>點「👁 查看」可全螢幕預覽合約</li>
+   </ol>
+  </div>
+ </div>
+
+ <div class="g3" style="margin-bottom:16px">
+  <div class="stat"><div class="sn" id="ctCnt">0</div><div class="sl">合約件數</div></div>
+  <div class="stat"><div class="sn" id="ctSigned">0</div><div class="sl">已簽署</div></div>
+  <div class="stat"><div class="sn" id="ctAmt">—</div><div class="sl">合約總金額</div></div>
+ </div>
+
+ <!-- 搜尋 + 篩選 -->
+ <div class="ct-search-bar">
+  <input class="fi" id="ctSearch" placeholder="🔍 搜尋合約名稱、業主…" style="flex:1;min-width:180px;padding:9px 14px;font-size:.88rem" oninput="renderContracts()">
+  <select class="fi" id="ctStatusFilter" style="width:130px;padding:9px 14px;font-size:.88rem" onchange="renderContracts()">
+   <option value="all">全部進度</option>
+   <option value="pending">📋 未開始</option>
+   <option value="signed">✅ 結案</option>
+  </select>
+ </div>
+ <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap" id="ctFilt">
+  <button class="btn bg bsm" data-cf="all">全部</button>
+  <button class="btn bo bsm" data-cf="pending">📋 未開始</button>
+  <button class="btn bo bsm" data-cf="signed">✅ 結案</button>
+ </div>
+
+ <div id="contractList"></div>
+</div>
+
+<!-- ══ AC OVERVIEW ══ -->
+<div class="panel" id="p-ac-overview">
+ <div class="ph">
+  <div><div class="ptit">💰 帳款總覽</div><div class="psub">以月份或案場查看收支明細</div></div>
+  <div style="display:flex;gap:8px">
+   <button class="btn bg bsm" onclick="openLedgerModal('in')">＋ 外帳收款</button>
+   <button class="btn bo bsm" onclick="openLedgerModal('out')">＋ 內帳支出</button>
+  </div>
+ </div>
+
+ <!-- 頂部：月份選擇 + 案場篩選 -->
+ <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px">
+  <div style="display:flex;align-items:center;gap:8px">
+   <button onclick="shiftLedgerMonth(-1)" style="width:32px;height:32px;border:1.5px solid var(--g200);border-radius:var(--rs);background:var(--w);cursor:pointer;font-size:1rem">←</button>
+   <div id="ledgerMonthLabel" style="font-size:1rem;font-weight:900;color:var(--g800);min-width:80px;text-align:center"></div>
+   <button onclick="shiftLedgerMonth(1)" style="width:32px;height:32px;border:1.5px solid var(--g200);border-radius:var(--rs);background:var(--w);cursor:pointer;font-size:1rem">→</button>
+  </div>
+  <select id="ledgerProjectFilter" onchange="renderLedger()" style="padding:7px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer;flex:1;max-width:200px">
+   <option value="">全部案場</option>
+  </select>
+  <button onclick="setLedgerMonth('all')" id="ledgerAllMonthBtn" style="padding:7px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g500);background:var(--w);cursor:pointer;font-weight:700">全期</button>
+ </div>
+
+ <!-- 統計卡 -->
+ <div class="g3" style="margin-bottom:6px">
+  <div class="stat"><div class="sn" id="ledInSum" style="color:var(--ok)">—</div><div class="sl">💰 外帳收入</div></div>
+  <div class="stat"><div class="sn" id="ledOutSum" style="color:var(--bad)">—</div><div class="sl">📤 內帳支出</div></div>
+  <div class="stat"><div class="sn" id="ledProfit">—</div><div class="sl">📊 毛利</div></div>
+ </div>
+ <div class="g3" style="margin-bottom:20px">
+  <div class="stat"><div class="sn" id="ledInExpense" style="color:var(--bad);font-size:.9rem">—</div><div class="sl">外帳支出（退款）</div></div>
+  <div class="stat"><div class="sn" id="ledOutIncome" style="color:var(--ok);font-size:.9rem">—</div><div class="sl">內帳收入（廠商退款）</div></div>
+  <div class="stat"><div class="sn" id="ledProfitRate" style="font-size:.9rem">—</div><div class="sl">毛利率</div></div>
+ </div>
+
+ <!-- 切換：月度總表 / 明細 -->
+ <div class="ledger-tab" style="margin-bottom:16px">
+  <div class="ltab on" data-lt="detail" onclick="switchLedgerView('detail',this)">📋 收支明細</div>
+  <div class="ltab" data-lt="monthly" onclick="switchLedgerView('monthly',this)">📅 月度總表</div>
+  <div class="ltab" data-lt="project" onclick="switchLedgerView('project',this)">🏗️ 案場分析</div>
+ </div>
+
+ <!-- 明細 view -->
+ <div id="lv-detail" class="ledger-view">
+  <!-- 分類 tab -->
+  <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+   <button class="ldir on" data-ldir="all" onclick="setLedgerDir2('all',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">全部</button>
+   <button class="ldir" data-ldir="in-in" onclick="setLedgerDir2('in-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">💰 外帳收入</button>
+   <button class="ldir" data-ldir="in-out" onclick="setLedgerDir2('in-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">外帳支出</button>
+   <button class="ldir" data-ldir="out-out" onclick="setLedgerDir2('out-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">📤 內帳支出</button>
+   <button class="ldir" data-ldir="out-in" onclick="setLedgerDir2('out-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">內帳收入</button>
+  </div>
+  <div id="ledger-detail-list"></div>
+  <div style="display:flex;gap:8px;margin-top:16px">
+   <button class="add-ledger-btn" onclick="openLedgerModal('in')">＋ 外帳記錄</button>
+   <button class="add-ledger-btn" onclick="openLedgerModal('out')">＋ 內帳記錄</button>
+  </div>
+ </div>
+
+ <!-- 月度總表 view -->
+ <div id="lv-monthly" class="ledger-view" style="display:none">
+  <div id="ledger-monthly-table"></div>
+ </div>
+
+ <!-- 案場分析 view -->
+ <div id="lv-project" class="ledger-view" style="display:none">
+  <div id="ledger-project-table"></div>
+ </div>
+</div>
+
+<!-- ══ AC INVOICE ══ -->
+<div class="panel" id="p-ac-invoice">
+ <div class="ph"><div><div class="ptit">🧾 發票管理</div><div class="psub">上傳照片，AI 自動辨識所有細項，可修改後儲存</div></div><button class="btn bg bsm" id="openInv">＋ 新增發票</button></div>
+ <div class="g3" style="margin-bottom:16px">
+  <div class="stat"><div class="sn" id="invCnt">0</div><div class="sl">本月發票張數</div></div>
+  <div class="stat"><div class="sn" id="invSum">—</div><div class="sl">本月發票總額</div></div>
+  <div class="stat"><div class="sn">5%</div><div class="sl">含稅率</div></div>
+ </div>
+ <div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+   <div class="ct" style="margin:0">🧾 發票記錄</div>
+   <input class="fi" style="width:220px;padding:9px 14px;font-size:.85rem" placeholder="🔍 搜尋發票號碼或說明…" id="invSrch">
+  </div>
+  <div id="invList"></div>
+ </div>
+</div>
+
+<!-- ══ AC REPORT ══ -->
+<div class="panel" id="p-ac-report">
+ <div class="ph"><div><div class="ptit">📊 財務報表</div><div class="psub">一鍵產出，可列印或存 PDF</div></div></div>
+ <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
+  <button class="btn bg" data-rpt="monthly" style="padding:15px;font-size:.9rem">📊 月度損益報表</button>
+  <button class="btn bo" data-rpt="profit" style="padding:15px;font-size:.9rem">💹 毛利分析</button>
+  <button class="btn bo" data-rpt="payable" style="padding:15px;font-size:.9rem">📤 廠商應付</button>
+  <button class="btn bo" data-rpt="receivable" style="padding:15px;font-size:.9rem">📥 客戶應收</button>
+ </div>
+ <div class="sp2" id="rptSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> 產生中…</div>
+ <div class="rpt-card" id="rptCard" style="display:none">
+  <div class="rpt-hd"><div><div class="rpt-title" id="rptTit"></div><div id="rptMet" style="font-size:.75rem;color:var(--gray-400);margin-top:3px;font-family:'DM Mono',monospace"></div></div><div style="font-size:.75rem;color:var(--gray-400)">澤居室內裝修</div></div>
+  <div id="rptBd"></div>
+  <div style="display:flex;gap:8px;margin-top:18px"><button class="btn bg bsm" onclick="window.print()">🖨 列印</button><button class="btn bg bsm" id="exportRpt">📥 匯出Excel</button><button class="btn bo bsm" id="svRpt">💾 儲存紀錄</button></div>
+ </div>
+</div>
+
+<!-- ══ AC CHAT ══ -->
+<div class="panel" id="p-ac-chat">
+ <div class="ph"><div><div class="ptit">🤖 AI 對帳助理</div><div class="psub">詢問帳務、計算毛利、起草催款通知</div></div></div>
+ <div id="ac-chat" style="height:500px"></div>
+</div>
+
+
+<!-- ══ PUNCH CLOCK ══ -->
+<div class="panel" id="p-punch-clock" style="max-width:480px;margin:0 auto;padding-bottom:30px">
+
+ <!-- 頂部：今日資訊 -->
+ <div style="text-align:center;padding:10px 0 20px">
+  <div style="font-size:.82rem;color:var(--g400);font-weight:600" id="punchDate">—</div>
+  <div style="font-size:3rem;font-family:monospace;font-weight:900;color:var(--g800);letter-spacing:3px;line-height:1.1;margin:6px 0" id="punchTime">00:00:00</div>
+ </div>
+
+ <!-- 今日案場選擇 -->
+ <div style="margin:0 4px 16px">
+  <div style="font-size:.78rem;font-weight:900;color:var(--g400);margin-bottom:8px;letter-spacing:.06em">📍 今天在哪個案場？</div>
+  <select id="punchProjectSel" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
+   <option value="">不指定案場</option>
+  </select>
+ </div>
+
+ <!-- 打卡按鈕 -->
+ <div style="display:flex;justify-content:center;margin-bottom:16px">
+  <button id="punchBtn" onclick="doPunch()" style="width:160px;height:160px;border-radius:50%;border:none;font-size:1.1rem;font-weight:900;font-family:inherit;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;box-shadow:0 8px 32px rgba(0,0,0,.15);transition:all .2s;background:linear-gradient(135deg,#22C55E,#16A34A);color:#fff">
+   <span style="font-size:2rem" id="punchBtnIco">👆</span>
+   <span id="punchBtnTxt" style="font-size:1rem">上班打卡</span>
+  </button>
+ </div>
+
+ <!-- 今日狀態 -->
+ <div id="punchTodayCard" style="margin:0 4px 20px;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;overflow:hidden">
+  <div style="padding:10px 16px;background:var(--g50);border-bottom:1px solid var(--g100);font-size:.78rem;font-weight:900;color:var(--g500);letter-spacing:.06em">今日出勤狀態</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0" id="punchTodayStatus">
+   <div style="padding:14px 16px;border-right:1px solid var(--g100)">
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🟢 上班打卡</div>
+    <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:var(--g300)" id="todayInTime">—</div>
+   </div>
+   <div style="padding:14px 16px">
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🔵 下班打卡</div>
+    <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:var(--g300)" id="todayOutTime">—</div>
+   </div>
+  </div>
+ </div>
+
+ <!-- 月曆 -->
+ <div style="margin:0 4px;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;overflow:hidden">
+
+  <!-- 月份導航 -->
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--g100)">
+   <button onclick="changePunchMonth(-1)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--g200);background:var(--w);cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center">‹</button>
+   <div style="font-size:.95rem;font-weight:900;color:var(--g700)" id="punchMonthLabel">2026年5月</div>
+   <button onclick="changePunchMonth(1)" style="width:36px;height:36px;border-radius:50%;border:1.5px solid var(--g200);background:var(--w);cursor:pointer;font-size:1.1rem;display:flex;align-items:center;justify-content:center">›</button>
+  </div>
+
+  <!-- 星期 -->
+  <div style="display:grid;grid-template-columns:repeat(7,1fr);border-bottom:1px solid var(--g100)">
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:#E53E3E">日</div>
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:var(--g500)">一</div>
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:var(--g500)">二</div>
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:var(--g500)">三</div>
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:var(--g500)">四</div>
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:var(--g500)">五</div>
+   <div style="text-align:center;padding:8px 0;font-size:.72rem;font-weight:800;color:#3182CE">六</div>
+  </div>
+
+  <!-- 日曆格 -->
+  <div id="punchCalGrid" style="padding:6px 8px 12px"></div>
+
+  <!-- 圖例 -->
+  <div style="display:flex;gap:12px;justify-content:center;padding:8px 0 12px;font-size:.7rem;color:var(--g400);border-top:1px solid var(--g100)">
+   <span style="display:flex;align-items:center;gap:3px">🟢 已完成</span>
+   <span style="display:flex;align-items:center;gap:3px">🟡 未打下班</span>
+   <span style="display:flex;align-items:center;gap:3px">⚪ 假日/無記錄</span>
+  </div>
+ </div>
+
+ <!-- 選中日期詳情 -->
+ <div id="punchDayDetail" style="display:none;margin:12px 4px 0;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;overflow:hidden"></div>
+
+ <!-- 申請修改 -->
+ <div style="margin:14px 4px 0">
+  <button class="btn bo bfull" onclick="openPunchRequest()" style="padding:14px;font-size:.9rem;border-radius:12px">✏️ 申請補打卡 / 修改記錄</button>
+ </div>
+
+ <!-- 休假 -->
+ <div style="margin:20px 4px 0;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;overflow:hidden">
+  <div style="padding:10px 16px;background:var(--g50);border-bottom:1px solid var(--g100);font-size:.78rem;font-weight:900;color:var(--g500);letter-spacing:.06em">🏖️ 我的休假</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--g100)" id="leaveQuotaCard">
+   <div style="padding:16px;text-align:center;border-right:1px solid var(--g100)">
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">剩餘特休</div>
+    <div style="font-size:1.6rem;font-weight:900;color:var(--ok)" id="leaveRemainDays">—</div>
+    <div style="font-size:.68rem;color:var(--g400)">天</div>
+   </div>
+   <div style="padding:16px;text-align:center">
+    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">今年已使用</div>
+    <div style="font-size:1.6rem;font-weight:900;color:var(--g600)" id="leaveUsedDays">—</div>
+    <div style="font-size:.68rem;color:var(--g400)">天</div>
+   </div>
+  </div>
+  <div style="padding:12px 16px">
+   <button class="btn bg bfull" onclick="openLeaveRequestBox()" style="padding:12px;font-size:.88rem">🙋 申請休假</button>
+  </div>
+  <div id="myLeaveList" style="padding:0 16px 14px"></div>
+ </div>
+
+</div>
+<!-- ══ HR SETTINGS ══ -->
+<div class="panel" id="p-hr-settings">
+
+ <!-- 頂部統計 -->
+ <div class="ph">
+  <div><div class="ptit">👥 人資管理</div><div class="psub">員工資料、薪資計算、打卡記錄</div></div>
+  <button class="btn bg bsm" id="addEmpBtn">＋ 新增員工</button>
+ </div>
+
+ <div class="g3" style="margin-bottom:18px">
+  <div class="stat"><div class="sn" id="hrEmpCnt">0</div><div class="sl">在職員工</div></div>
+  <div class="stat"><div class="sn" id="hrTotalSalary">—</div><div class="sl">本月薪資總計</div></div>
+  <div class="stat"><div class="sn" id="hrPunchToday">0</div><div class="sl">今日出勤</div></div>
+ </div>
+
+ <!-- Tab 列 -->
+ <div class="ledger-tab" id="hrTabBar" style="margin-bottom:16px">
+  <div class="ltab on" data-ht="emp"     onclick="switchHRTab('emp')">👤 員工資料</div>
+  <div class="ltab"    data-ht="salary"  onclick="switchHRTab('salary')">💰 薪資管理</div>
+  <div class="ltab"    data-ht="leave"   onclick="switchHRTab('leave')">🏖️ 休假管理 <span id="hrLeavePendingBadge" style="display:none;background:var(--bad);color:#fff;border-radius:20px;font-size:.66rem;padding:1px 7px;margin-left:3px;font-weight:900"></span></div>
+  <div class="ltab"    data-ht="attend"  onclick="switchHRTab('attend')">📊 出勤統計</div>
+  <div class="ltab"    data-ht="punch"   onclick="switchHRTab('punch')">🕐 打卡記錄</div>
+  <div class="ltab"    data-ht="request" onclick="switchHRTab('request')">✏️ 修改申請</div>
+ </div>
+
+ <!-- Tab 內容 -->
+ <div class="ledger-body on" id="hrb-emp">
+  <div id="empList"></div>
+ </div>
+
+ <div class="ledger-body" id="hrb-salary">
+  <div id="salaryList"></div>
+ </div>
+
+ <div class="ledger-body" id="hrb-leave">
+  <div class="g3" style="margin-bottom:16px">
+   <div class="stat"><div class="sn" id="leavePendingCnt">0</div><div class="sl">待審核申請</div></div>
+   <div class="stat"><div class="sn" id="leaveApprovedThisMonth">0</div><div class="sl">本月已核准天數</div></div>
+   <div class="stat"><div class="sn" id="leaveEmpCnt">0</div><div class="sl">員工總覽</div></div>
+  </div>
+  <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">📋 待審核申請</div>
+  <div id="leavePendingList" style="margin-bottom:24px"></div>
+  <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">👥 每位員工休假總覽</div>
+  <div id="leaveEmpOverview"></div>
+ </div>
+
+ <div class="ledger-body" id="hrb-attend">
+  <div id="attendList"></div>
+ </div>
+
+ <div class="ledger-body" id="hrb-punch">
+  <div class="card"><div class="ct">🕐 打卡記錄（老闆可見完整定位）</div>
+  <div id="hrPunchList"><div class="empty-state"><div class="es-ic">🕐</div><div class="es-t">尚無打卡記錄</div></div></div>
+  </div>
+ </div>
+
+ <div class="ledger-body" id="hrb-request">
+  <div class="card"><div class="ct">✏️ 打卡修改申請</div>
+  <div id="hrRequestList"><div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無修改申請</div></div></div>
+  </div>
+ </div>
+
+</div>
+<!-- ══ SETTINGS ══ -->
+<div class="panel" id="p-settings">
+ <div class="ph"><div><div class="ptit">🔧 系統設定</div><div class="psub">自訂分類、帳號設定、繳費資訊</div></div></div>
+
+ <!-- 公司資料設定（品牌與業務資訊，AI 對話會自動套用）-->
+ <div class="settings-section">
+  <div class="ss-title">🏢 公司資料設定</div>
+  <p style="font-size:.82rem;color:var(--g400);margin-bottom:14px">這裡的資料會自動套用到 AI 客服、行銷貼文等對話內容，換公司資料不用改程式碼</p>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">公司全名</label><input class="fi" id="cpName" placeholder="例：澤居室內裝修"></div>
+   <div class="field" style="margin:0"><label class="fl">公司簡稱（用於#Hashtag）</label><input class="fi" id="cpShortName" placeholder="例：澤居"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">電話</label><input class="fi" id="cpPhone" placeholder="03-2605199"></div>
+   <div class="field" style="margin:0"><label class="fl">Email</label><input class="fi" id="cpEmail" placeholder="example@gmail.com"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">Instagram</label><input class="fi" id="cpIg" placeholder="@yourbrand"></div>
+   <div class="field" style="margin:0"><label class="fl">LINE 官方帳號</label><input class="fi" id="cpLine" placeholder="@yourline"></div>
+  </div>
+  <div class="field" style="margin-bottom:12px"><label class="fl">服務地區</label><input class="fi" id="cpAreas" placeholder="例：台北、新北、桃園"></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">全室翻新報價（每坪）</label><input class="fi" id="cpPriceFull" placeholder="18,000–28,000元"></div>
+   <div class="field" style="margin:0"><label class="fl">老屋加價</label><input class="fi" id="cpOldHouse" placeholder="20%"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">廚房報價</label><input class="fi" id="cpPriceKitchen" placeholder="15–35萬"></div>
+   <div class="field" style="margin:0"><label class="fl">浴室報價</label><input class="fi" id="cpPriceBath" placeholder="8–20萬"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">全室工期</label><input class="fi" id="cpDurationFull" placeholder="45–60天"></div>
+   <div class="field" style="margin:0"><label class="fl">局部工期</label><input class="fi" id="cpDurationPartial" placeholder="2–3週"></div>
+  </div>
+  <div class="field" style="margin-bottom:12px"><label class="fl">付款條件</label><input class="fi" id="cpPaymentTerms" placeholder="簽約30%/開工30%/七成完工30%/驗收10%"></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">管理費率</label><input class="fi" id="cpMgmtFee" placeholder="8%"></div>
+   <div class="field" style="margin:0"><label class="fl">AI 客服助理名稱</label><input class="fi" id="cpAiName" placeholder="例：小澤"></div>
+  </div>
+  <button class="btn bg bsm" onclick="saveCompanyProfileForm()">💾 儲存公司資料</button>
+ </div>
+
+ <!-- 報價分類設定 -->
+ <div class="settings-section">
+  <div class="ss-title">📋 報價工程分類設定</div>
+  <p style="font-size:.82rem;color:var(--g400);margin-bottom:12px">新建報價單的工程分類清單，可新增刪除</p>
+  <div class="tag-row" id="quoteCatTags"></div>
+  <div class="tag-add-row">
+   <input class="fi" id="quoteCatInp" placeholder="新增分類（例：廚具工程）" style="max-width:240px;padding:9px 14px">
+   <button class="btn bg bsm" onclick="addSettingTag('quoteCat','quoteCatInp','quoteCatTags')">＋ 新增</button>
+  </div>
+ </div>
+
+ <!-- 廠商類別設定 -->
+ <div class="settings-section">
+  <div class="ss-title">🏗️ 廠商報價類別設定</div>
+  <div class="tag-row" id="vendorCatTags"></div>
+  <div class="tag-add-row">
+   <input class="fi" id="vendorCatInp" placeholder="新增類別（例：鐵工）" style="max-width:240px;padding:9px 14px">
+   <button class="btn bg bsm" onclick="addSettingTag('vendorCat','vendorCatInp','vendorCatTags')">＋ 新增</button>
+  </div>
+ </div>
+
+ <!-- 外帳銷項設定 -->
+ <div class="settings-section">
+  <div class="ss-title">💰 外帳客戶銷項類別</div>
+  <div class="tag-row" id="incomeCatTags"></div>
+  <div class="tag-add-row">
+   <input class="fi" id="incomeCatInp" placeholder="新增類別（例：設計費）" style="max-width:240px;padding:9px 14px">
+   <button class="btn bg bsm" onclick="addSettingTag('incomeCat','incomeCatInp','incomeCatTags')">＋ 新增</button>
+  </div>
+ </div>
+
+ <!-- 內帳支出設定 -->
+ <div class="settings-section">
+  <div class="ss-title">📤 內帳廠商進項類別</div>
+  <div class="tag-row" id="expenseCatTags"></div>
+  <div class="tag-add-row">
+   <input class="fi" id="expenseCatInp" placeholder="新增類別（例：搬運費）" style="max-width:240px;padding:9px 14px">
+   <button class="btn bg bsm" onclick="addSettingTag('expenseCat','expenseCatInp','expenseCatTags')">＋ 新增</button>
+  </div>
+ </div>
+
+ <!-- 繳費設定 -->
+ <div class="settings-section">
+  <div class="ss-title">🧾 AI 平台繳費設定</div>
+  <div class="g2">
+   <div class="field"><label class="fl">收款公司</label><input class="fi" value="堅果創意有限公司" readonly style="background:var(--g50)"></div>
+   <div class="field"><label class="fl">每月繳費日</label><input class="fi" value="每月 12 日" readonly style="background:var(--g50)"></div>
+  </div>
+  <div class="field"><label class="fl">收款帳號（請填入後儲存）</label><input class="fi" id="bankAcct" placeholder="請輸入公司帳號…"></div>
+  <div class="field"><label class="fl">月費基本金額</label><input class="fi" value="NT$9,000" readonly style="background:var(--g50)"></div>
+  <button class="btn bg bsm" onclick="saveBankAcct()">💾 儲存帳號</button>
+ </div>
+
+ <!-- 垃圾桶 -->
+ <div class="settings-section">
+  <div class="ss-title">🗑️ 垃圾桶 <span id="trashCount" style="color:var(--bad)"></span></div>
+  <p style="font-size:.82rem;color:var(--g400);margin-bottom:12px">已刪除的合約、廠商報價、帳款會先放在這裡，可復原或永久刪除</p>
+  <div id="trashList"></div>
+ </div>
+</div>
+
+<!-- ══ AI BILLING ══ -->
+<div class="panel" id="p-ac-billing">
+ <div class="ph"><div><div class="ptit">🧮 AI 每月帳單</div><div class="psub">每月 12 日結算，基本費 NT$9,000，使用量另計</div></div></div>
+
+ <div class="g3" style="margin-bottom:16px">
+  <div class="stat"><div class="sn" id="bilUsed">NT$0</div><div class="sl">本月AI使用成本</div></div>
+  <div class="stat"><div class="sn" id="bilAmt">NT$9,000</div><div class="sl">本月預估總費用</div></div>
+  <div class="stat"><div class="sn" id="bilPts" style="color:var(--gold-d)">76,500</div><div class="sl">剩餘點數（內部）</div></div>
+ </div>
+
+ <!-- 帳單明細 -->
+ <div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+   <div class="ct" style="margin:0">📋 使用明細</div>
+   <select id="bilMonthSel" class="fs" style="font-size:.82rem;padding:6px 10px;width:auto"></select>
+  </div>
+  <div id="bilStat" style="background:var(--g50);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px;border:1px solid var(--g200)"></div>
+  <div id="bilList"></div>
+ </div>
+
+ <!-- 繳費資訊 -->
+ <div class="card" style="background:linear-gradient(135deg,var(--gold-pale),#FFF0C0);border-color:var(--gold-l)">
+  <div class="ct" style="color:var(--gold-d)">💳 繳費資訊</div>
+  <div style="font-size:.9rem;line-height:2;color:var(--g700)">
+   <div>收款公司：<strong>堅果創意有限公司</strong></div>
+   <div>繳費日期：<strong>每月 12 日</strong>（下次：<span id="nextBilDate">—</span>）</div>
+   <div>基本月費：<strong>NT$9,000</strong></div>
+   <div>收款帳號：<strong id="bilBankAcct">7505400208531</strong></div>
+  </div>
+ </div>
+</div>
+
+  </div><!-- /ws -->
+ </div><!-- /ml -->
+</div><!-- /app -->
+
+<!-- ══ VENDOR MODAL ══ -->
+<div class="mov" id="vModal">
+ <div class="modal" style="max-width:700px">
+  <div class="mtit">新增廠商報價 <button class="mcl" data-close="vModal">✕</button></div>
+  <!-- 上傳類型選擇 -->
+  <div style="margin-bottom:14px">
+   <div style="font-size:.78rem;font-weight:800;color:var(--g500);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px">選擇上傳類型</div>
+   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+    <button class="vtype-btn on" data-vtype="image" onclick="setVType('image')">
+     <span style="font-size:1.6rem;display:block;margin-bottom:5px">📷</span>
+     <span style="font-size:.85rem;font-weight:800;display:block">照片</span>
+     <span style="font-size:.72rem;color:var(--g400);display:block;margin-top:2px">手寫·現場·截圖</span>
+    </button>
+    <button class="vtype-btn" data-vtype="pdf" onclick="setVType('pdf')">
+     <span style="font-size:1.6rem;display:block;margin-bottom:5px">📄</span>
+     <span style="font-size:.85rem;font-weight:800;display:block">PDF</span>
+     <span style="font-size:.72rem;color:var(--g400);display:block;margin-top:2px">廠商傳的 PDF</span>
+    </button>
+    <button class="vtype-btn" data-vtype="excel" onclick="setVType('excel')">
+     <span style="font-size:1.6rem;display:block;margin-bottom:5px">📊</span>
+     <span style="font-size:.85rem;font-weight:800;display:block">Excel</span>
+     <span style="font-size:.72rem;color:var(--g400);display:block;margin-top:2px">.xlsx · .xls · .csv</span>
+    </button>
+   </div>
+  </div>
+
+  <!-- 動態上傳區 -->
+  <div class="upz" id="vZone" style="border-style:solid;border-width:2px">
+   <span class="upz-ic" id="vZoneIc">📷</span>
+   <div class="upz-title" id="vZoneTitle">上傳照片</div>
+   <div class="upz-sub" id="vZoneSub">拍照或截圖上傳 · AI 自動辨識所有欄位</div>
+   <span style="display:inline-flex;align-items:center;gap:5px;background:var(--gold-pale);border:1px solid var(--gold-l);border-radius:20px;padding:4px 12px;font-size:.72rem;font-weight:800;color:var(--gold-d);margin-top:8px">🤖 AI 完整辨識</span>
+  </div>
+  <input type="file" id="vFile" accept="image/*" style="display:none">
+  <div class="ipg" id="vPrev" style="margin-top:10px"></div>
+  <div class="ocrp" id="vOcr"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中，請稍候…</div>
+
+  <!-- 辨識結果：報價單格式預覽 -->
+  <div id="vResult" style="display:none">
+   <div id="vOcrOk" style="display:none;align-items:center;gap:8px;padding:10px 14px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok);margin-bottom:14px">
+    ✅ 辨識完成！以下是辨識結果，可直接點擊修改任何欄位
+   </div>
+   <!-- 廠商基本資訊 -->
+   <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+    <div class="field" style="margin:0"><label class="fl">廠商名稱</label><input class="fi" id="vVd" placeholder="廠商名稱"></div>
+    <div class="field" style="margin:0"><label class="fl">工程類別</label><select class="fs" id="vCat"><option>系統櫃</option><option>廚具</option><option>玻璃</option><option>水電</option><option>泥作</option><option>油漆</option><option>鐵件</option><option>其他</option></select></div>
+    <div class="field" style="margin:0"><label class="fl">案場名稱</label><input class="fi" id="vCs" placeholder="景平路案"></div>
+   </div>
+   <!-- 細項表格 -->
+   <div style="border:1.5px solid var(--g200);border-radius:var(--rs);overflow:hidden;margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 70px 100px 36px;background:var(--g100);padding:9px 14px;border-bottom:1px solid var(--g200)">
+     <span style="font-size:.65rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em">工項名稱</span>
+     <span style="font-size:.65rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em">數量/單位</span>
+     <span style="font-size:.65rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em">單項金額</span>
+     <span style="font-size:.65rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em">小計</span>
+     <span></span>
+    </div>
+    <div id="vItemsTable"></div>
+   </div>
+   <button class="btn bo bsm" id="vAddItem" style="margin-bottom:12px">＋ 新增細項</button>
+   <!-- 合計 -->
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:12px">
+    <span style="font-size:.9rem;font-weight:800;color:var(--gold-d)">報價合計</span>
+    <span style="font-family:'DM Mono',monospace;font-size:1.2rem;font-weight:900;color:var(--gold-d)" id="vTotal">NT$0</span>
+   </div>
+   <div class="field" style="margin-bottom:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+     <label class="fl" style="margin:0">備注</label>
+     <button onclick="document.getElementById('vNt').value=''" style="font-size:.72rem;color:var(--bad);background:none;border:none;cursor:pointer;font-weight:700;padding:2px 6px">🗑 清除</button>
+    </div>
+    <input class="fi" id="vNt" placeholder="例：含安裝、不含稅、含運費…">
+   </div>
+  </div>
+  <div style="display:flex;gap:8px">
+   <button class="btn bo bsm" id="vManualBtn">✏️ 手動填寫</button>
+   <button class="btn bg bfull" id="addVBtn" style="padding:13px;font-size:.92rem">💾 確認儲存廠商報價</button>
+  </div>
+ </div>
+</div>
+
+<!-- ══ VENDOR EDIT MODAL ══ -->
+<div class="mov" id="vEditModal">
+ <div class="modal">
+  <div class="mtit">編輯廠商報價 <button class="mcl" data-close="vEditModal">✕</button></div>
+  <div class="g2">
+   <div class="field"><label class="fl">廠商名稱</label><input class="fi" id="veVd"></div>
+   <div class="field"><label class="fl">工程類別</label><select class="fs" id="veCat"><option>系統櫃</option><option>廚具</option><option>玻璃</option><option>水電</option><option>泥作</option><option>油漆</option><option>鐵件</option><option>其他</option></select></div>
+  </div>
+  <div class="g2">
+   <div class="field"><label class="fl">案場名稱</label><input class="fi" id="veCs"></div>
+   <div class="field"><label class="fl">報價金額</label><input class="fi" id="veAmt" type="number"></div>
+  </div>
+  <div class="field"><label class="fl">備注</label><input class="fi" id="veNt"></div>
+  <button class="btn bg bfull" id="veBtn" style="padding:14px;margin-top:4px">💾 儲存修改</button>
+ </div>
+</div>
+
+<!-- ══ INVOICE MODAL ══ -->
+<div class="mov" id="invModal">
+ <div class="modal" style="max-width:680px">
+  <div class="mtit">新增發票 <button class="mcl" data-close="invModal">✕</button></div>
+
+  <!-- 上傳區：可一次選多張 -->
+  <div id="invUploadArea">
+   <div class="upz" id="invZone" style="border-style:solid;border-width:2px">
+    <span class="upz-ic">🧾</span>
+    <div class="upz-title">上傳發票照片（可一次選多張）</div>
+    <div class="upz-sub">一次拍好幾張發票也沒問題，AI 會依序辨識，看不清楚的會提醒你</div>
+    <span style="display:inline-flex;align-items:center;gap:5px;background:var(--gold-pale);border:1px solid var(--gold-l);border-radius:20px;padding:4px 12px;font-size:.72rem;font-weight:800;color:var(--gold-d);margin-top:8px">🤖 批次自動辨識</span>
+   </div>
+   <input type="file" id="invFile" accept="image/*" multiple style="display:none">
+  </div>
+
+  <div class="ocrp" id="ocrProg" style="margin-top:10px;display:none"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> <span id="ocrProgText">AI 辨識發票中…</span></div>
+
+  <!-- 批次結果清單 -->
+  <div id="invBatchList" style="margin-top:14px;display:flex;flex-direction:column;gap:10px"></div>
+
+  <div id="invBatchFoot" style="display:none;margin-top:16px">
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--rs);margin-bottom:12px">
+    <span style="font-size:.9rem;font-weight:800;color:var(--info)" id="invBatchSummary">共 0 張</span>
+    <span style="font-family:var(--mono);font-size:1.2rem;font-weight:900;color:var(--info)" id="invBatchTotal">NT$0</span>
+   </div>
+   <button class="btn bg bfull" id="addInvBtn" style="padding:14px;font-size:.95rem">💾 全部確認並儲存</button>
+  </div>
+
+ </div>
+</div>
+
+<!-- ══ INVOICE EDIT MODAL ══ -->
+<div class="mov" id="invEditModal">
+ <div class="modal">
+  <div class="mtit">編輯發票 <button class="mcl" data-close="invEditModal">✕</button></div>
+  <div class="g2">
+   <div class="field"><label class="fl">發票號碼</label><input class="fi" id="ieNo"></div>
+   <div class="field"><label class="fl">日期</label><input class="fi" id="ieDt" type="date"></div>
+  </div>
+  <div class="g2">
+   <div class="field"><label class="fl">金額（含稅）</label><input class="fi" id="ieAmt" type="number"></div>
+   <div class="field"><label class="fl">支出類別</label><select class="fi" id="ieCat"><option>材料費</option><option>工資</option><option>設備費</option><option>管理費</option><option>其他</option></select></div>
+  </div>
+  <div class="field"><label class="fl">說明</label><input class="fi" id="ieDesc"></div>
+  <button class="btn bg bfull" id="ieBtn" style="padding:14px;margin-top:4px">💾 儲存修改</button>
+ </div>
+</div>
+
+<!-- ══ DETAIL MODAL ══ -->
+<div class="mov" id="detailMov">
+ <div class="modal"><div class="mtit" id="dtTit">記錄詳情 <button class="mcl" data-close="detailMov">✕</button></div><div id="dtBd"></div></div>
+</div>
+
+<!-- ══ CONTRACT MODAL ══ -->
+<!-- ══ PROJECT MODAL 案場新增/編輯 ══ -->
+<!-- ══ 新手設定精靈 ══ -->
+<div class="mov" id="setupWizardModal">
+ <div class="modal" style="max-width:520px;position:relative">
+  <button onclick="wizFinish()" title="跳過設定" style="position:absolute;top:14px;right:16px;background:none;border:none;color:var(--g400);font-size:1.2rem;cursor:pointer;z-index:2;padding:4px">✕</button>
+  <div class="wiz-crumb" id="wizCrumb">
+   <div class="wiz-step on" data-step="1"><span class="wiz-num">1</span>公司資料</div>
+   <div class="wiz-line"></div>
+   <div class="wiz-step" data-step="2"><span class="wiz-num">2</span>第一個案場</div>
+   <div class="wiz-line"></div>
+   <div class="wiz-step" data-step="3"><span class="wiz-num">3</span>完成</div>
+  </div>
+
+  <div class="wiz-panel on" id="wizPanel1">
+   <div class="mtit" style="border:none;padding:0;margin-bottom:6px">👋 歡迎使用！先填公司基本資料</div>
+   <p style="font-size:.85rem;color:var(--g500);margin-bottom:18px">這些資料會自動套用到 AI 客服、行銷貼文，之後隨時可以在「系統設定」修改</p>
+   <div class="field"><label class="fl">公司全名 *</label><input class="fi" id="wizCompanyName" placeholder="例：澤居室內裝修"></div>
+   <div class="g2">
+    <div class="field" style="margin:0"><label class="fl">聯絡電話</label><input class="fi" id="wizCompanyPhone" placeholder="03-2605199"></div>
+    <div class="field" style="margin:0"><label class="fl">服務地區</label><input class="fi" id="wizCompanyAreas" placeholder="例：台北、新北"></div>
+   </div>
+   <div style="display:flex;justify-content:flex-end;margin-top:20px">
+    <button class="btn bg" onclick="wizNextStep(1)">下一步 →</button>
+   </div>
+  </div>
+
+  <div class="wiz-panel" id="wizPanel2">
+   <div class="mtit" style="border:none;padding:0;margin-bottom:6px">🏗️ 建立第一個案場</div>
+   <p style="font-size:.85rem;color:var(--g500);margin-bottom:18px">案場是系統的核心，報價、合約、帳款都會歸在案場裡。先隨便填一個練習看看，之後可以刪掉重建</p>
+   <div class="field"><label class="fl">案場名稱 *</label><input class="fi" id="wizProjName" placeholder="例：林小姐-大安區翻新"></div>
+   <div class="field"><label class="fl">業主姓名</label><input class="fi" id="wizProjClient" placeholder="例：林小姐"></div>
+   <div style="display:flex;justify-content:space-between;margin-top:20px">
+    <button class="btn bo" onclick="wizSkipStep(2)">先跳過</button>
+    <button class="btn bg" onclick="wizNextStep(2)">下一步 →</button>
+   </div>
+  </div>
+
+  <div class="wiz-panel" id="wizPanel3">
+   <div style="text-align:center;padding:10px 0">
+    <div style="font-size:3rem;margin-bottom:14px">🎉</div>
+    <div class="mtit" style="border:none;padding:0;margin-bottom:8px;justify-content:center">設定完成！</div>
+    <p style="font-size:.88rem;color:var(--g500);margin-bottom:24px">接下來可以試試看：填報價單、上傳合約、記一筆帳。<br>有任何問題都可以在「系統設定」調整。</p>
+    <button class="btn bg" onclick="wizFinish()" style="width:100%">開始使用 →</button>
+   </div>
+  </div>
+
+ </div>
+</div>
+
+<div class="mov" id="projModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit" id="projModalTitle">新增案場 <button class="mcl" data-close="projModal">✕</button></div>
+
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field"><label class="fl">案場名稱 *</label><input class="fi" id="projName" placeholder="例：林小姐-大安區老屋翻新"></div>
+   <div class="field"><label class="fl">業主姓名</label><input class="fi" id="projClient" placeholder="例：林小姐"></div>
+  </div>
+  <div class="field"><label class="fl">地址</label><input class="fi" id="projAddress" placeholder="例：台北市大安區仁愛路三段100號"></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field"><label class="fl">工程類型</label>
+    <select class="fi" id="projType" style="cursor:pointer">
+     <option>全室翻新</option><option>老屋翻新</option><option>局部裝修</option>
+     <option>新成屋裝修</option><option>商業空間</option><option>辦公室</option>
+     <option>廚衛翻修</option><option>其他</option>
+    </select>
+   </div>
+   <div class="field"><label class="fl">案場狀態</label>
+    <select class="fi" id="projStatus" style="cursor:pointer"></select>
+   </div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field"><label class="fl">預計開工日</label><input class="fi" type="date" id="projStart"></div>
+   <div class="field"><label class="fl">預計完工日</label><input class="fi" type="date" id="projEnd"></div>
+  </div>
+  <div class="field"><label class="fl">負責員工</label>
+   <select class="fi" id="projEmployee" style="cursor:pointer"></select>
+  </div>
+  <div class="field"><label class="fl">備注</label><textarea class="fi" id="projNote" rows="2" placeholder="案場說明、特殊需求…" style="resize:none"></textarea></div>
+  <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+   <button class="btn bo" data-close="projModal">取消</button>
+   <button class="btn bg" onclick="saveProject()">💾 儲存案場</button>
+  </div>
+ </div>
+</div>
+
+<div class="mov" id="contractModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit">上傳合約文件 <button class="mcl" data-close="contractModal">✕</button></div>
+
+  <div class="upz" id="ctZone" style="border-style:solid;border-width:2px">
+   <span class="upz-ic">📝</span>
+   <div class="upz-title">上傳合約照片（可多張）</div>
+   <div class="upz-sub">📷 可一次選多張照片，每頁拍一張<br>支援 JPG、PNG、PDF</div>
+   <span style="display:inline-flex;align-items:center;gap:5px;background:var(--gold-pale);border:1px solid var(--gold-l);border-radius:20px;padding:4px 12px;font-size:.72rem;font-weight:800;color:var(--gold-d);margin-top:8px">📄 自動轉 PDF 格式</span>
+  </div>
+  <input type="file" id="ctFile" accept="image/*,.pdf" multiple style="display:none">
+
+    <div id="ctFileCard" style="display:none;margin-bottom:12px">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:.82rem;font-weight:700;color:var(--g600)" id="ctFileCount">已上傳 0 張</div>
+    <button class="btn brd bxs" id="ctDelFile">🗑 清除全部</button>
+   </div>
+   <div id="ctPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px"></div>
+  </div>
+
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">合約名稱</label><input class="fi" id="ctName" placeholder="例：景平路案 裝修合約"></div>
+   <div class="field" style="margin:0"><label class="fl">業主姓名</label><input class="fi" id="ctClient" placeholder="例：王先生"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">合約金額</label><input class="fi" id="ctAmt2" type="number" placeholder="850000"></div>
+   <div class="field" style="margin:0"><label class="fl">合約狀態</label>
+    <select class="fi" id="ctStatus">
+     <option value="pending">📋 未開始</option>
+     <option value="signed">✅ 結案</option>
+    </select>
+   </div>
+  </div>
+  <div class="field" style="margin-bottom:14px"><label class="fl">備注</label><input class="fi" id="ctNote" placeholder="例：含拆除工程、不含系統傢俱…"></div>
+
+  <button class="btn bg bfull" id="addCtBtn" style="padding:14px;font-size:.95rem">💾 儲存合約</button>
+  <div id="ctEditNote" style="display:none;font-size:.78rem;color:var(--g400);margin-top:8px;text-align:center">
+   💡 儲存後可在合約列表點「✏️ 編輯」修改任何欄位
+  </div>
+ </div>
+</div>
+
+<!-- ══ LEDGER MODAL ══ -->
+<div class="mov" id="ledgerModal">
+ <div class="modal" style="max-width:520px">
+  <div class="mtit" id="ledgerModalTitle">新增記錄 <button class="mcl" data-close="ledgerModal">✕</button></div>
+
+  <!-- 收入/支出 切換 -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+   <div class="ldir on" data-ldir="in" onclick="setLedgerDir('in')" style="text-align:center;padding:10px;border-radius:var(--rs);border:1.5px solid var(--g200);cursor:pointer;font-weight:800;font-size:.88rem">💰 收入</div>
+   <div class="ldir" data-ldir="out" onclick="setLedgerDir('out')" style="text-align:center;padding:10px;border-radius:var(--rs);border:1.5px solid var(--g200);cursor:pointer;font-weight:800;font-size:.88rem">📤 支出</div>
+  </div>
+
+  <!-- 上傳發票/單據 AI 辨識 -->
+  <div class="upz" id="ldZone" style="border-style:solid;border-width:2px;padding:16px;margin-bottom:12px">
+   <span class="upz-ic" style="font-size:1.6rem">📎</span>
+   <div class="upz-title" style="font-size:.9rem">上傳發票或單據（選填）</div>
+   <div class="upz-sub">AI 自動辨識日期、金額、說明</div>
+  </div>
+  <input type="file" id="ldFile" accept="image/*,.pdf" style="display:none">
+  <div id="ldFileCard" style="display:none;margin-bottom:10px">
+   <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--g50);border:1.5px solid var(--g200);border-radius:var(--rs)">
+    <img id="ldThumb" src="" style="width:48px;height:48px;object-fit:cover;border-radius:var(--rxs);border:1px solid var(--g200);cursor:pointer" onclick="if(this.src)openLB(this.src)">
+    <div style="flex:1"><div style="font-size:.85rem;font-weight:700" id="ldFileName">—</div><div style="font-size:.75rem;color:var(--g400)" id="ldFileStatus">已上傳</div></div>
+    <button class="btn brd bxs" id="ldDelFile">🗑 移除</button>
+   </div>
+  </div>
+  <div class="ocrp" id="ldOcr" style="margin-bottom:10px"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中…</div>
+
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" id="ldDate" type="date"></div>
+   <div class="field" style="margin:0"><label class="fl">金額</label><input class="fi" id="ldAmt" type="number" placeholder="52000"></div>
+  </div>
+  <div class="field" style="margin-bottom:12px"><label class="fl">說明</label><input class="fi" id="ldDesc" placeholder="例：景平路案 系統櫃材料費"></div>
+  <div class="g2" style="margin-bottom:14px">
+   <div class="field" style="margin:0"><label class="fl">分類</label><select class="fi" id="ldCat"><option>材料費</option><option>工資</option><option>廠商費用</option><option>管理費</option><option>設備費</option><option>合約收款</option><option>其他</option></select></div>
+   <div class="field" style="margin:0"><label class="fl">案場</label><input class="fi" id="ldCase" placeholder="景平路案"></div>
+  </div>
+
+  <!-- 費用細項（可新增刪除） -->
+  <div style="margin-bottom:14px">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px">
+    <label class="fl" style="margin:0">費用細項（選填，可新增修改）</label>
+    <button class="btn bo bxs" id="ldAddItem">＋ 新增細項</button>
+   </div>
+   <div id="ldItemsTable"></div>
+  </div>
+
+  <button class="btn bg bfull" id="addLedgerBtn" style="padding:14px;font-size:.95rem">💾 儲存記錄</button>
+ </div>
+</div>
+
+<!-- ══ PROGRESS MODAL ══ -->
+<div class="mov" id="progressModal">
+ <div class="modal" style="max-width:540px">
+  <div class="mtit" id="progModalTitle">新增案場進度 <button class="mcl" data-close="progressModal">✕</button></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">案場名稱</label><input class="fi" id="progCase" placeholder="景平路案"></div>
+   <div class="field" style="margin:0"><label class="fl">業主姓名</label><input class="fi" id="progClient" placeholder="王先生"></div>
+  </div>
+  <div class="field" style="margin-bottom:14px"><label class="fl">目前狀態</label>
+   <select class="fi" id="progStatus">
+    <option value="pending">📋 未開始</option>
+    <option value="ing">🔨 進行中</option>
+    <option value="done">✅ 結案</option>
+   </select>
+  </div>
+  <div style="margin-bottom:14px">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <label class="fl" style="margin:0">進度項目</label>
+    <button class="btn bo bxs" id="addProgItemBtn">＋ 新增項目</button>
+   </div>
+   <div id="progItemsTable"></div>
+  </div>
+  <button class="btn bg bfull" id="saveProgressBtn" style="padding:14px">💾 儲存進度</button>
+ </div>
+</div>
+
+<!-- ══ EMPLOYEE MODAL ══ -->
+<div class="mov" id="empModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit" id="empModalTitle">新增員工 <button class="mcl" data-close="empModal">✕</button></div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">姓名</label><input class="fi" id="empName" placeholder="陳小明"></div>
+   <div class="field" style="margin:0"><label class="fl">職稱</label><input class="fi" id="empTitle" placeholder="行政助理"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">到職日</label><input class="fi" id="empStartDate" type="date"></div>
+   <div class="field" style="margin:0"><label class="fl">聯絡電話</label><input class="fi" id="empPhone" placeholder="0912-345-678"></div>
+  </div>
+  <div class="g2" style="margin-bottom:12px">
+   <div class="field" style="margin:0"><label class="fl">身分證字號</label><input class="fi" id="empId" placeholder="A123456789"></div>
+   <div class="field" style="margin:0"><label class="fl">銀行帳號</label><input class="fi" id="empBank" placeholder="00000000000000"></div>
+  </div>
+  <div style="background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);padding:16px;margin-bottom:14px">
+   <div style="font-size:.85rem;font-weight:800;color:var(--gold-d);margin-bottom:8px">🔑 打卡帳號設定（選填）</div>
+   <p style="font-size:.78rem;color:var(--g500);margin:0 0 10px">設定後，員工可用此帳號密碼登入打卡，打卡記錄會顯示員工姓名</p>
+   <div class="g2" style="margin-bottom:4px">
+    <div class="field" style="margin:0"><label class="fl">登入帳號</label><input class="fi" id="empAccount" placeholder="例：chen123" autocomplete="off"></div>
+    <div class="field" style="margin:0"><label class="fl">登入密碼</label><input class="fi" id="empPassword" placeholder="例：1234" autocomplete="off"></div>
+   </div>
+  </div>
+  <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
+   <div style="font-size:.85rem;font-weight:800;color:var(--info);margin-bottom:8px">🔐 這個員工能用哪些功能？</div>
+   <p style="font-size:.78rem;color:var(--g500);margin:0 0 12px">只有設定了上面「打卡帳號」的員工才會套用這裡的權限；用共用員工帳號登入的人維持原本預設權限</p>
+   <div id="empPermList" style="display:flex;flex-direction:column;gap:9px">
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permProjects" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 案場總覽</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permMarketing" checked style="width:16px;height:16px;cursor:pointer"> 💬 客服行銷（諮詢、快速報價、貼文）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permQuote" checked style="width:16px;height:16px;cursor:pointer"> 📋 報價合約</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permVendor" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 廠商工程</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permAccounting" style="width:16px;height:16px;cursor:pointer"> 💰 會計（帳款、發票）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permSettings" style="width:16px;height:16px;cursor:pointer"> ⚙️ 系統設定</label>
+   </div>
+  </div>
+  <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
+   <div style="font-size:.85rem;font-weight:800;color:var(--info);margin-bottom:12px">💰 薪資設定</div>
+   <div class="g2" style="margin-bottom:10px">
+    <div class="field" style="margin:0"><label class="fl">底薪（月）</label><input class="fi" id="empSalary" type="number" placeholder="32000"></div>
+    <div class="field" style="margin:0"><label class="fl">伙食津貼</label><input class="fi" id="empMeal" type="number" placeholder="2400" value="2400"></div>
+   </div>
+   <div class="g2" style="margin-bottom:10px">
+    <div class="field" style="margin:0"><label class="fl">交通津貼</label><input class="fi" id="empTransport" type="number" placeholder="1000" value="0"></div>
+    <div class="field" style="margin:0"><label class="fl">其他津貼</label><input class="fi" id="empOther" type="number" placeholder="0" value="0"></div>
+   </div>
+   <div style="background:var(--w);border-radius:var(--rs);padding:12px 14px;font-size:.82rem">
+    <div style="font-size:.75rem;font-weight:800;color:var(--info);margin-bottom:8px">📊 勞健保自動計算（2024年標準）</div>
+    <div class="salary-row"><span class="sl-label">勞保費（員工負擔 20%）</span><span class="sl-val" id="empLabor">-</span></div>
+    <div class="salary-row"><span class="sl-label">健保費（員工負擔 30%）</span><span class="sl-val" id="empHealth">-</span></div>
+    <div class="salary-row"><span class="sl-label">勞退（雇主提撥 6%）</span><span class="sl-val" id="empRetire">-</span></div>
+    <div class="salary-row"><span class="sl-label" style="font-weight:700">實領薪資</span><span class="sl-val total" id="empNet">-</span></div>
+   </div>
+  </div>
+  <button class="btn bg bfull" id="saveEmpBtn" style="padding:14px">💾 儲存員工資料</button>
+ </div>
+</div>
+
+<!-- ══ ADD CLIENT MODAL ══ -->
+<div class="mov" id="addClientModal">
+ <div class="modal" style="max-width:400px">
+  <div class="mtit">＋ 新增客戶 <button class="mcl" data-close="addClientModal">✕</button></div>
+  <div class="field"><label class="fl">客戶姓名 <span style="color:var(--bad)">*</span></label>
+   <input class="fi" id="newClientName" placeholder="例：王先生" style="font-size:1rem"></div>
+  <div class="field"><label class="fl">電話號碼</label>
+   <input class="fi" id="newClientPhone" placeholder="0912-345-678" type="tel"></div>
+  <div class="field"><label class="fl">案場地址</label>
+   <input class="fi" id="newClientAddr" placeholder="例：台北市信義區某路某號"></div>
+  <button class="btn bg bfull" id="confirmAddClient" style="padding:14px;font-size:1rem;margin-top:4px">✅ 建立客戶</button>
+ </div>
+</div>
+
+<!-- ══ ZEJU QUOTE MODAL ══ -->
+<div class="mov" id="zejuQuoteModal">
+ <div class="modal" style="max-width:480px">
+  <div class="mtit">儲存到澤居報價庫 <button class="mcl" data-close="zejuQuoteModal">✕</button></div>
+  <div class="field"><label class="fl">報價名稱</label><input class="fi" id="zqName" placeholder="例：景平路案 全室翻新報價"></div>
+  <div class="field"><label class="fl">案場名稱</label><input class="fi" id="zqCase" placeholder="例：景平路案"></div>
+  <div class="field"><label class="fl">備注</label><input class="fi" id="zqNote" placeholder="例：含系統廚具，不含燈具"></div>
+  <button class="btn bg bfull" id="saveZejuQuoteBtn" style="padding:14px;font-size:.95rem">💾 儲存到報價庫</button>
+ </div>
+</div>
+
+
+
+<script src="js/core.js"></script>
+<script src="js/projects.js"></script>
+<script src="js/quote.js"></script>
+<script src="js/vendor-punch.js"></script>
+<script src="js/hr-marketing.js"></script>
+<script src="js/billing-contracts.js"></script>
+<script src="js/misc.js"></script>
+<script>
+// 註冊 Service Worker，讓網頁可以「加到主畫面」變成類似App的體驗
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{}); // 註冊失敗不影響網頁本身運作
+  });
+}
+</script>
+</body>
+</html>

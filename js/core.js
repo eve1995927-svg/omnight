@@ -601,7 +601,7 @@ function confirmAction(msg,onConfirm,danger=true){
   const box=document.createElement('div');
   box.id='_cfmBox';
   box.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--w);border:1.5px solid '+(danger?'var(--bad-bd)':'var(--g200)')+';border-radius:var(--r);padding:16px 20px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.18);min-width:260px;text-align:center;animation:slideUp .2s ease';
-  box.innerHTML='<div style="font-size:.88rem;font-weight:700;color:var(--g700);margin-bottom:12px">'+msg+'</div>'+
+  box.innerHTML='<div style="font-size:.88rem;font-weight:700;color:var(--g700);margin-bottom:12px">'+esc(msg)+'</div>'+
     '<div style="display:flex;gap:8px;justify-content:center">'+
     '<button class="_cfmNo" style="padding:7px 18px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.82rem;cursor:pointer;font-family:inherit">取消</button>'+
     '<button class="_cfmYes" style="padding:7px 18px;border:none;border-radius:var(--rs);background:'+(danger?'var(--bad)':'var(--gold-d)')+';color:#fff;font-size:.82rem;cursor:pointer;font-weight:700;font-family:inherit">'+(danger?'確定刪除':'確定')+'</button>'+
@@ -619,9 +619,10 @@ function showInfoBox(title,message){
   const overlay=document.createElement('div');
   overlay.id='_infoBox';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
-  const htmlMsg=String(message).replace(/\n/g,'<br>');
+  // 先跳脫再轉換換行，順序不能反過來，不然使用者輸入的文字如果剛好含有 <br> 字樣會被誤判成標籤
+  const htmlMsg=esc(String(message)).replace(/\n/g,'<br>');
   overlay.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:400px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
-    '<div style="font-weight:800;font-size:1rem;color:var(--g800);margin-bottom:10px">'+title+'</div>'+
+    '<div style="font-weight:800;font-size:1rem;color:var(--g800);margin-bottom:10px">'+esc(title)+'</div>'+
     '<div style="font-size:.86rem;color:var(--g600);line-height:1.7;white-space:normal">'+htmlMsg+'</div>'+
     '<button id="_infoOk" style="margin-top:16px;width:100%;padding:10px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">知道了</button>'+
     '</div>';
@@ -669,6 +670,20 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
   document.querySelectorAll('.lrb').forEach(b=>b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('lUser').value=ACCTS[curRole].user;
+  // 老闆角色：顯示帳號欄位 + 記住帳號，其他角色維持共用密碼（不用個人帳號）
+  const accEl=document.getElementById('lAccount');
+  const rememberWrap=document.getElementById('lRememberWrap');
+  if(curRole==='owner'){
+    accEl.style.display='block';
+    rememberWrap.style.display='flex';
+    const remembered=localStorage.getItem('zeju_owner_account');
+    accEl.value=remembered||ACCTS.owner.user;
+    document.getElementById('lRemember').checked=!!remembered;
+  } else {
+    accEl.style.display='none';
+    rememberWrap.style.display='none';
+    accEl.value='';
+  }
   // 員工/公務角色：顯示員工姓名選單（不用打字，直接選是誰）
   const empSelEl=document.getElementById('lEmpSelect');
   if(empSelEl){
@@ -692,6 +707,20 @@ document.getElementById('lBtn').addEventListener('click',doLogin);
 document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 let _punchEmployee=null; // 個人打卡帳號登入時，記錄對應員工資料
 
+// 頁面載入時，登入畫面預設就是「老闆」角色（HTML 裡 lrb-own 預設 on），
+// 所以要在載入當下就把帳號欄位＋記住帳號顯示出來，不用等使用者點一次角色按鈕
+window.addEventListener('DOMContentLoaded',()=>{
+  const accEl=document.getElementById('lAccount');
+  const rememberWrap=document.getElementById('lRememberWrap');
+  if(accEl&&rememberWrap&&curRole==='owner'){
+    accEl.style.display='block';
+    rememberWrap.style.display='flex';
+    const remembered=localStorage.getItem('zeju_owner_account');
+    accEl.value=remembered||ACCTS.owner.user;
+    document.getElementById('lRemember').checked=!!remembered;
+  }
+});
+
 function doLogin(){
   const p=document.getElementById('lPass').value.trim();
   const err=document.getElementById('lErr');
@@ -699,8 +728,8 @@ function doLogin(){
 
   _punchEmployee=null;
 
-  // 共用帳號密碼對照
-  const SHARED_PW={owner:'0923',staff:'zeju',punch:'zeju1'};
+  // 共用帳號密碼對照（員工/公務維持共用密碼，方便好記）
+  const SHARED_PW={staff:'zeju',punch:'zeju1'};
 
   // 查員工個人帳號（staff 和 punch 都可以用個人帳號）
   function findEmployee(acc, pw){
@@ -712,7 +741,19 @@ function doLogin(){
 
   const empAcc=(document.getElementById('lEmpSelect')?.value||'').trim();
 
-  if(empAcc){
+  if(curRole==='owner'){
+    // 老闆角色：需要帳號＋密碼都正確
+    const acc=(document.getElementById('lAccount')?.value||'').trim();
+    if(acc!==ACCTS.owner.user||p!==ACCTS.owner.pass){
+      err.style.display='block'; err.textContent='帳號或密碼不正確，請再試一次'; return;
+    }
+    // 記住帳號
+    if(document.getElementById('lRemember')?.checked){
+      localStorage.setItem('zeju_owner_account',acc);
+    } else {
+      localStorage.removeItem('zeju_owner_account');
+    }
+  } else if(empAcc){
     // 個人帳號登入（staff 或 punch）
     if(curRole!=='staff'&&curRole!=='punch'){
       err.style.display='block'; err.textContent='個人帳號只適用於員工或公務角色'; return;
@@ -723,7 +764,7 @@ function doLogin(){
     }
     _punchEmployee=emp;
   } else {
-    // 共用帳號登入
+    // 共用帳號登入（員工／公務）
     const correctPw=SHARED_PW[curRole];
     if(!correctPw||p!==correctPw){
       err.style.display='block'; err.textContent='密碼不正確，請重新輸入'; return;
@@ -782,7 +823,7 @@ function setupApp(role){
   }
   if(!isIndividual) _punchEmployee=null;
 
-  if(uDot)uDot.textContent=isIndividual?empName.charAt(0):(a?.abbr||'?');
+  if(uDot)uDot.textContent=isIndividual?(empName||'?').charAt(0):(a?.abbr||'?');
   if(uName)uName.textContent=displayName;
   if(aName)aName.textContent=displayName;
   if(aRole)aRole.textContent=isIndividual?(role==='punch'?'員工打卡':'員工'):(a?.role||'');
@@ -978,7 +1019,7 @@ function renderHistory(){
   recs.sort((a,b)=>b._id-a._id);recs=recs.slice(0,20);
   if(!recs.length){hs.style.display='none';return;}
   hs.style.display='block';hl.innerHTML='';
-  recs.forEach(r=>{const el=document.createElement('div');el.className='hi';el.innerHTML='<div class="hi-t">'+(r._ts||'').split(' ')[0]+'</div><div class="hi-x">'+(r.summary||'').slice(0,34)+'</div>';hl.appendChild(el);});
+  recs.forEach(r=>{const el=document.createElement('div');el.className='hi';el.innerHTML='<div class="hi-t">'+esc((r._ts||'').split(' ')[0])+'</div><div class="hi-x">'+esc((r.summary||'').slice(0,34))+'</div>';hl.appendChild(el);});
 }
 
 // ══ AI API ════════════════════════════════════════════════
@@ -1087,9 +1128,9 @@ async function chatSend(cid){
   catch(err){ty.remove();addBbl(cid,'ai',friendlyAIError(err));console.error('chatSend err:',err);}
 }
 function chatQ(cid,text){document.getElementById('in-'+cid).value=text;chatSend(cid);}
-function addBbl(cid,role,text){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');const esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\n/g,'<br>');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><div class="bbl '+(role==='ai'?'bai':'bus')+'">'+esc+'</div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
-function addImgBbl(cid,role,src){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><img class="mig" src="'+src+'" onclick="openLB(this.src)"></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
-function addFileBbl(cid,role,name){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><div style="font-size:.8rem;background:var(--info-bg);border:1px solid var(--info-bd);color:var(--info);padding:8px 12px;border-radius:var(--rs);font-weight:700">📄 '+name+'</div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
+function addBbl(cid,role,text){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');const safe=esc(text).replace(/\n/g,'<br>');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><div class="bbl '+(role==='ai'?'bai':'bus')+'">'+safe+'</div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
+function addImgBbl(cid,role,src){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><img class="mig" src="'+esc(src)+'" onclick="openLB(this.src)"></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
+function addFileBbl(cid,role,name){const ms=document.getElementById('ms-'+cid);if(!ms)return;const d=document.createElement('div');d.className='msg'+(role==='user'?' u':'');d.innerHTML='<div class="av '+(role==='ai'?'avai':'avus')+'">'+(role==='ai'?'澤':'我')+'</div><div class="mi"><div style="font-size:.8rem;background:var(--info-bg);border:1px solid var(--info-bd);color:var(--info);padding:8px 12px;border-radius:var(--rs);font-weight:700">📄 '+esc(name)+'</div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;}
 function addTyping(cid){const ms=document.getElementById('ms-'+cid);if(!ms)return{remove:()=>{}};const d=document.createElement('div');d.className='msg';d.innerHTML='<div class="av avai">澤</div><div class="tdots"><div class="td"></div><div class="td"></div><div class="td"></div></div>';ms.appendChild(d);ms.scrollTop=ms.scrollHeight;return d;}
 function initAllChats(){
   const p=getCompanyProfile();

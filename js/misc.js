@@ -307,7 +307,7 @@ function renderCtPhotos(){
       img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
       img.onclick=()=>openLB(url);wrap.appendChild(img);
     }else{
-      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+(p.name||'文件')+'</div></div>';
+      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
     }
     const pg=document.createElement('div');
     pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';

@@ -64,7 +64,7 @@ document.getElementById('vFile').addEventListener('change',async e=>{
       const icon=f.name.match(/\.pdf$/i)?'📄':f.name.match(/\.xlsx?|\.csv$/i)?'📊':'📎';
       const t=document.createElement('div');
       t.style.cssText='display:inline-flex;align-items:center;gap:7px;background:var(--info-bg);border:1.5px solid var(--info-bd);color:var(--info);padding:9px 14px;border-radius:var(--rs);font-size:.85rem;font-weight:700;margin:3px';
-      t.innerHTML=icon+' '+f.name+'<span style="cursor:pointer;color:var(--bad);font-weight:900;margin-left:4px">✕</span>';
+      t.innerHTML=icon+' '+esc(f.name)+'<span style="cursor:pointer;color:var(--bad);font-weight:900;margin-left:4px">✕</span>';
       t.querySelector('span').addEventListener('click',()=>t.remove());
       prev.appendChild(t);
     }

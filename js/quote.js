@@ -166,7 +166,18 @@ function renderPqsItems(secId,items,containerId,sections,opts){
   });
 }
 
-function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+// 全站唯一的 HTML escape 函式：所有 innerHTML 拼字串前都要先過這一層，
+// 防止使用者輸入（案場名稱、廠商名稱、備註...等任何表單文字）被當成 HTML/JS 執行（XSS）。
+// 修正紀錄：原本這裡只轉了 & 和 "，沒有轉 < > '，等於完全沒防到 <script> 或 <img onerror=...> 這類攻擊，
+// 已修正為完整轉換全部五個危險字元。
+function esc(s){
+  return (s===null||s===undefined?'':String(s))
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
 
 function refreshSec(secId,items,containerId,sections,opts){
   const pqs=document.getElementById('pi-'+secId)?.closest('.pqs');
@@ -323,7 +334,7 @@ function renderAdVendorPicker(){
   if(empty)empty.style.display='none';
   vendors.forEach(v=>{
     const el=document.createElement('div');el.className='vp-item';el.dataset.id=v._id;
-    el.innerHTML='<div class="vp-chk"></div><div style="flex:1"><div class="vp-name">'+v.vendor+'</div><div style="font-size:.75rem;color:var(--g400)">'+v.caseN+'</div></div><div class="vp-cat">'+v.cat+'</div><div class="vp-amt">'+fmt(v.amount||0)+'</div>';
+    el.innerHTML='<div class="vp-chk"></div><div style="flex:1"><div class="vp-name">'+esc(v.vendor)+'</div><div style="font-size:.75rem;color:var(--g400)">'+esc(v.caseN)+'</div></div><div class="vp-cat">'+esc(v.cat)+'</div><div class="vp-amt">'+fmt(v.amount||0)+'</div>';
     el.addEventListener('click',()=>{
       if(selVendors.has(v._id)){selVendors.delete(v._id);el.classList.remove('sel');}
       else{selVendors.add(v._id);el.classList.add('sel');}
@@ -371,7 +382,7 @@ function renderQTable(){
   tbl.innerHTML='';
   qs.forEach(q=>{
     const tr=document.createElement('tr');
-    tr.innerHTML='<td>'+q.name+'</td><td>'+(q.caseN||'—')+'</td><td>'+(q.type||'—')+'</td><td class="mono">'+fmt(q.total||0)+'</td><td class="mono">'+(q._ts||'').split(' ')[0]+'</td>'+
+    tr.innerHTML='<td>'+esc(q.name)+'</td><td>'+esc(q.caseN||'—')+'</td><td>'+esc(q.type||'—')+'</td><td class="mono">'+fmt(q.total||0)+'</td><td class="mono">'+esc((q._ts||'').split(' ')[0])+'</td>'+
       '<td><div style="display:flex;gap:5px;flex-wrap:wrap">'+
       '<button class="btn bo bxs" data-qid="'+q._id+'">✏️ 編輯</button>'+
       '<button class="btn bgn bxs" data-qxls="'+q._id+'">📥 Excel</button>'+
@@ -436,8 +447,8 @@ function dlXls(name,type,sections,mode){
 
     // ══ 主表：完全按照模板格式 ══
     const ws=wb.addWorksheet('澤居報價單');
-    // 欄寬完全跟模板一樣
-    ws.columns=[{width:8},{width:33},{width:8},{width:8},{width:12},{width:12},{width:23}];
+    // 欄寬：E、F（單價/複價）跟 C、D（單位/數量）同寬，騰出來的空間都給 G 備註欄用（客戶回饋原本 E、F 太寬、大小不協調）
+    ws.columns=[{width:8},{width:33},{width:8},{width:8},{width:8},{width:8},{width:31}];
 
     function setCell(ref, val, opts={}){
       const c=ws.getCell(ref);
