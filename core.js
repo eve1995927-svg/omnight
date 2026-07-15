@@ -55,6 +55,11 @@ const GROUPS={
   ],
 };
 
+// 手機版簡化選單：現場常用的功能才留在手機上，複雜的（合約、會計細項、人資薪資、系統設定...）
+// 只在電腦版顯示。帳款總覽有留，是因為「標記廠商付款」這個現場常用的小動作剛好放在那一頁裡。
+const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote','ad-newquote','ad-progress','ac-overview'];
+function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
+
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
 const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
 
@@ -721,6 +726,24 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
+// 平板轉方向、或視窗跨過手機/電腦的寬度分界時，重新畫一次選單，
+// 避免「橫放是電腦選單、直放卻還停在電腦選單」這種不同步的狀況
+let _lastIsMobile=isMobileView(), _resizeT=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(_resizeT);
+  _resizeT=setTimeout(()=>{
+    const nowMobile=isMobileView();
+    if(nowMobile!==_lastIsMobile){
+      _lastIsMobile=nowMobile;
+      if(typeof curRole!=='undefined'&&curRole&&document.getElementById('app')?.style.display!=='none'){
+        buildTabs(curRole);
+        buildSidebar(curRole,groupsFor(curRole)?.[0]?.l);
+        buildBN(curRole);
+      }
+    }
+  },200);
+});
+
 function doLogin(){
   const p=document.getElementById('lPass').value.trim();
   const err=document.getElementById('lErr');
@@ -921,8 +944,28 @@ const IMAP={owner:'👑',cs:'💬',mk:'✨',ad:'📋',ac:'📊'};
 function buildTabs(role){
   const tabs=document.getElementById('rTabs');tabs.innerHTML='';
   if(role==='punch')return;
-  // 每個分組顯示一個 Tab，點了展開到第一個功能
   const grps=groupsFor(role);
+
+  if(isMobileView()){
+    // 手機版：不用「分組頁籤 → 側欄」兩層結構（側欄在手機上是隱藏的，等於點了分組也看不到裡面的項目），
+    // 改成把允許的功能攤平成一排，點哪個直接開哪個
+    const items=grps.flatMap(g=>g.items).filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
+    items.forEach(item=>{
+      const b=document.createElement('button');
+      b.className='rtab';b.dataset.panel=item.id;
+      b.textContent=item.ic+' '+item.l;
+      b.addEventListener('click',()=>{
+        showPanel(item.id);
+        document.querySelectorAll('.rtab').forEach(t=>t.classList.remove('on'));
+        b.classList.add('on');
+      });
+      tabs.appendChild(b);
+    });
+    if(tabs.firstChild)tabs.firstChild.classList.add('on');
+    return;
+  }
+
+  // 電腦版：維持原本「每個分組一個 Tab，點了展開到第一個功能」的邏輯
   grps.forEach(grp=>{
     const b=document.createElement('button');
     b.className='rtab';b.dataset.grp=grp.l;
@@ -940,6 +983,10 @@ function buildTabs(role){
   if(tabs.firstChild)tabs.firstChild.classList.add('on');
 }
 function syncTabActive(panelId){
+  if(isMobileView()){
+    document.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('on',t.dataset.panel===panelId));
+    return;
+  }
   // 找這個 panel 屬於哪個分組
   const role=curRole;const grps=groupsFor(role);
   const grp=grps.find(g=>g.items.some(i=>i.id===panelId));
@@ -976,7 +1023,10 @@ function buildBN(role){
     backBtn.addEventListener('click',()=>showPanel('projects'));
     bn.appendChild(backBtn);
   }
-  groupsFor(role).flatMap(g=>g.items).slice(0,isInProject?5:6).forEach(item=>{
+  // 底部快速列：只從「手機版允許」的清單挑，不會出現複雜功能（跟頂部頁籤用同一份白名單，行為一致）
+  const allItems=groupsFor(role).flatMap(g=>g.items);
+  const items=role==='punch' ? allItems : allItems.filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
+  items.slice(0,isInProject?5:6).forEach(item=>{
     const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
     b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
