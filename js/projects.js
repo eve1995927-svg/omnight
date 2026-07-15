@@ -323,6 +323,24 @@ function renderProjectsKanban(){
         card.draggable=true;
         card.dataset.id=p._id;
         card.innerHTML=`<div class="kb-card-t">${esc(p.name||'未命名')}</div><div class="kb-card-c">${esc(p.client||'業主未填')}</div>${income?`<div class="kb-card-amt">💰 NT$${income.toLocaleString()}</div>`:''}`;
+        // 文字選單移動狀態：手機/平板點拖曳常常不準或根本拖不動（HTML5 原生拖曳對觸控支援不好），
+        // 這裡加一個下拉選單當作「一定能用」的替代方案，選了就直接換分類，不用靠拖曳手勢。
+        const moveWrap=document.createElement('div');
+        moveWrap.className='kb-card-move';
+        moveWrap.innerHTML=`<select>
+          <option value="">↕️ 移到...</option>
+          ${KANBAN_STATUSES.filter(k=>k!==statusKey).map(k=>`<option value="${k}">${PROJECT_STATUS[k].icon} ${PROJECT_STATUS[k].label}</option>`).join('')}
+        </select>`;
+        const moveSelect=moveWrap.querySelector('select');
+        moveSelect.addEventListener('click',e=>e.stopPropagation());
+        moveSelect.addEventListener('change',e=>{
+          e.stopPropagation();
+          if(!moveSelect.value)return;
+          updateProjectStatus(p._id,moveSelect.value);
+          renderProjectsKanban();
+          if(typeof renderDashboard==='function')renderDashboard();
+        });
+        card.appendChild(moveWrap);
         card.addEventListener('click',()=>openProject(p._id));
         card.addEventListener('dragstart',e=>{
           card.classList.add('dragging');
