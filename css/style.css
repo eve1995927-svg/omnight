@@ -210,6 +210,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .kb-card-t{font-size:.85rem;font-weight:800;color:var(--ink);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kb-card-c{font-size:.72rem;color:var(--steel);margin-bottom:6px}
 .kb-card-amt{font-size:.75rem;font-weight:800;color:var(--ok);font-family:var(--mono)}
+.kb-card-move{margin-top:8px}
+.kb-card-move select{width:100%;padding:6px 8px;border:1.5px solid var(--g200);border-radius:8px;font-size:.72rem;font-weight:700;color:var(--steel);background:var(--g50);cursor:pointer;font-family:inherit}
+.kb-card-move select:hover{border-color:var(--gold-l);color:var(--ink)}
 .kb-empty{padding:20px 12px;text-align:center;color:var(--g300);font-size:.75rem}
 
 .fl{font-size:.72rem;font-weight:900;color:var(--g500);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;display:block}
