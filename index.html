@@ -538,7 +538,7 @@
 
 <!-- ══ AD VENDOR ══ -->
 <div class="panel" id="p-ad-vendor">
- <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeProjectsModal()">🔀 合併重複案場</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
+ <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">🔀 合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="vCnt">0</div><div class="sl">廠商報價件數</div></div>
   <div class="stat"><div class="sn" id="vCatCnt">0</div><div class="sl">工程分類</div></div>
@@ -1322,6 +1322,23 @@
   <div id="ctEditNote" style="display:none;font-size:.78rem;color:var(--g400);margin-top:8px;text-align:center">
    💡 儲存後可在合約列表點「✏️ 編輯」修改任何欄位
   </div>
+ </div>
+</div>
+
+<!-- ══ MERGE VENDOR GROUPS MODAL（合併廠商報價裡因為案場名稱打法不同而分裂的分組，不動案場總覽的案場資料）══ -->
+<div class="mov" id="mergeVendorGroupModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit">🔀 合併廠商報價分組 <button class="mcl" data-close="mergeVendorGroupModal">✕</button></div>
+  <div style="font-size:.82rem;color:var(--g500);margin-bottom:16px;line-height:1.6">
+   勾選底下因為案場名稱打法不一致而分開的分組（案場總覽本身沒有重複，只是這幾筆廠商報價存的案場文字不一樣），
+   選一個「正式案場」，合併後這些廠商報價會全部歸到同一個案場底下。
+  </div>
+  <div id="mergeVGroupList" style="max-height:280px;overflow-y:auto;margin-bottom:16px"></div>
+  <div id="mergeVGroupTargetWrap" style="display:none;margin-bottom:16px">
+   <label class="fl">合併到哪個案場？</label>
+   <select class="fi" id="mergeVGroupTarget"></select>
+  </div>
+  <button class="btn bg bfull" id="mergeVGroupBtn" style="padding:13px;font-size:.92rem" disabled>選至少 2 個分組才能合併</button>
  </div>
 </div>
 

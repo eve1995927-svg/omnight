@@ -277,6 +277,7 @@ function renderProjects(filter){
     card.addEventListener('mouseleave',()=>card.style.boxShadow='');
     c.appendChild(card);
   });
+  if(typeof renderProjectCalendar==='function')renderProjectCalendar();
 }
 
 function searchProjects(val){
@@ -323,6 +324,24 @@ function renderProjectsKanban(){
         card.draggable=true;
         card.dataset.id=p._id;
         card.innerHTML=`<div class="kb-card-t">${esc(p.name||'未命名')}</div><div class="kb-card-c">${esc(p.client||'業主未填')}</div>${income?`<div class="kb-card-amt">💰 NT$${income.toLocaleString()}</div>`:''}`;
+        // 文字選單移動狀態：手機/平板點拖曳常常不準或根本拖不動（HTML5 原生拖曳對觸控支援不好），
+        // 這裡加一個下拉選單當作「一定能用」的替代方案，選了就直接換分類，不用靠拖曳手勢。
+        const moveWrap=document.createElement('div');
+        moveWrap.className='kb-card-move';
+        moveWrap.innerHTML=`<select>
+          <option value="">↕️ 移到...</option>
+          ${KANBAN_STATUSES.filter(k=>k!==statusKey).map(k=>`<option value="${k}">${PROJECT_STATUS[k].icon} ${PROJECT_STATUS[k].label}</option>`).join('')}
+        </select>`;
+        const moveSelect=moveWrap.querySelector('select');
+        moveSelect.addEventListener('click',e=>e.stopPropagation());
+        moveSelect.addEventListener('change',e=>{
+          e.stopPropagation();
+          if(!moveSelect.value)return;
+          updateProjectStatus(p._id,moveSelect.value);
+          renderProjectsKanban();
+          if(typeof renderDashboard==='function')renderDashboard();
+        });
+        card.appendChild(moveWrap);
         card.addEventListener('click',()=>openProject(p._id));
         card.addEventListener('dragstart',e=>{
           card.classList.add('dragging');
@@ -352,8 +371,256 @@ function renderProjectsKanban(){
 
     row.appendChild(col);
   });
+  if(typeof renderProjectCalendar==='function')renderProjectCalendar();
 }
 
+// ── 案場日行事曆（依開工日排程，卡片可拖到別的日期改開工日）──────
+let calViewDate=new Date(); // 目前行事曆顯示的月份
+
+function ymd(d){ // Date -> 'YYYY-MM-DD'，跟 <input type="date"> 存的格式一致
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function renderProjectCalendar(){
+  const grid=document.getElementById('calGrid');if(!grid)return;
+  const label=document.getElementById('calMonthLabel');
+  const y=calViewDate.getFullYear(), m=calViewDate.getMonth();
+  if(label)label.textContent=y+'年'+(m+1)+'月';
+
+  const firstDay=new Date(y,m,1);
+  const startOffset=firstDay.getDay(); // 0=週日
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const daysInPrevMonth=new Date(y,m,0).getDate();
+  const todayStr=ymd(new Date());
+
+  // 這個月（含前後補位天）每一天要放哪些案場：用開工日 startDate 對應
+  const projects=DB.get('projects').filter(p=>!p.archived&&p.startDate);
+  const byDate={};
+  projects.forEach(p=>{ (byDate[p.startDate]=byDate[p.startDate]||[]).push(p); });
+
+  const cells=[];
+  // 補上個月尾巴
+  for(let i=startOffset-1;i>=0;i--){
+    const dnum=daysInPrevMonth-i;
+    const dateStr=ymd(new Date(y,m-1,dnum));
+    cells.push({dnum,dateStr,otherMonth:true});
+  }
+  // 本月
+  for(let d=1;d<=daysInMonth;d++){
+    cells.push({dnum:d,dateStr:ymd(new Date(y,m,d)),otherMonth:false});
+  }
+  // 補下個月開頭，湊滿整週（7 的倍數）
+  let next=1;
+  while(cells.length%7!==0){
+    cells.push({dnum:next,dateStr:ymd(new Date(y,m+1,next)),otherMonth:true});
+    next++;
+  }
+
+  grid.innerHTML='';
+  const MAX_CHIPS=3; // 正方形格子放不下太多，超過用「+N 更多」收起來，跟 Google 日曆一樣
+  cells.forEach(cell=>{
+    const el=document.createElement('div');
+    el.className='pc-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
+    el.dataset.date=cell.dateStr;
+    const dayProjects=byDate[cell.dateStr]||[];
+    el.innerHTML='<div class="pc-day-num">'+cell.dnum+'</div><div class="pc-day-chips"></div>';
+    const chipsWrap=el.querySelector('.pc-day-chips');
+    dayProjects.slice(0,MAX_CHIPS).forEach(p=>{
+      const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+      const chip=document.createElement('div');
+      chip.className='pc-chip';
+      chip.draggable=true;
+      chip.dataset.id=p._id;
+      chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
+      chip.textContent=st.icon+' '+(p.name||p.client||'未命名案場');
+      chip.title=(p.name||'未命名案場')+'（點擊查看，拖曳可改開工日）';
+      chip.addEventListener('click',e=>{e.stopPropagation();openProject(p._id);});
+      chip.addEventListener('dragstart',e=>{
+        chip.classList.add('dragging');
+        e.dataTransfer.setData('text/plain',String(p._id));
+        e.dataTransfer.effectAllowed='move';
+      });
+      chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      chipsWrap.appendChild(chip);
+    });
+    if(dayProjects.length>MAX_CHIPS){
+      const more=document.createElement('div');
+      more.className='pc-day-more';
+      more.textContent='+'+(dayProjects.length-MAX_CHIPS)+' 更多';
+      more.addEventListener('click',e=>{e.stopPropagation();showDayProjectsPopover(cell.dateStr,dayProjects);});
+      chipsWrap.appendChild(more);
+    }
+    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
+    el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
+    el.addEventListener('drop',e=>{
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const draggedId=parseInt(e.dataTransfer.getData('text/plain'));
+      const proj=getProject(draggedId);
+      if(!proj||!proj.startDate)return;
+      const newDate=el.dataset.date;
+      if(proj.startDate===newDate)return;
+      // 保留原本工期長度：完工日跟著開工日一起平移，不會因為拖曳而把工期拉長或縮短
+      const patch={startDate:newDate};
+      if(proj.endDate){
+        const oldStart=new Date(proj.startDate+'T00:00:00');
+        const oldEnd=new Date(proj.endDate+'T00:00:00');
+        const durationDays=Math.round((oldEnd-oldStart)/86400000);
+        const newStart=new Date(newDate+'T00:00:00');
+        const newEnd=new Date(newStart.getTime()+durationDays*86400000);
+        patch.endDate=ymd(newEnd);
+      }
+      DB.upd('projects',draggedId,patch);
+      renderProjectCalendar();
+      showToast('📅 已把「'+(proj.name||'案場')+'」的開工日改到 '+newDate);
+    });
+    grid.appendChild(el);
+  });
+}
+
+document.getElementById('calPrevM')?.addEventListener('click',()=>{
+  calViewDate=new Date(calViewDate.getFullYear(),calViewDate.getMonth()-1,1);
+  renderProjectCalendar();
+});
+document.getElementById('calNextM')?.addEventListener('click',()=>{
+  calViewDate=new Date(calViewDate.getFullYear(),calViewDate.getMonth()+1,1);
+  renderProjectCalendar();
+});
+document.getElementById('calTodayBtn')?.addEventListener('click',()=>{
+  calViewDate=new Date();
+  renderProjectCalendar();
+});
+
+// 正方形格子放不下太多案場時，點「+N 更多」跳出這個小視窗看當天全部案場
+function showDayProjectsPopover(dateStr,projects){
+  const old=document.getElementById('_dayPopover');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_dayPopover';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.35);z-index:9200;display:flex;align-items:center;justify-content:center;padding:20px';
+  const rows=projects.map(p=>{
+    const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+    return '<div class="pc-pop-row" data-id="'+p._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
+      '<span style="font-size:1rem">'+st.icon+'</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name||'未命名案場')+'</div>'+
+      '<div style="font-size:.72rem;color:var(--g400)">'+esc(p.client||'業主未填')+'</div></div>'+
+      '<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+    '</div>';
+  }).join('');
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:18px 20px;max-width:360px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
+    rows+
+    '</div>';
+  box.addEventListener('click',()=>box.remove());
+  box.querySelectorAll('.pc-pop-row').forEach(row=>{
+    row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
+    row.addEventListener('mouseleave',()=>row.style.background='');
+    row.addEventListener('click',()=>{box.remove();openProject(parseInt(row.dataset.id));});
+  });
+  document.body.appendChild(box);
+}
+
+
+// ── 合併重複案場（因打錯字/命名不一致而分裂成好幾筆的同一個案場）─────────
+let _mergeSelected=new Set();
+
+function openMergeProjectsModal(){
+  _mergeSelected=new Set();
+  const list=document.getElementById('mergeProjList');
+  const projects=DB.get('projects').slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'','zh-Hant'));
+  if(!list)return;
+  if(projects.length<2){
+    list.innerHTML='<div class="empty-state"><div class="es-ic">🔀</div><div class="es-t">案場數量不足</div><div class="es-s">至少要有 2 筆案場才能合併</div></div>';
+  }else{
+    list.innerHTML=projects.map(p=>{
+      const vCount=DB.get('vendors').filter(v=>v.projectId===p._id).length;
+      const qCount=DB.get('quotes').filter(q=>q.projectId===p._id).length;
+      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);margin-bottom:8px;cursor:pointer" data-mergerow>'+
+        '<input type="checkbox" value="'+p._id+'" style="width:17px;height:17px;margin-top:2px;cursor:pointer;accent-color:var(--gold)">'+
+        '<div style="flex:1"><div style="font-weight:800;font-size:.9rem">'+esc(p.name||'未命名')+'</div>'+
+        '<div style="font-size:.75rem;color:var(--g400);margin-top:2px">'+esc(p.client||'業主未填')+(p.address?' · '+esc(p.address):'')+'</div>'+
+        '<div style="font-size:.72rem;color:var(--g400);margin-top:3px">📋 報價 '+qCount+' 份 · 🏗️ 廠商報價 '+vCount+' 筆</div></div>'+
+      '</label>';
+    }).join('');
+    list.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      cb.addEventListener('change',()=>{
+        const id=parseInt(cb.value);
+        if(cb.checked)_mergeSelected.add(id);else _mergeSelected.delete(id);
+        cb.closest('[data-mergerow]').style.background=cb.checked?'var(--gold-pale)':'';
+        cb.closest('[data-mergerow]').style.borderColor=cb.checked?'var(--gold-l)':'var(--g200)';
+        updateMergeProjectUI();
+      });
+    });
+  }
+  updateMergeProjectUI();
+  openModal('mergeProjModal');
+}
+
+function updateMergeProjectUI(){
+  const primaryWrap=document.getElementById('mergeProjPrimaryWrap');
+  const primarySel=document.getElementById('mergeProjPrimary');
+  const btn=document.getElementById('mergeProjBtn');
+  const ids=[..._mergeSelected];
+  if(ids.length<2){
+    if(primaryWrap)primaryWrap.style.display='none';
+    if(btn){btn.disabled=true;btn.textContent='選至少 2 筆案場才能合併';}
+    return;
+  }
+  if(primaryWrap)primaryWrap.style.display='block';
+  if(primarySel){
+    const projects=ids.map(id=>DB.get('projects').find(p=>p._id===id)).filter(Boolean);
+    const prevVal=primarySel.value;
+    primarySel.innerHTML=projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名')+'</option>').join('');
+    if(ids.includes(parseInt(prevVal)))primarySel.value=prevVal;
+  }
+  if(btn){btn.disabled=false;btn.textContent='🔀 合併這 '+ids.length+' 筆案場';}
+}
+
+document.getElementById('mergeProjBtn')?.addEventListener('click',()=>{
+  const ids=[..._mergeSelected];
+  const primaryId=parseInt(document.getElementById('mergeProjPrimary')?.value);
+  if(ids.length<2||!primaryId)return;
+  const otherIds=ids.filter(id=>id!==primaryId);
+  const primary=DB.get('projects').find(p=>p._id===primaryId);
+  const others=otherIds.map(id=>DB.get('projects').find(p=>p._id===id)).filter(Boolean);
+
+  confirmAction(
+    '確定合併嗎？「'+esc(primary?.name||'')+'」會保留，其他 '+otherIds.length+' 筆會移到垃圾桶，所有相關資料會轉移過去。',
+    ()=>{
+      // 補齊主記錄缺少的欄位（用被合併掉的案場資料補，不覆蓋主記錄已經有的值）
+      const patch={};
+      ['client','address','type','startDate','endDate','note'].forEach(f=>{
+        if(!primary[f]){
+          const src=others.find(o=>o[f]);
+          if(src)patch[f]=src[f];
+        }
+      });
+      if(Object.keys(patch).length)DB.upd('projects',primaryId,patch);
+
+      // 把其他筆的所有相關資料（報價單、廠商報價、帳款、進度、合約）轉移到主記錄
+      const collections=['quotes','vendors','ledger','progress','contracts'];
+      let movedCount=0;
+      collections.forEach(col=>{
+        DB.getAll(col).forEach(rec=>{
+          if(otherIds.includes(rec.projectId)){
+            const patchRec={projectId:primaryId};
+            // caseN 這種顯示用的文字欄位也一併更新，避免畫面上還顯示舊的案場名稱
+            if(rec.caseN!==undefined)patchRec.caseN=primary.name||'';
+            DB.upd(col,rec._id,patchRec);
+            movedCount++;
+          }
+        });
+      });
+
+      // 其他筆案場移到垃圾桶（可復原，不是永久刪除）
+      otherIds.forEach(id=>DB.softDel('projects',id));
+
+      closeModal('mergeProjModal');
+      renderProjects();
+      if(typeof renderDashboard==='function')renderDashboard();
+      showToast('✅ 已合併！轉移了 '+movedCount+' 筆相關資料到「'+(primary?.name||'')+'」');
+    }
+  );
+});
 
 function toggleProjectArchive(id){
   const p=getProject(id);if(!p)return;
@@ -582,32 +849,102 @@ function updateProjectStatus(id,status){
 function renderProjQuotes(id,p,c){
   const quotes=DB.get('quotes').filter(q=>q.projectId===id);
   c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
-      <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">📎 上傳報價單檔案</button>
+        <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
+      </div>
     </div>
-    ${quotes.length?quotes.map(q=>`
+    ${quotes.length?quotes.map(q=>{
+      const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
+      const fileCount=(q.fileUrls||[]).length;
+      const amt=Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05);
+      return `
       <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openQuoteEdit(${q._id})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-weight:800">${esc(q.name||'報價單')}</div>
+            <div style="font-weight:800">${esc(q.name||'報價單')}${!hasItems&&fileCount?' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;font-weight:800">📎 檔案 '+fileCount+' 張</span>':''}</div>
             <div style="font-size:.78rem;color:var(--g400);margin-top:2px">${q._ts||''}</div>
           </div>
-          <div style="font-weight:900;color:var(--gold-d)">NT$${Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05).toLocaleString()}</div>
+          <div style="font-weight:900;color:var(--gold-d)">${hasItems?'NT$'+amt.toLocaleString():(fileCount?'':'NT$0')}</div>
         </div>
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無報價單</div><div class="es-s">點右上方新建此案場的報價單</div></div>'}`;
+      </div>`;
+    }).join(''):'<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無報價單</div><div class="es-s">點右上方新建，或直接上傳已經做好的報價單檔案</div></div>'}`;
+}
+
+function openQuoteFileUpload(projectId){
+  curProjectId=projectId;
+  const p=getProject(projectId);
+  qfImgUrl=[];
+  const nameEl=document.getElementById('qfName');if(nameEl)nameEl.value=p?.name?p.name+' 報價單':'';
+  const fc=document.getElementById('qfFileCard');if(fc)fc.style.display='none';
+  const grid=document.getElementById('qfPhotoGrid');if(grid)grid.innerHTML='';
+  const fi=document.getElementById('qfFile');if(fi)fi.value='';
+  openModal('qFileModal');
+}
+
+// 修正重點：這個函式原本在案場總覽的報價分頁裡被呼叫（點開一份已存在的報價單），
+// 但整個程式碼裡從來沒有真的定義過，點下去等於完全沒反應。
+// 現在補上：如果這份報價單只有上傳的檔案、沒有明細（用上面新增的上傳功能存的），開一個小視窗顯示附件；
+// 如果是有明細的報價單（用系統的報價編輯器建立的），才進去完整的編輯畫面。
+function openQuoteEdit(id){
+  const q=DB.get('quotes').find(r=>r._id===id);if(!q)return;
+  const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
+  const fileUrls=q.fileUrls||[];
+
+  if(!hasItems&&fileUrls.length){
+    const titleEl=document.getElementById('qfvTitle');
+    if(titleEl)titleEl.innerHTML=esc(q.name||'報價單')+' <button class="mcl" data-close="qFileViewModal">✕</button>';
+    const grid=document.getElementById('qfvGrid');
+    if(grid){
+      grid.innerHTML='';
+      fileUrls.forEach((f,i)=>{
+        const url=f.url||f;
+        const wrap=document.createElement('div');
+        wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+        if(f.type&&f.type.startsWith('image/')||typeof url==='string'&&url.startsWith('data:image')){
+          const img=document.createElement('img');
+          img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+          img.onclick=()=>openLB(url);
+          wrap.appendChild(img);
+        }else{
+          wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(f.name||'文件')+'</div></div>';
+          wrap.onclick=()=>window.open(url,'_blank');
+        }
+        const pg=document.createElement('div');
+        pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';
+        pg.textContent='P'+(i+1);
+        wrap.appendChild(pg);
+        grid.appendChild(wrap);
+      });
+    }
+    openModal('qFileViewModal');
+    return;
+  }
+
+  // 有明細的報價單：載入完整報價編輯器（跟「報價管理」列表頁點編輯是同一套邏輯）
+  adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
+  const adN=document.getElementById('adN');if(adN)adN.value=q.name||'';
+  const adAd=document.getElementById('adAd');if(adAd)adAd.value=q.addr||'';
+  const qbClient=document.getElementById('adQbClient');if(qbClient)qbClient.textContent=q.name||'—';
+  const qbAddr=document.getElementById('adQbAddr');if(qbAddr)qbAddr.textContent=q.addr||'—';
+  if(typeof renderProQuote==='function')renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+  if(typeof openAllSecs==='function')openAllSecs('adSections');
+  showPanel('ad-newquote');
 }
 
 function newProjQuote(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
+  if(typeof initAdQuote==='function')initAdQuote();
   showPanel('ad-newquote');
-  // 從案場資料預填業主、案場名稱、地址、工程類型，不用重複輸入
+  // 從案場資料預填業主、案場（用選單選好，不是打字）、地址、工程類型，不用重複輸入
   setTimeout(()=>{
     if(!p)return;
     const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.value=v;};
     set('adN',p.client||p.name);
-    set('adCase',p.name);
+    const caseSel=document.getElementById('adCase');if(caseSel)caseSel.value=String(projectId);
     set('adAd',p.address);
     set('adTp',p.type);
     showToast('✅ 已從案場帶入業主與地址資料');
@@ -642,10 +979,23 @@ function openVendorForProject(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   vItems=[];
-  ['vVd','vCs','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=p?.name||'';});
+  // 修正重點：這裡原本把「廠商名稱」「備注」兩個欄位也一起設成案場名稱（跟合約表單同一種殘留/欄位對錯的問題），
+  // 廠商名稱應該是空的讓使用者自己填，不是案場名稱；同時原本也沒清照片預覽跟 AI 辨識狀態，
+  // 上一次上傳的照片、辨識結果會殘留在畫面上。這裡改成比照「行政 → 廠商報價」通用的重置邏輯，確保每次都是乾淨的表單。
+  ['vVd','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('vTotal').textContent='NT$0';
-  const vCs=document.getElementById('vCs');
-  if(vCs&&p) vCs.value=p.name||'';
+  document.getElementById('vItemsTable').innerHTML='';
+  const vAmt=document.getElementById('vAmt');if(vAmt)vAmt.value='';
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('vCs'),projectId);
+  const ocr=document.getElementById('vOcr');if(ocr)ocr.classList.remove('show');
+  // 修正重點：這個表單（含工程類別下拉選單）原本要等使用者上傳照片、或找到並點下面一個不明顯的
+  // 「✏️ 手動填寫」按鈕才會出現，很多人開了表單找不到工程類別欄位在哪，以為新增分類的功能壞掉了，
+  // 其實是欄位整組被藏起來。改成一開啟表單就直接顯示，要不要上傳照片讓 AI 辨識都可以，不用先摸到那顆按鈕
+  const res=document.getElementById('vResult');if(res)res.style.display='block';
+  const prev=document.getElementById('vPrev');if(prev)prev.innerHTML='';
+  const ok=document.getElementById('vOcrOk');if(ok)ok.style.display='none';
+  const vFileEl=document.getElementById('vFile');if(vFileEl)vFileEl.value='';
+  if(typeof setVType==='function')setVType('image');
   if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('vCat'),'vendorCat');
   openModal('vModal');
 }
@@ -674,16 +1024,27 @@ function openContractForProject(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   ctEditId=null;
-  ['ctName','ctClient','ctAmt','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  // 修正重點：這裡原本沒有重置 ctImgUrl，導致如果剛剛在別的案場合約表單選過照片、
+  // 沒存就跳走，再從這個案場點「＋上傳合約」時，舊案場選的照片會殘留在這個新表單裡，
+  // 使用者以為自己還沒選任何照片，實際上已經被前一次殘留的照片佔住了。
+  ctImgUrl=[];
+  const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
+  const gridEl=document.getElementById('ctPhotoGrid');if(gridEl)gridEl.innerHTML='';
+  const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
+  const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
+  const btnEl=document.getElementById('addCtBtn');if(btnEl)btnEl.textContent='💾 儲存合約';
+  ['ctName','ctClient','ctAmt2','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   if(p){
     const ctN=document.getElementById('ctName');if(ctN)ctN.value=p.name||'';
     const ctCl=document.getElementById('ctClient');if(ctCl)ctCl.value=p.client||'';
     // 帶入這個案場最新一份報價單的總價，不用再手動重算重打一次
+    // 修正重點：原本這裡找的是 'ctAmt'，但表單欄位實際 id 是 'ctAmt2'，
+    // 兩者對不起來導致這個自動帶入金額的功能完全沒作用（找不到元素，靜默失敗）。
     const quotes=DB.get('quotes').filter(q=>q.projectId===projectId).sort((a,b)=>b._id-a._id);
     if(quotes.length){
       const latest=quotes[0];
       const {grand}=typeof calcQuoteTotals==='function'?calcQuoteTotals(latest.sections||[]):{grand:latest.total||0};
-      const ctAmt=document.getElementById('ctAmt');
+      const ctAmt=document.getElementById('ctAmt2');
       if(ctAmt&&grand){ctAmt.value=grand;showToast('💡 已帶入報價單金額 NT$'+grand.toLocaleString()+'，可依實際簽約內容調整');}
     }
   }
@@ -721,15 +1082,10 @@ function renderProjLedger(id,p,c){
 
 function openProjLedgerModal(projectId, dir){
   curProjectId=projectId;
-  const p=getProject(projectId);
   curLedgerBook=dir==='in'?'in':'out';
   curLedgerType=dir;
+  // openLedgerModal 會用 curProjectId 自動把案場選單選好，不用再另外補設定
   openLedgerModal(curLedgerBook);
-  // 預填案場
-  setTimeout(()=>{
-    const ldCase=document.getElementById('ldCase');
-    if(ldCase&&p) ldCase.value=p.name||'';
-  }, 100);
 }
 
 // ── 案場進度 Tab ──────────────────────────────────────────
