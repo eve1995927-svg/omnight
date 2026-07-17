@@ -542,8 +542,7 @@ function doPunch(){
               // 更新打卡記錄的地址
               const recs=DB.get('punch_recs');
               if(recs.length&&recs[0].lat===lat){
-                recs[0].addr=addr;
-                DB.set('punch_recs',recs);
+                DB.upd('punch_recs',recs[0]._id,{addr});
                 renderPunchRec&&renderPunchRec();
               }
             }

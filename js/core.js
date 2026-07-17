@@ -55,6 +55,11 @@ const GROUPS={
   ],
 };
 
+// 手機版簡化選單：現場常用的功能才留在手機上，複雜的（合約、會計細項、人資薪資、系統設定...）
+// 只在電腦版顯示。帳款總覽有留，是因為「標記廠商付款」這個現場常用的小動作剛好放在那一頁裡。
+const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote','ad-newquote','ad-progress','ac-overview'];
+function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
+
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
 const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
 
@@ -287,11 +292,46 @@ function _ensureFirebaseAuth(){
   });
 }
 
-const _cache = {};
+const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的物件，不是陣列）
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
                'salary_records','leave_requests'];
+
+// 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
+// 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
+function _normalizeToKeyedObj(raw){
+  if(!raw) return {};
+  const obj={};
+  const list=Array.isArray(raw)?raw:Object.values(raw);
+  list.forEach(r=>{ if(r&&typeof r==='object'&&r._id!=null) obj[String(r._id)]=r; });
+  return obj;
+}
+
+// 【核心修正】原本每次新增/修改/刪除，都是「整個集合讀出來 → 改 → 整包寫回 Firebase」，
+// 如果兩個人（例如老闆的電腦、同事的手機）同時在用，其中一台裝置手上的資料如果稍微舊一點，
+// 它下一次寫入時會把「它不知道的、別人剛新增的東西」一起蓋掉——這就是合約會憑空消失、
+// 刪除的東西過一陣子又跑回來的真正原因，不是資料庫壞掉，是每次都整包覆蓋造成的。
+// 改成「只寫這一筆」之後，兩台裝置除非同時改同一筆資料，否則不會互相覆蓋掉對方的東西。
+function _cloudSetRecord(k, id, record){
+  try{ localStorage.setItem('z7_'+k, JSON.stringify(Object.values(_cache[k]||{}))); }catch{}
+  if(_fbDB&&_fbReady){
+    _fbDB.ref('zeju_data/'+k+'/'+id).set(record).catch(e=>console.warn('FB write:',k,id,e.message));
+  }
+}
+function _cloudRemoveRecord(k, id){
+  try{ localStorage.setItem('z7_'+k, JSON.stringify(Object.values(_cache[k]||{}))); }catch{}
+  if(_fbDB&&_fbReady){
+    _fbDB.ref('zeju_data/'+k+'/'+id).remove().catch(e=>console.warn('FB remove:',k,id,e.message));
+  }
+}
+// 整批覆蓋（只給「還原備份」這種真的要整包取代的情境用，一般新增/修改/刪除都不要走這條路）
+function _cloudSetAll(k, arr){
+  try{ localStorage.setItem('z7_'+k, JSON.stringify(arr)); }catch{}
+  if(_fbDB&&_fbReady){
+    _fbDB.ref('zeju_data/'+k).set(_normalizeToKeyedObj(arr)).catch(e=>console.warn('FB write:',k,e.message));
+  }
+}
 
 // 初始化：從雲端載入所有資料到 cache
 async function initCloudDB(){
@@ -305,47 +345,33 @@ async function initCloudDB(){
         const data=snap.val()||{};
         _KEYS.forEach(k=>{
           if(data[k]){
-            // 確保是陣列格式
-            _cache[k]=Array.isArray(data[k])?data[k]:Object.values(data[k]).filter(x=>x&&typeof x==='object');
+            _cache[k]=_normalizeToKeyedObj(data[k]);
           }
-          else{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=JSON.parse(v);}catch{}}
+          else{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}}
         });
         console.log('✅ Firebase data loaded');
         setSyncStatus('ok');
         loadCompanyProfileFromCloud();
         res(true);
       }, ()=>{
-        _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=JSON.parse(v);}catch{}});
+        _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
         setSyncStatus('offline');
         res(false);
       });
     });
   }
   // Fallback: localStorage
-  _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=JSON.parse(v);}catch{}});
+  _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
   setSyncStatus('offline');
   return false;
 }
 
-// 同步寫入雲端
-function _cloudSet(k, arr){
-  // localStorage 備份
-  try{localStorage.setItem('z7_'+k, JSON.stringify(arr));}catch{}
-  // Firebase 即時同步
-  if(_fbDB&&_fbReady){
-    _fbDB.ref('zeju_data/'+k).set(arr).catch(e=>console.warn('FB write:',k,e.message));
-  }
-}
-
 const DB={
   getAll(k){
-    // 先從 cache 取（包含已刪除項目）
+    // 先從 cache 取（包含已刪除項目），依 _id 新到舊排序，跟以前陣列 unshift 的順序一致，
+    // 不會因為改成物件儲存就打亂既有畫面「新的排最前面」的邏輯
     if(_cache[k]!==undefined){
-      const v=_cache[k];
-      if(Array.isArray(v)) return [...v];
-      // Firebase 有時回傳物件 {0:item, 1:item}，轉成陣列
-      if(v&&typeof v==='object') return Object.values(v).filter(x=>x&&typeof x==='object');
-      return [];
+      return Object.values(_cache[k]||{}).sort((a,b)=>(b._id||0)-(a._id||0));
     }
     // 降級用 localStorage
     try{
@@ -363,44 +389,58 @@ const DB={
     return DB.getAll(k).filter(r=>r.deleted);
   },
   set(k,v){
-    _cache[k]=v;
-    _cloudSet(k,v);
-    // 同時也存 localStorage 備份
-    try{localStorage.setItem('z7_'+k,JSON.stringify(v))}catch{}
+    // 保留給「整批取代」用（例如還原備份）。一般情況請用 push/upd/del，不要直接呼叫這個，
+    // 因為這個還是會整包覆蓋，跟這次修正的精神相反，只在「本來就是要整包換掉」時才安全
+    _cache[k]=_normalizeToKeyedObj(v);
+    _cloudSetAll(k, Object.values(_cache[k]));
   },
   push(k,item){
-    const a=DB.getAll(k);
-    a.unshift({...item,_id:Date.now(),_ts:new Date().toLocaleString('zh-TW')});
-    if(a.length>500)a.pop();
-    DB.set(k,a);
-    return a;
+    if(!_cache[k])_cache[k]={};
+    // 用 Date.now() 當 id，正常情況下毫秒等級夠用，但如果極短時間內連續新增兩筆
+    // （同一毫秒內），要避免兩筆用到同一個 id 互相蓋掉——這裡確保一定拿到沒用過的 id
+    let newId=Date.now();
+    while(_cache[k][String(newId)]!==undefined) newId++;
+    const record={...item,_id:newId,_ts:new Date().toLocaleString('zh-TW')};
+    _cache[k][String(record._id)]=record;
+    _cloudSetRecord(k,record._id,record);
+    // 維持原本「最多存 500 筆，滿了就丟掉最舊的一筆」的行為，只刪那一筆，不動其他資料
+    const all=Object.values(_cache[k]);
+    if(all.length>500){
+      const oldest=all.reduce((a,b)=>(a._id<b._id?a:b));
+      delete _cache[k][String(oldest._id)];
+      _cloudRemoveRecord(k,oldest._id);
+    }
+    return DB.getAll(k);
   },
   del(k,id){
-    // 永久刪除
-    const a=DB.getAll(k).filter(r=>r._id!==id);
-    DB.set(k,a);
-    return a;
+    // 永久刪除：只刪這一筆
+    if(_cache[k]) delete _cache[k][String(id)];
+    _cloudRemoveRecord(k,id);
+    return DB.getAll(k);
   },
   softDel(k,id){
-    // 軟刪除（移到垃圾桶）
-    const a=DB.getAll(k).map(r=>r._id===id?{...r,deleted:true,deletedAt:new Date().toLocaleString('zh-TW'),deletedBy:curRole||'unknown'}:r);
-    DB.set(k,a);
-    return a;
+    // 軟刪除（移到垃圾桶）：只改這一筆的 deleted 標記
+    return DB.upd(k,id,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW'),deletedBy:curRole||'unknown'});
   },
   restore(k,id){
-    // 從垃圾桶復原
-    const a=DB.getAll(k).map(r=>{
-      if(r._id!==id)return r;
-      const {deleted,deletedAt,deletedBy,...rest}=r;
-      return rest;
-    });
-    DB.set(k,a);
-    return a;
+    // 從垃圾桶復原：只改這一筆
+    const cur=(_cache[k]||{})[String(id)];
+    if(!cur) return DB.getAll(k);
+    const {deleted,deletedAt,deletedBy,...rest}=cur;
+    if(!_cache[k])_cache[k]={};
+    _cache[k][String(id)]=rest;
+    _cloudSetRecord(k,id,rest);
+    return DB.getAll(k);
   },
   upd(k,id,patch){
-    const a=DB.getAll(k).map(r=>r._id===id?{...r,...patch}:r);
-    DB.set(k,a);
-    return a;
+    // 只改這一筆，不會動到同個集合裡的其他資料（這是這次修正的重點）
+    const cur=(_cache[k]||{})[String(id)];
+    if(!cur) return DB.getAll(k); // 找不到這筆就不動作，避免憑空造出一筆奇怪的資料
+    const updated={...cur,...patch};
+    if(!_cache[k])_cache[k]={};
+    _cache[k][String(id)]=updated;
+    _cloudSetRecord(k,id,updated);
+    return DB.getAll(k);
   },
 };
 
@@ -476,11 +516,12 @@ function startCloudSync(){
     let hasPunchChange=false, hasReqChange=false;
     _KEYS.forEach(k=>{
       if(data[k]){
-        const oldLen=(_cache[k]||[]).length;
-        const newArr=Array.isArray(data[k])?data[k]:Object.values(data[k]).filter(x=>x&&typeof x==='object');
-        _cache[k]=data[k];
-        if(k==='punch_recs'&&newArr.length!==oldLen) hasPunchChange=true;
-        if(k==='punch_requests'&&newArr.length!==oldLen) hasReqChange=true;
+        const oldLen=Object.keys(_cache[k]||{}).length;
+        const normalized=_normalizeToKeyedObj(data[k]);
+        const newLen=Object.keys(normalized).length;
+        _cache[k]=normalized;
+        if(k==='punch_recs'&&newLen!==oldLen) hasPunchChange=true;
+        if(k==='punch_requests'&&newLen!==oldLen) hasReqChange=true;
       }
     });
     setSyncStatus&&setSyncStatus('ok');
@@ -721,6 +762,24 @@ window.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
+// 平板轉方向、或視窗跨過手機/電腦的寬度分界時，重新畫一次選單，
+// 避免「橫放是電腦選單、直放卻還停在電腦選單」這種不同步的狀況
+let _lastIsMobile=isMobileView(), _resizeT=null;
+window.addEventListener('resize',()=>{
+  clearTimeout(_resizeT);
+  _resizeT=setTimeout(()=>{
+    const nowMobile=isMobileView();
+    if(nowMobile!==_lastIsMobile){
+      _lastIsMobile=nowMobile;
+      if(typeof curRole!=='undefined'&&curRole&&document.getElementById('app')?.style.display!=='none'){
+        buildTabs(curRole);
+        buildSidebar(curRole,groupsFor(curRole)?.[0]?.l);
+        buildBN(curRole);
+      }
+    }
+  },200);
+});
+
 function doLogin(){
   const p=document.getElementById('lPass').value.trim();
   const err=document.getElementById('lErr');
@@ -921,8 +980,28 @@ const IMAP={owner:'👑',cs:'💬',mk:'✨',ad:'📋',ac:'📊'};
 function buildTabs(role){
   const tabs=document.getElementById('rTabs');tabs.innerHTML='';
   if(role==='punch')return;
-  // 每個分組顯示一個 Tab，點了展開到第一個功能
   const grps=groupsFor(role);
+
+  if(isMobileView()){
+    // 手機版：不用「分組頁籤 → 側欄」兩層結構（側欄在手機上是隱藏的，等於點了分組也看不到裡面的項目），
+    // 改成把允許的功能攤平成一排，點哪個直接開哪個
+    const items=grps.flatMap(g=>g.items).filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
+    items.forEach(item=>{
+      const b=document.createElement('button');
+      b.className='rtab';b.dataset.panel=item.id;
+      b.textContent=item.ic+' '+item.l;
+      b.addEventListener('click',()=>{
+        showPanel(item.id);
+        document.querySelectorAll('.rtab').forEach(t=>t.classList.remove('on'));
+        b.classList.add('on');
+      });
+      tabs.appendChild(b);
+    });
+    if(tabs.firstChild)tabs.firstChild.classList.add('on');
+    return;
+  }
+
+  // 電腦版：維持原本「每個分組一個 Tab，點了展開到第一個功能」的邏輯
   grps.forEach(grp=>{
     const b=document.createElement('button');
     b.className='rtab';b.dataset.grp=grp.l;
@@ -940,6 +1019,10 @@ function buildTabs(role){
   if(tabs.firstChild)tabs.firstChild.classList.add('on');
 }
 function syncTabActive(panelId){
+  if(isMobileView()){
+    document.querySelectorAll('.rtab').forEach(t=>t.classList.toggle('on',t.dataset.panel===panelId));
+    return;
+  }
   // 找這個 panel 屬於哪個分組
   const role=curRole;const grps=groupsFor(role);
   const grp=grps.find(g=>g.items.some(i=>i.id===panelId));
@@ -976,7 +1059,10 @@ function buildBN(role){
     backBtn.addEventListener('click',()=>showPanel('projects'));
     bn.appendChild(backBtn);
   }
-  groupsFor(role).flatMap(g=>g.items).slice(0,isInProject?5:6).forEach(item=>{
+  // 底部快速列：只從「手機版允許」的清單挑，不會出現複雜功能（跟頂部頁籤用同一份白名單，行為一致）
+  const allItems=groupsFor(role).flatMap(g=>g.items);
+  const items=role==='punch' ? allItems : allItems.filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
+  items.slice(0,isInProject?5:6).forEach(item=>{
     const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
     b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);

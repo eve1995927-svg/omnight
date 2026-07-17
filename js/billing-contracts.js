@@ -823,7 +823,7 @@ function renderClientList(filter){
     delBtn.addEventListener('click',e=>{
       e.stopPropagation();
       confirmAction('刪除客戶「'+c.name+'」及所有對話？此動作不可復原。',()=>{
-        const cs=DB.get('clients').filter(x=>x._id!==c._id);DB.set('clients',cs);
+        DB.del('clients',c._id);
         if(curClientId===c._id){curClientId=null;const chat=document.getElementById('cs-chat');if(chat)chat.innerHTML='';}
         renderClientList();showToast('✅ 已刪除客戶「'+c.name+'」');
       });

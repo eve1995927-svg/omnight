@@ -554,8 +554,9 @@ async function uploadLocalToFirebase(){
       if(raw){
         const data=JSON.parse(raw);
         if(Array.isArray(data)&&data.length>0){
-          await _fbDB.ref('zeju_data/'+k).set(data);
-          _cache[k]=data;
+          const keyed=_normalizeToKeyedObj(data);
+          await _fbDB.ref('zeju_data/'+k).set(keyed);
+          _cache[k]=keyed;
           count++;
         }
       }
@@ -721,16 +722,13 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
   const phone=(document.getElementById('newClientPhone')?.value||'').trim();
   const addr=(document.getElementById('newClientAddr')?.value||'').trim();
   const client={
-    _id:Date.now(),
     name,phone,addr,
     created:new Date().toLocaleString('zh-TW')
   };
-  const clients=DB.get('clients');
-  clients.unshift(client);
-  DB.set('clients',clients);
+  const [newClient]=DB.push('clients',client);
   closeModal('addClientModal');
   renderClientList();
-  if(typeof switchClient==='function') switchClient(client._id);
+  if(typeof switchClient==='function') switchClient(newClient._id);
   showToast('✅ 客戶「'+name+'」已建立！');
 });
 

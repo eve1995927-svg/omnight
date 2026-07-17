@@ -277,6 +277,7 @@ function renderProjects(filter){
     card.addEventListener('mouseleave',()=>card.style.boxShadow='');
     c.appendChild(card);
   });
+  if(typeof renderProjectCalendar==='function')renderProjectCalendar();
 }
 
 function searchProjects(val){
@@ -370,7 +371,115 @@ function renderProjectsKanban(){
 
     row.appendChild(col);
   });
+  if(typeof renderProjectCalendar==='function')renderProjectCalendar();
 }
+
+// ── 案場日行事曆（依開工日排程，卡片可拖到別的日期改開工日）──────
+let calViewDate=new Date(); // 目前行事曆顯示的月份
+
+function ymd(d){ // Date -> 'YYYY-MM-DD'，跟 <input type="date"> 存的格式一致
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
+function renderProjectCalendar(){
+  const grid=document.getElementById('calGrid');if(!grid)return;
+  const label=document.getElementById('calMonthLabel');
+  const y=calViewDate.getFullYear(), m=calViewDate.getMonth();
+  if(label)label.textContent=y+'年'+(m+1)+'月';
+
+  const firstDay=new Date(y,m,1);
+  const startOffset=firstDay.getDay(); // 0=週日
+  const daysInMonth=new Date(y,m+1,0).getDate();
+  const daysInPrevMonth=new Date(y,m,0).getDate();
+  const todayStr=ymd(new Date());
+
+  // 這個月（含前後補位天）每一天要放哪些案場：用開工日 startDate 對應
+  const projects=DB.get('projects').filter(p=>!p.archived&&p.startDate);
+  const byDate={};
+  projects.forEach(p=>{ (byDate[p.startDate]=byDate[p.startDate]||[]).push(p); });
+
+  const cells=[];
+  // 補上個月尾巴
+  for(let i=startOffset-1;i>=0;i--){
+    const dnum=daysInPrevMonth-i;
+    const dateStr=ymd(new Date(y,m-1,dnum));
+    cells.push({dnum,dateStr,otherMonth:true});
+  }
+  // 本月
+  for(let d=1;d<=daysInMonth;d++){
+    cells.push({dnum:d,dateStr:ymd(new Date(y,m,d)),otherMonth:false});
+  }
+  // 補下個月開頭，湊滿整週（7 的倍數）
+  let next=1;
+  while(cells.length%7!==0){
+    cells.push({dnum:next,dateStr:ymd(new Date(y,m+1,next)),otherMonth:true});
+    next++;
+  }
+
+  grid.innerHTML='';
+  cells.forEach(cell=>{
+    const el=document.createElement('div');
+    el.className='pc-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
+    el.dataset.date=cell.dateStr;
+    el.innerHTML='<div class="pc-day-num">'+cell.dnum+'</div>';
+    (byDate[cell.dateStr]||[]).forEach(p=>{
+      const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+      const chip=document.createElement('div');
+      chip.className='pc-chip';
+      chip.draggable=true;
+      chip.dataset.id=p._id;
+      chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
+      chip.textContent=st.icon+' '+(p.name||p.client||'未命名案場');
+      chip.title=(p.name||'未命名案場')+'（點擊查看，拖曳可改開工日）';
+      chip.addEventListener('click',e=>{e.stopPropagation();openProject(p._id);});
+      chip.addEventListener('dragstart',e=>{
+        chip.classList.add('dragging');
+        e.dataTransfer.setData('text/plain',String(p._id));
+        e.dataTransfer.effectAllowed='move';
+      });
+      chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      el.appendChild(chip);
+    });
+    el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
+    el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
+    el.addEventListener('drop',e=>{
+      e.preventDefault();
+      el.classList.remove('drag-over');
+      const draggedId=parseInt(e.dataTransfer.getData('text/plain'));
+      const proj=getProject(draggedId);
+      if(!proj||!proj.startDate)return;
+      const newDate=el.dataset.date;
+      if(proj.startDate===newDate)return;
+      // 保留原本工期長度：完工日跟著開工日一起平移，不會因為拖曳而把工期拉長或縮短
+      const patch={startDate:newDate};
+      if(proj.endDate){
+        const oldStart=new Date(proj.startDate+'T00:00:00');
+        const oldEnd=new Date(proj.endDate+'T00:00:00');
+        const durationDays=Math.round((oldEnd-oldStart)/86400000);
+        const newStart=new Date(newDate+'T00:00:00');
+        const newEnd=new Date(newStart.getTime()+durationDays*86400000);
+        patch.endDate=ymd(newEnd);
+      }
+      DB.upd('projects',draggedId,patch);
+      renderProjectCalendar();
+      showToast('📅 已把「'+(proj.name||'案場')+'」的開工日改到 '+newDate);
+    });
+    grid.appendChild(el);
+  });
+}
+
+document.getElementById('calPrevM')?.addEventListener('click',()=>{
+  calViewDate=new Date(calViewDate.getFullYear(),calViewDate.getMonth()-1,1);
+  renderProjectCalendar();
+});
+document.getElementById('calNextM')?.addEventListener('click',()=>{
+  calViewDate=new Date(calViewDate.getFullYear(),calViewDate.getMonth()+1,1);
+  renderProjectCalendar();
+});
+document.getElementById('calTodayBtn')?.addEventListener('click',()=>{
+  calViewDate=new Date();
+  renderProjectCalendar();
+});
 
 
 function toggleProjectArchive(id){
@@ -660,10 +769,20 @@ function openVendorForProject(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   vItems=[];
-  ['vVd','vCs','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=p?.name||'';});
+  // 修正重點：這裡原本把「廠商名稱」「備注」兩個欄位也一起設成案場名稱（跟合約表單同一種殘留/欄位對錯的問題），
+  // 廠商名稱應該是空的讓使用者自己填，不是案場名稱；同時原本也沒清照片預覽跟 AI 辨識狀態，
+  // 上一次上傳的照片、辨識結果會殘留在畫面上。這裡改成比照「行政 → 廠商報價」通用的重置邏輯，確保每次都是乾淨的表單。
+  ['vVd','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('vTotal').textContent='NT$0';
-  const vCs=document.getElementById('vCs');
-  if(vCs&&p) vCs.value=p.name||'';
+  document.getElementById('vItemsTable').innerHTML='';
+  const vAmt=document.getElementById('vAmt');if(vAmt)vAmt.value='';
+  const vCs=document.getElementById('vCs');if(vCs)vCs.value=p?.name||'';
+  const ocr=document.getElementById('vOcr');if(ocr)ocr.classList.remove('show');
+  const res=document.getElementById('vResult');if(res)res.style.display='none';
+  const prev=document.getElementById('vPrev');if(prev)prev.innerHTML='';
+  const ok=document.getElementById('vOcrOk');if(ok)ok.style.display='none';
+  const vFileEl=document.getElementById('vFile');if(vFileEl)vFileEl.value='';
+  if(typeof setVType==='function')setVType('image');
   if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('vCat'),'vendorCat');
   openModal('vModal');
 }
@@ -692,16 +811,27 @@ function openContractForProject(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   ctEditId=null;
-  ['ctName','ctClient','ctAmt','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  // 修正重點：這裡原本沒有重置 ctImgUrl，導致如果剛剛在別的案場合約表單選過照片、
+  // 沒存就跳走，再從這個案場點「＋上傳合約」時，舊案場選的照片會殘留在這個新表單裡，
+  // 使用者以為自己還沒選任何照片，實際上已經被前一次殘留的照片佔住了。
+  ctImgUrl=[];
+  const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
+  const gridEl=document.getElementById('ctPhotoGrid');if(gridEl)gridEl.innerHTML='';
+  const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
+  const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
+  const btnEl=document.getElementById('addCtBtn');if(btnEl)btnEl.textContent='💾 儲存合約';
+  ['ctName','ctClient','ctAmt2','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   if(p){
     const ctN=document.getElementById('ctName');if(ctN)ctN.value=p.name||'';
     const ctCl=document.getElementById('ctClient');if(ctCl)ctCl.value=p.client||'';
     // 帶入這個案場最新一份報價單的總價，不用再手動重算重打一次
+    // 修正重點：原本這裡找的是 'ctAmt'，但表單欄位實際 id 是 'ctAmt2'，
+    // 兩者對不起來導致這個自動帶入金額的功能完全沒作用（找不到元素，靜默失敗）。
     const quotes=DB.get('quotes').filter(q=>q.projectId===projectId).sort((a,b)=>b._id-a._id);
     if(quotes.length){
       const latest=quotes[0];
       const {grand}=typeof calcQuoteTotals==='function'?calcQuoteTotals(latest.sections||[]):{grand:latest.total||0};
-      const ctAmt=document.getElementById('ctAmt');
+      const ctAmt=document.getElementById('ctAmt2');
       if(ctAmt&&grand){ctAmt.value=grand;showToast('💡 已帶入報價單金額 NT$'+grand.toLocaleString()+'，可依實際簽約內容調整');}
     }
   }
