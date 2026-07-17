@@ -795,7 +795,8 @@ document.getElementById('openV')?.addEventListener('click',()=>{
   document.getElementById('vItemsTable').innerHTML='';
   document.getElementById('vTotal').textContent='NT$0';
   const ocr=document.getElementById('vOcr');if(ocr)ocr.classList.remove('show');
-  const res=document.getElementById('vResult');if(res)res.style.display='none';
+  // 同步一下：表單直接顯示，不用等上傳照片或點手動填寫按鈕（見 projects.js 的說明）
+  const res=document.getElementById('vResult');if(res)res.style.display='block';
   const prev=document.getElementById('vPrev');if(prev)prev.innerHTML='';
   const ok=document.getElementById('vOcrOk');if(ok)ok.style.display='none';
   setVType('image');

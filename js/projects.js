@@ -778,7 +778,10 @@ function openVendorForProject(projectId){
   const vAmt=document.getElementById('vAmt');if(vAmt)vAmt.value='';
   const vCs=document.getElementById('vCs');if(vCs)vCs.value=p?.name||'';
   const ocr=document.getElementById('vOcr');if(ocr)ocr.classList.remove('show');
-  const res=document.getElementById('vResult');if(res)res.style.display='none';
+  // 修正重點：這個表單（含工程類別下拉選單）原本要等使用者上傳照片、或找到並點下面一個不明顯的
+  // 「✏️ 手動填寫」按鈕才會出現，很多人開了表單找不到工程類別欄位在哪，以為新增分類的功能壞掉了，
+  // 其實是欄位整組被藏起來。改成一開啟表單就直接顯示，要不要上傳照片讓 AI 辨識都可以，不用先摸到那顆按鈕
+  const res=document.getElementById('vResult');if(res)res.style.display='block';
   const prev=document.getElementById('vPrev');if(prev)prev.innerHTML='';
   const ok=document.getElementById('vOcrOk');if(ok)ok.style.display='none';
   const vFileEl=document.getElementById('vFile');if(vFileEl)vFileEl.value='';

@@ -260,7 +260,6 @@ function updVTotal(){
 }
 
 document.getElementById('vAddItem')?.addEventListener('click',()=>{vItems.push({name:'',qty:'1',unit:'式',unitPrice:0,amount:0});renderVItems();updVTotal();});
-document.getElementById('vManualBtn')?.addEventListener('click',()=>{document.getElementById('vResult').style.display='block';});
 
 document.getElementById('addVBtn')?.addEventListener('click',()=>{
   const vd=document.getElementById('vVd').value.trim(),cat=document.getElementById('vCat').value;
