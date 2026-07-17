@@ -797,13 +797,14 @@ function openQuoteEdit(id){
 function newProjQuote(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
+  if(typeof initAdQuote==='function')initAdQuote();
   showPanel('ad-newquote');
-  // 從案場資料預填業主、案場名稱、地址、工程類型，不用重複輸入
+  // 從案場資料預填業主、案場（用選單選好，不是打字）、地址、工程類型，不用重複輸入
   setTimeout(()=>{
     if(!p)return;
     const set=(id,v)=>{const el=document.getElementById(id);if(el&&v)el.value=v;};
     set('adN',p.client||p.name);
-    set('adCase',p.name);
+    const caseSel=document.getElementById('adCase');if(caseSel)caseSel.value=String(projectId);
     set('adAd',p.address);
     set('adTp',p.type);
     showToast('✅ 已從案場帶入業主與地址資料');
@@ -845,7 +846,7 @@ function openVendorForProject(projectId){
   document.getElementById('vTotal').textContent='NT$0';
   document.getElementById('vItemsTable').innerHTML='';
   const vAmt=document.getElementById('vAmt');if(vAmt)vAmt.value='';
-  const vCs=document.getElementById('vCs');if(vCs)vCs.value=p?.name||'';
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('vCs'),projectId);
   const ocr=document.getElementById('vOcr');if(ocr)ocr.classList.remove('show');
   // 修正重點：這個表單（含工程類別下拉選單）原本要等使用者上傳照片、或找到並點下面一個不明顯的
   // 「✏️ 手動填寫」按鈕才會出現，很多人開了表單找不到工程類別欄位在哪，以為新增分類的功能壞掉了，
@@ -941,15 +942,10 @@ function renderProjLedger(id,p,c){
 
 function openProjLedgerModal(projectId, dir){
   curProjectId=projectId;
-  const p=getProject(projectId);
   curLedgerBook=dir==='in'?'in':'out';
   curLedgerType=dir;
+  // openLedgerModal 會用 curProjectId 自動把案場選單選好，不用再另外補設定
   openLedgerModal(curLedgerBook);
-  // 預填案場
-  setTimeout(()=>{
-    const ldCase=document.getElementById('ldCase');
-    if(ldCase&&p) ldCase.value=p.name||'';
-  }, 100);
 }
 
 // ── 案場進度 Tab ──────────────────────────────────────────

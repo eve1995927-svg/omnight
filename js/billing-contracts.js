@@ -479,7 +479,8 @@ function setLedgerDir(dir){
 function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['ldAmt','ldDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),curProjectId,true);
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
@@ -719,6 +720,7 @@ function initAdQuote(){
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),curProjectId);
 
   // ── 按鈕綁定（每次初始化都重綁，避免遺失）──
   const getN=()=>document.getElementById('adN')?.value||'業主';
@@ -729,11 +731,15 @@ function initAdQuote(){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
       const sub=calcAll(adSections);
-      const caseNv=document.getElementById('adCase')?.value||'';
+      const pid=document.getElementById('adCase')?.value||'';
+      if(!pid){showToast('⚠️ 請先選擇案場，沒有案場的話請先到「案場總覽」新增');return;}
+      const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
+      const caseNv=proj?.name||'';
+      curProjectId=parseInt(pid);
       DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
-        projectId:curProjectId||null,
+        projectId:curProjectId,
         sections:JSON.parse(JSON.stringify(adSections)),total:sub});
       updStats();renderQTable();
       showToast('✅ 報價單已儲存！');

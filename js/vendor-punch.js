@@ -4,7 +4,19 @@ function getVendorPrompt(){
 
 function applyVendorResult(dat){
   if(dat.vendor) document.getElementById('vVd').value=dat.vendor;
-  if(dat.case)   document.getElementById('vCs').value=dat.case;
+  // 修正重點：案場名稱欄位改成一定要從既有案場挑選，AI 辨識出來的是自由文字（可能跟案場名稱打法不完全一樣），
+  // 沒辦法直接塞進選單，改成試著模糊比對現有案場名稱，比對得到才幫忙選好，比對不到就讓使用者自己選，
+  // 不會硬塞一個選單裡根本沒有的值
+  if(dat.case){
+    const projects=DB.get('projects');
+    const match=projects.find(p=>p.name&&(p.name.includes(dat.case)||dat.case.includes(p.name)));
+    const vCsEl=document.getElementById('vCs');
+    if(match&&vCsEl){
+      vCsEl.value=String(match._id);
+    }else if(dat.case){
+      showToast('💡 AI 辨識到案場名稱「'+dat.case+'」，但找不到對應的既有案場，請手動選擇');
+    }
+  }
   if(dat.note)   document.getElementById('vNt').value=dat.note;
   if(dat.cat){
     const sel=document.getElementById('vCat');
@@ -263,21 +275,55 @@ document.getElementById('vAddItem')?.addEventListener('click',()=>{vItems.push({
 
 document.getElementById('addVBtn')?.addEventListener('click',()=>{
   const vd=document.getElementById('vVd').value.trim(),cat=document.getElementById('vCat').value;
-  const cs=document.getElementById('vCs').value.trim(),nt=document.getElementById('vNt').value.trim();
+  const pid=document.getElementById('vCs').value,nt=document.getElementById('vNt').value.trim();
   if(!vd&&!vItems.length){showToast('請填入廠商名稱');return;}
+  if(!pid){showToast('⚠️ 請先選擇案場，沒有案場的話請先到「案場總覽」新增');return;}
+  const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
+  const cs=proj?.name||'';
+  curProjectId=parseInt(pid);
   const total=vItems.reduce((s,it)=>s+(it.amount||0),0);
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
-  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId||null,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
+  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
   closeModal('vModal');renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
 });
 
-document.getElementById('vFilt').addEventListener('click',e=>{
-  const btn=e.target.closest('[data-cat]');if(!btn)return;
-  document.querySelectorAll('#vFilt [data-cat]').forEach(b=>{b.className='btn bo bsm';});btn.className='btn bg bsm';
-  vCurrentFilter=btn.dataset.cat;renderVendors(vCurrentFilter);
-});
-
 const VICO={系統櫃:'🪵',廚具:'🍳',玻璃:'🪟',鋁窗:'🪟',水電:'⚡',泥作:'🧱',油漆:'🎨',鐵件:'🔩',其他:'📦'};
+
+// 修正重點：這兩排按鈕（比價工具、篩選頁籤）原本是寫死在 index.html 裡的固定清單，
+// 不管你在別的地方新增過幾個分類，這裡永遠只有那 6～8 個，也沒有地方可以直接在這裡新增分類。
+// 改成跟其他分類選單一樣，讀同一份 getSettingTags('vendorCat') 清單動態產生，
+// 新增分類之後，這裡的篩選頁籤會馬上多一個，「全部」右邊也補了一個「＋」可以直接在這裡新增分類。
+function renderVendorCatFilters(){
+  const tags=(typeof getSettingTags==='function')?getSettingTags('vendorCat'):['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'];
+
+  const compareRow=document.getElementById('vCompareRow');
+  if(compareRow){
+    compareRow.innerHTML='<span style="font-size:.78rem;font-weight:700;color:var(--g400)">⚖️ 廠商比價：</span>'+
+      tags.map(t=>'<button class="btn bo bsm" data-cmpcat="'+esc(t)+'">'+(VICO[t]||'📦')+' '+esc(t)+'</button>').join('');
+    compareRow.querySelectorAll('[data-cmpcat]').forEach(b=>{
+      b.addEventListener('click',()=>compareVendorsByCat(b.dataset.cmpcat));
+    });
+  }
+
+  const filt=document.getElementById('vFilt');
+  if(filt){
+    const curFilter=(typeof vCurrentFilter!=='undefined')?vCurrentFilter:'all';
+    filt.innerHTML='<button class="btn '+(curFilter==='all'?'bg':'bo')+' bsm" data-cat="all">全部</button>'+
+      tags.map(t=>'<button class="btn '+(curFilter===t?'bg':'bo')+' bsm" data-cat="'+esc(t)+'">'+(VICO[t]||'📦')+' '+esc(t)+'</button>').join('')+
+      '<button class="btn bo bsm" id="vFiltAddCat" style="border-style:dashed">＋ 新增類別</button>';
+    filt.querySelectorAll('[data-cat]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        filt.querySelectorAll('[data-cat]').forEach(b=>{b.className='btn bo bsm';});
+        btn.className='btn bg bsm';
+        vCurrentFilter=btn.dataset.cat;renderVendors(vCurrentFilter);
+        if(typeof updVCaseFilter==='function')updVCaseFilter();
+      });
+    });
+    document.getElementById('vFiltAddCat')?.addEventListener('click',()=>{
+      quickAddCategory('vendorCat',()=>{renderVendorCatFilters();});
+    });
+  }
+}
 
 function renderVendors(filter){
   const list=document.getElementById('vList');if(!list)return;
@@ -361,21 +407,19 @@ function renderVendors(filter){
       // 基本資料編輯
       const basicEdit=document.createElement('div');
       basicEdit.style.cssText='padding:12px 16px;border-bottom:1px solid var(--g100);background:var(--w)';
-      // 工程類別下拉選單：固定類別清單以外，如果這筆資料本身的類別不在清單裡（例如 AI 辨識出「鋁窗」但清單當時沒有這個選項），
-      // 原本 <select> 會找不到對應 option、瀏覽器就默默選成清單第一個「系統櫃」——畫面看起來像是類別跑掉了，其實是資料跟清單對不起來。
-      // 這裡改成：清單沒有的類別，動態補一個 option 進去，永遠不會再出現「標籤寫鋁窗、下拉選單卻顯示系統櫃」這種不一致。
-      const CAT_LIST=['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'];
-      const catOptions=CAT_LIST.includes(v.cat)?CAT_LIST:[...CAT_LIST,v.cat].filter(Boolean);
+      // 修正重點：這裡原本是自己寫死一份類別清單（沒有「＋新增分類」選項，也看不到別的地方新增過的自訂分類），
+      // 跟「新增廠商報價」表單用的不是同一套機制，導致在這裡改一筆既有廠商報價的類別時，沒辦法新增類別。
+      // 改成呼叫共用的 buildCatSelectWithAdd，跟其他地方共用同一份分類清單、也都能直接新增。
       basicEdit.innerHTML=
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
           '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">廠商名稱</div>'+
           '<input id="ve-vendor-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.vendor||'')+'"></div>'+
           '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">工程類別</div>'+
-          '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none">'+
-          catOptions.map(o=>'<option'+(o===v.cat?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select></div>'+
+          '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none"></select></div>'+
         '</div>'+
         '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">備注</div>'+
         '<input id="ve-note-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.note||'')+'" placeholder="例：含安裝、不含稅…"></div>';
+      if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(basicEdit.querySelector('select'),'vendorCat',v.cat);
 
       // 細項表格
       const itemWrap=document.createElement('div');
@@ -659,16 +703,7 @@ function renderHRPanel(){
 function approveReq(id){DB.upd('punch_requests',id,{status:'approved'});renderHRPanel();updateHRBadge();showToast('✅ 已核准。');}
 function rejectReq(id){DB.upd('punch_requests',id,{status:'rejected'});renderHRPanel();updateHRBadge();showToast('✅ 已拒絕。');}
 
-// ══ 廠商報價搜尋：覆寫篩選邏輯 ══════════════════════════
-const _origFilt=document.getElementById('vFilt');
-if(_origFilt){
-  _origFilt.addEventListener('click',e=>{
-    const btn=e.target.closest('[data-cat]');if(!btn)return;
-    document.querySelectorAll('#vFilt [data-cat]').forEach(b=>b.className='btn bo bsm');
-    btn.className='btn bg bsm';
-    vCurrentFilter=btn.dataset.cat;renderVendors(vCurrentFilter);updVCaseFilter();
-  });
-}
+// ══ 廠商報價搜尋：篩選邏輯已整合進 renderVendorCatFilters ══════════════
 
 // ══ 升級 setupApp ══════════════════════════════════════════
 // setupApp 覆寫 v1 - 移到下方統一版本
@@ -744,12 +779,14 @@ document.getElementById('addLedgerBtn')?.addEventListener('click',()=>{
   const desc=document.getElementById('ldDesc').value.trim();
   const cat=document.getElementById('ldCat').value;
   const date=document.getElementById('ldDate').value;
-  const caseN=document.getElementById('ldCase').value.trim();
+  const pid=document.getElementById('ldCase').value;
+  const proj=pid?DB.get('projects').find(p=>String(p._id)===String(pid)):null;
+  const caseN=proj?.name||'';
   if(!amt&&!ldItems.length){showToast('⚠️ 請填入金額');return;}
   const bookLabel=curLedgerBook==='out'?'內帳':'外帳';
   DB.push('ledger',{
     summary:bookLabel+(curLedgerType==='in'?'收入':'支出')+' '+desc+' '+fmt(amt||ldItems.reduce((s,x)=>s+(x.amount||0),0)),
-    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,projectId:curProjectId||null,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
+    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,projectId:pid?parseInt(pid):null,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
   });
   closeModal('ledgerModal');renderLedger();updLedgerStats();renderHistory();showToast('✅ 已儲存！');
 });
@@ -773,7 +810,8 @@ document.getElementById('addProgressBtn')?.addEventListener('click',()=>{
     {text:'驗收',done:false,date:''},
     {text:'結案',done:false,date:''},
   ];
-  ['progCase','progClient'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('progCase'),curProjectId);
+  const progClientEl=document.getElementById('progClient');if(progClientEl)progClientEl.value='';
   document.getElementById('progStatus').value='pending';
   document.getElementById('progModalTitle').innerHTML='新增案場進度 <button class="mcl" data-close="progressModal">✕</button>';
   renderProgItems();openModal('progressModal');

@@ -689,9 +689,9 @@ function setVType(type){
 // ══ 澤居報價庫 Modal ══════════════════════════════════
 function openZejuQuoteModal(){
   const n=document.getElementById('adN')?.value||'';
-  const c=document.getElementById('adCase')?.value||document.getElementById('adAd')?.value||'';
+  const pid=document.getElementById('adCase')?.value||'';
   const nEl=document.getElementById('zqName');if(nEl)nEl.value=n?n+' 報價':'';
-  const cEl=document.getElementById('zqCase');if(cEl)cEl.value=c;
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('zqCase'),pid);
   const noEl=document.getElementById('zqNote');if(noEl)noEl.value='';
   openModal('zejuQuoteModal');
 }
@@ -733,8 +733,9 @@ function renderZejuQuotes(filter){
         renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
         if(typeof updProfitBar==='function')updProfitBar();
         if(q.clientName){const el=document.getElementById('adN');if(el)el.value=q.clientName;}
-        if(q.caseN){const el=document.getElementById('adCase');if(el)el.value=q.caseN;}
-        showToast('✅ 已載入「'+q.name+'」！');
+        // 報價庫是可重複套用的範本，裡面存的案場名稱不一定對應到現在系統裡的真實案場，
+        // 所以這裡不再自動填案場選單，改成請使用者自己選要套用到哪個案場，比較不會選錯
+        showToast('✅ 已載入「'+q.name+'」！請記得選擇案場');
       },false);
     });
     row.querySelector('[data-zqdel]').addEventListener('click',e=>{
@@ -766,12 +767,14 @@ function updZejuCaseFilter(){
 document.getElementById('saveZejuQuoteBtn')?.addEventListener('click',()=>{
   const name=(document.getElementById('zqName')?.value||'').trim();
   if(!name){showToast('⚠️ 請填入報價名稱');return;}
-  const caseN=(document.getElementById('zqCase')?.value||'').trim();
+  const pid=document.getElementById('zqCase')?.value||'';
+  const proj=pid?DB.get('projects').find(p=>String(p._id)===String(pid)):null;
+  const caseN=proj?.name||'';
   const note=(document.getElementById('zqNote')?.value||'').trim();
   const total=calcAll(adSections);
   DB.push('zeju_quotes',{
     summary:'澤居報價 '+name,
-    name,caseN,note,
+    name,caseN,note,projectId:pid?parseInt(pid):null,
     sections:JSON.parse(JSON.stringify(adSections)),
     total,
     clientName:document.getElementById('adN')?.value||'',

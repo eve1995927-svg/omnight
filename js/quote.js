@@ -790,7 +790,8 @@ function genDefaultSvg(style,text){
 
 document.getElementById('openV')?.addEventListener('click',()=>{
   vItems=[];
-  ['vVd','vCs','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['vVd','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('vCs'),curProjectId);
   document.getElementById('vAmt')&&(document.getElementById('vAmt').value='');
   document.getElementById('vItemsTable').innerHTML='';
   document.getElementById('vTotal').textContent='NT$0';

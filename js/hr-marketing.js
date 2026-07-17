@@ -16,15 +16,17 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  const caseN=document.getElementById('progCase').value.trim();
+  const pid=document.getElementById('progCase').value;
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
-  if(!caseN){showToast('⚠️ 請填入案場名稱');return;}
+  if(!pid){showToast('⚠️ 請先選擇案場，沒有案場的話請先到「案場總覽」新增');return;}
+  const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
+  const caseN=proj?.name||'';
   if(progEditId){
-    DB.upd('progress',progEditId,{caseN,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+    DB.upd('progress',progEditId,{caseN,client,status,projectId:parseInt(pid),items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
     showToast('✅ 進度已更新！');
   }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,items:progItems.map(x=>({...x}))});
+    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,projectId:parseInt(pid),items:progItems.map(x=>({...x}))});
     showToast('✅ 案場進度已建立！');
   }
   closeModal('progressModal');renderProgress();progEditId=null;
@@ -74,7 +76,14 @@ function renderProgress(){
       '</div>';
     card.querySelector('[data-pedit]')?.addEventListener('click',()=>{
       progEditId=p._id;progItems=p.items?p.items.map(x=>({...x})):[];
-      document.getElementById('progCase').value=p.caseN||'';
+      // 舊的進度記錄可能沒有 projectId（這欄位是這次修正才加的），退回用案場名稱模糊比對，
+      // 比對不到就讓使用者自己選，不會選錯或選到空的
+      let pid=p.projectId;
+      if(!pid&&p.caseN){
+        const match=DB.get('projects').find(pr=>pr.name===p.caseN);
+        if(match)pid=match._id;
+      }
+      if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('progCase'),pid);
       document.getElementById('progClient').value=p.client||'';
       document.getElementById('progStatus').value=p.status||'pending';
       document.getElementById('progModalTitle').innerHTML='編輯進度：'+esc(p.caseN)+' <button class="mcl" data-close="progressModal">✕</button>';
@@ -756,12 +765,13 @@ function switchHRTab(tab){
 function compareVendorsByCat(cat){
   const vendors=DB.get('vendors').filter(v=>v.cat===cat);
   if(vendors.length<2){showToast('同類別廠商不足 2 家，無法比較');return;}
-  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+v.vendor+'</td><td style="padding:10px 14px;color:var(--g400)">'+( v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+( v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+( v._ts||'').split(' ')[0]+'</td></tr>').join('');
+  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+esc(v.vendor)+'</td><td style="padding:10px 14px;color:var(--g400)">'+esc(v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+esc((v._ts||'').split(' ')[0])+'</td></tr>').join('');
   const min=Math.min(...vendors.map(v=>v.amount||0));
+  const cheapest=vendors.find(v=>v.amount===min);
   const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+cat+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+esc(cat)+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
     '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>廠商</th><th>案場</th><th>報價</th><th>日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+vendors.find(v=>v.amount===min)?.vendor+'）</div>'+
+    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+esc(cheapest?.vendor||'')+'）</div>'+
     '</div>';
   document.body.appendChild(modal);
   modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});

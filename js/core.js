@@ -64,6 +64,25 @@ function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
 const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
 
+// ── 案場選擇器：把「案場名稱」欄位從自由輸入改成從既有案場挑選 ──────────
+// 目的：自由輸入常常打法不一致（「民有十三街」跟「民有13街」變成兩個不同案場），
+// 導致同一場的報價、廠商報價、帳款、進度散在不同地方兜不起來。改成一定要先在
+// 「案場總覽」新增案場，這裡才選得到，同一場的所有資料就會透過 projectId 準確歸在一起。
+function buildProjectSelect(selectEl, selectedId, allowEmpty){
+  if(!selectEl) return;
+  const projects=DB.get('projects');
+  if(!projects.length&&!allowEmpty){
+    selectEl.innerHTML='<option value="">尚無案場，請先到「案場總覽」新增</option>';
+    selectEl.disabled=true;
+    return;
+  }
+  selectEl.disabled=false;
+  const placeholder=allowEmpty?'<option value="">不指定案場</option>':'<option value="">請選擇案場…</option>';
+  selectEl.innerHTML=placeholder+
+    projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.client?'（'+esc(p.client)+'）':'')+'</option>').join('');
+  if(selectedId!=null && selectedId!=='') selectEl.value=String(selectedId);
+}
+
 function getEmployeePermissions(){
   // 用共用「員工」帳號登入（沒有指定個人身份）：維持過去的預設行為，開放常用模組，會計/系統設定不開放
   if(!_punchEmployee) return DEFAULT_STAFF_PERMISSIONS;
@@ -971,6 +990,7 @@ function setupApp(role){
   initAllChats();
   initApiCard();
   renderHistory();
+  if(typeof renderVendorCatFilters==='function')renderVendorCatFilters();
   renderVendors('all');
   renderInvoices('');
   updStats();
