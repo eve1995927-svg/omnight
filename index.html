@@ -156,6 +156,7 @@
     <button class="vt-btn on" data-view="list" onclick="setProjView('list')">☰ 列表</button>
     <button class="vt-btn" data-view="kanban" onclick="setProjView('kanban')">▦ 看板</button>
    </div>
+   <button class="btn bo bsm" onclick="openMergeProjectsModal()">🔀 合併重複案場</button>
    <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
   </div>
  </div>
@@ -1321,6 +1322,23 @@
   <div id="ctEditNote" style="display:none;font-size:.78rem;color:var(--g400);margin-top:8px;text-align:center">
    💡 儲存後可在合約列表點「✏️ 編輯」修改任何欄位
   </div>
+ </div>
+</div>
+
+<!-- ══ MERGE PROJECTS MODAL（合併因為打錯字、命名不一致而重複的案場）══ -->
+<div class="mov" id="mergeProjModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit">🔀 合併重複案場 <button class="mcl" data-close="mergeProjModal">✕</button></div>
+  <div style="font-size:.82rem;color:var(--g500);margin-bottom:16px;line-height:1.6">
+   勾選同一個案場因為打錯字、名稱不一致而重複的多筆記錄，選一筆當「保留的正式記錄」，
+   合併後其他筆的報價單、廠商報價、帳款、進度都會自動轉移過去，其他筆會移到垃圾桶（可復原）。
+  </div>
+  <div id="mergeProjList" style="max-height:340px;overflow-y:auto;margin-bottom:16px"></div>
+  <div id="mergeProjPrimaryWrap" style="display:none;margin-bottom:16px">
+   <label class="fl">要保留成正式記錄的是哪一筆？</label>
+   <select class="fi" id="mergeProjPrimary"></select>
+  </div>
+  <button class="btn bg bfull" id="mergeProjBtn" style="padding:13px;font-size:.92rem" disabled>選至少 2 筆案場才能合併</button>
  </div>
 </div>
 
