@@ -97,6 +97,7 @@ body{
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script>
 const FIREBASE_CONFIG={
   apiKey:"AIzaSyCOvRcTbj0z9cPMOYxicnqbzHLsUP-jOHg",
@@ -138,6 +139,14 @@ async function load(){
 
   try{
     firebase.initializeApp(FIREBASE_CONFIG);
+    // 修正重點：資料庫安全規則要求「登入（哪怕只是匿名登入）才能讀取」，
+    // 這個頁面原本完全沒有做登入這一步，也沒載入登入用的 SDK，
+    // 所以每次讀取都會被規則擋下來（permission_denied），業主打開連結永遠看不到資料——
+    // 不是連結本身失效，是這個頁面從來沒有通過權限檢查這一關。
+    if(firebase.auth){
+      try{ await firebase.auth().signInAnonymously(); }
+      catch(authErr){ console.warn('匿名登入失敗：',authErr.message); }
+    }
     const db=firebase.database();
     const snap=await db.ref('zeju_data').once('value');
     const data=snap.val()||{};
