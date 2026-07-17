@@ -1,5 +1,5 @@
 function getVendorPrompt(){
-  return '請仔細辨識這份廠商報價單的所有內容。\n只回覆純JSON（不要加```），格式：\n{"vendor":"廠商完整名稱","case":"案場名稱沒有則空字串","cat":"工程類別只能填系統櫃廚具玻璃水電泥作油漆鐵件其他之一","note":"備注如含安裝不含稅等","items":[{"name":"工項名稱","qty":"數量與單位如3坪或1式","amount":金額數字}]}\n請盡量列出所有細項，金額盡量辨識為數字。無法辨識的填空字串或0。';
+  return '請仔細辨識這份廠商報價單的所有內容。\n只回覆純JSON（不要加```），格式：\n{"vendor":"廠商完整名稱","case":"案場名稱沒有則空字串","cat":"工程類別只能填系統櫃廚具玻璃鋁窗水電泥作油漆鐵件其他之一","note":"備注如含安裝不含稅等","items":[{"name":"工項名稱","qty":"數量與單位如3坪或1式","amount":金額數字}]}\n請盡量列出所有細項，金額盡量辨識為數字。無法辨識的填空字串或0。';
 }
 
 function applyVendorResult(dat){
@@ -8,7 +8,7 @@ function applyVendorResult(dat){
   if(dat.note)   document.getElementById('vNt').value=dat.note;
   if(dat.cat){
     const sel=document.getElementById('vCat');
-    const opts=['系統櫃','廚具','玻璃','水電','泥作','油漆','鐵件','其他'];
+    const opts=['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'];
     const mt=opts.find(o=>dat.cat.includes(o)||o.includes(dat.cat));
     if(mt) sel.value=mt;
   }
@@ -278,7 +278,7 @@ document.getElementById('vFilt').addEventListener('click',e=>{
   vCurrentFilter=btn.dataset.cat;renderVendors(vCurrentFilter);
 });
 
-const VICO={系統櫃:'🪵',廚具:'🍳',玻璃:'🪟',水電:'⚡',泥作:'🧱',油漆:'🎨',鐵件:'🔩',其他:'📦'};
+const VICO={系統櫃:'🪵',廚具:'🍳',玻璃:'🪟',鋁窗:'🪟',水電:'⚡',泥作:'🧱',油漆:'🎨',鐵件:'🔩',其他:'📦'};
 
 function renderVendors(filter){
   const list=document.getElementById('vList');if(!list)return;
@@ -342,8 +342,8 @@ function renderVendors(filter){
       hd.innerHTML=
         '<span style="font-size:1.3rem;flex-shrink:0">'+catIco+'</span>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.9rem;font-weight:900">'+v.vendor+
-            ' <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800">'+v.cat+'</span>'+
+          '<div style="font-size:.9rem;font-weight:900">'+esc(v.vendor)+
+            ' <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800">'+esc(v.cat)+'</span>'+
           '</div>'+
           '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
         '</div>'+
@@ -362,13 +362,18 @@ function renderVendors(filter){
       // 基本資料編輯
       const basicEdit=document.createElement('div');
       basicEdit.style.cssText='padding:12px 16px;border-bottom:1px solid var(--g100);background:var(--w)';
+      // 工程類別下拉選單：固定類別清單以外，如果這筆資料本身的類別不在清單裡（例如 AI 辨識出「鋁窗」但清單當時沒有這個選項），
+      // 原本 <select> 會找不到對應 option、瀏覽器就默默選成清單第一個「系統櫃」——畫面看起來像是類別跑掉了，其實是資料跟清單對不起來。
+      // 這裡改成：清單沒有的類別，動態補一個 option 進去，永遠不會再出現「標籤寫鋁窗、下拉選單卻顯示系統櫃」這種不一致。
+      const CAT_LIST=['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'];
+      const catOptions=CAT_LIST.includes(v.cat)?CAT_LIST:[...CAT_LIST,v.cat].filter(Boolean);
       basicEdit.innerHTML=
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
           '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">廠商名稱</div>'+
           '<input id="ve-vendor-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.vendor||'')+'"></div>'+
           '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">工程類別</div>'+
           '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none">'+
-          ['系統櫃','廚具','玻璃','水電','泥作','油漆','鐵件','其他'].map(o=>'<option'+(o===v.cat?' selected':'')+'>'+o+'</option>').join('')+'</select></div>'+
+          catOptions.map(o=>'<option'+(o===v.cat?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select></div>'+
         '</div>'+
         '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">備注</div>'+
         '<input id="ve-note-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.note||'')+'" placeholder="例：含安裝、不含稅…"></div>';
