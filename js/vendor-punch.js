@@ -361,19 +361,21 @@ function renderVendors(filter){
       // 基本資料編輯
       const basicEdit=document.createElement('div');
       basicEdit.style.cssText='padding:12px 16px;border-bottom:1px solid var(--g100);background:var(--w)';
-      // 修正重點：這裡原本是自己寫死一份類別清單（沒有「＋新增分類」選項，也看不到別的地方新增過的自訂分類），
-      // 跟「新增廠商報價」表單用的不是同一套機制，導致在這裡改一筆既有廠商報價的類別時，沒辦法新增類別。
-      // 改成呼叫共用的 buildCatSelectWithAdd，跟其他地方共用同一份分類清單、也都能直接新增。
+      // 工程類別下拉選單：固定類別清單以外，如果這筆資料本身的類別不在清單裡（例如 AI 辨識出「鋁窗」但清單當時沒有這個選項），
+      // 原本 <select> 會找不到對應 option、瀏覽器就默默選成清單第一個「系統櫃」——畫面看起來像是類別跑掉了，其實是資料跟清單對不起來。
+      // 這裡改成：清單沒有的類別，動態補一個 option 進去，永遠不會再出現「標籤寫鋁窗、下拉選單卻顯示系統櫃」這種不一致。
+      const CAT_LIST=['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'];
+      const catOptions=CAT_LIST.includes(v.cat)?CAT_LIST:[...CAT_LIST,v.cat].filter(Boolean);
       basicEdit.innerHTML=
         '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
           '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">廠商名稱</div>'+
           '<input id="ve-vendor-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.vendor||'')+'"></div>'+
           '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">工程類別</div>'+
-          '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none"></select></div>'+
+          '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none">'+
+          catOptions.map(o=>'<option'+(o===v.cat?' selected':'')+'>'+esc(o)+'</option>').join('')+'</select></div>'+
         '</div>'+
         '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">備注</div>'+
         '<input id="ve-note-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.note||'')+'" placeholder="例：含安裝、不含稅…"></div>';
-      if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(basicEdit.querySelector('select'),'vendorCat',v.cat);
 
       // 細項表格
       const itemWrap=document.createElement('div');

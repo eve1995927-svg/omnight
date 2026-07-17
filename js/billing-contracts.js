@@ -127,12 +127,9 @@ function saveSettingTags(key,arr){localStorage.setItem('zeju_tags_'+key,JSON.str
 function buildCatSelectWithAdd(selectEl, catKey, selectedValue){
   if(!selectEl)return;
   const tags=getSettingTags(catKey);
-  // 防呆：如果這筆資料當初存的類別，剛好不在目前的分類清單裡（例如清單被誰改過、或資料比較舊），
-  // 補一個選項進去，不要讓瀏覽器默默選成清單第一個、看起來像類別跑掉了
-  const options=(selectedValue&&!tags.includes(selectedValue))?[...tags,selectedValue]:tags;
-  selectEl.innerHTML=options.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
+  selectEl.innerHTML=tags.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
     '<option value="__add_new__">＋ 新增分類…</option>';
-  if(selectedValue&&options.includes(selectedValue))selectEl.value=selectedValue;
+  if(selectedValue&&tags.includes(selectedValue))selectEl.value=selectedValue;
   if(!selectEl._catAddBound){
     selectEl._catAddBound=true;
     selectEl.addEventListener('change',()=>{
