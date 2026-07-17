@@ -684,9 +684,12 @@ function renderAttendance(){
 
   list.innerHTML='<div style="font-size:.8rem;font-weight:800;color:var(--g400);margin-bottom:12px;padding:8px 12px;background:var(--info-bg);border-radius:var(--rxs)">📅 '+monthKey+'月份出缺勤統計 · 本月工作天 '+workDays+' 天</div>';
 
-  emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'}]).forEach(emp=>{
+  emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'},{_id:'staff',name:'共用員工帳號',title:'未指定個人的打卡'}]).forEach(emp=>{
     // 找這個帳號的打卡記錄
-    const roleId=emp._id==='punch'?'punch':'staff';
+    // 修正重點：個人帳號打卡時存的是 user:'emp_'+員工id（見 core.js 的 curPunchUser 邏輯），
+    // 這裡原本不管是誰一律拿 'staff' 去比對，導致每個有名字的員工永遠比對不到自己的打卡記錄，
+    // 出勤卡片一直顯示 0 天出勤——不是打卡沒存到，是這裡比對的欄位跟存檔時完全對不上。
+    const roleId=(emp._id==='punch'||emp._id==='staff')?emp._id:('emp_'+emp._id);
     const myRecs=allRecs.filter(r=>{
       if(!r.date)return false;
       const [y,m]=r.date.includes('/')
@@ -713,10 +716,10 @@ function renderAttendance(){
         '<div style="background:linear-gradient(90deg,'+(pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--bad)')+','+( pct>=80?'#4ADE80':pct>=60?'#FCD34D':'#F87171')+');height:100%;width:'+pct+'%;border-radius:4px"></div>'+
       '</div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">'+
-        ['出勤 '+inDays+'天','未打退 '+(inDays-outDays>0?inDays-outDays:0)+'天','缺勤 '+absentDays+'天','出勤率 '+pct+'%'].map((txt,i)=>
+        [['出勤',inDays+'天'],['未打退卡',(inDays-outDays>0?inDays-outDays:0)+'天'],['缺勤',absentDays+'天'],['出勤率',pct+'%']].map(([lbl,val])=>
           '<div style="text-align:center;padding:8px;background:var(--g50);border-radius:var(--rxs)">'+
-            '<div style="font-size:.72rem;color:var(--g400);margin-bottom:3px">'+['出勤','未打退卡','缺勤','出勤率'][i]+'</div>'+
-            '<div style="font-weight:900;font-size:.88rem;font-family:monospace">'+['出勤 '+inDays+'天','未打退 '+(inDays-outDays>0?inDays-outDays:0)+'天','缺勤 '+absentDays+'天',pct+'%'][i].split(' ')[1]+'</div>'+
+            '<div style="font-size:.72rem;color:var(--g400);margin-bottom:3px">'+lbl+'</div>'+
+            '<div style="font-weight:900;font-size:.88rem;font-family:monospace">'+val+'</div>'+
           '</div>'
         ).join('')+
       '</div>';
