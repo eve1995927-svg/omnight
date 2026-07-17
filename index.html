@@ -1339,6 +1339,40 @@
  </div>
 </div>
 
+<!-- ══ QUOTE FILE UPLOAD MODAL（直接上傳已完成的報價單檔案/照片，不用重新在系統裡建立）══ -->
+<div class="mov" id="qFileModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit">上傳報價單檔案 <button class="mcl" data-close="qFileModal">✕</button></div>
+
+  <div class="upz" id="qfZone" style="border-style:solid;border-width:2px">
+   <span class="upz-ic">📋</span>
+   <div class="upz-title">上傳報價單照片或檔案（可多張）</div>
+   <div class="upz-sub">📷 已經做好的報價單，直接拍照或上傳 PDF 存檔<br>可一次選多張，每頁拍一張</div>
+  </div>
+  <input type="file" id="qfFile" accept="image/*,.pdf" multiple style="display:none">
+
+  <div id="qfFileCard" style="display:none;margin:12px 0">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="font-size:.82rem;font-weight:700;color:var(--g600)" id="qfFileCount">已上傳 0 張</div>
+    <button class="btn brd bxs" id="qfDelFile">🗑 清除全部</button>
+   </div>
+   <div id="qfPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px"></div>
+  </div>
+
+  <div class="field" style="margin:12px 0"><label class="fl">報價單名稱</label><input class="fi" id="qfName" placeholder="例：景平路案 2026/07 報價"></div>
+
+  <button class="btn bg bfull" id="qfSaveBtn" style="padding:13px;font-size:.92rem">💾 儲存報價單</button>
+ </div>
+</div>
+
+<!-- ══ QUOTE FILE VIEW MODAL（點開一份只有附件、沒有明細的報價單時顯示）══ -->
+<div class="mov" id="qFileViewModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit" id="qfvTitle">報價單附件 <button class="mcl" data-close="qFileViewModal">✕</button></div>
+  <div id="qfvGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px"></div>
+ </div>
+</div>
+
 <!-- ══ LEDGER MODAL ══ -->
 <div class="mov" id="ledgerModal">
  <div class="modal" style="max-width:520px">
