@@ -171,6 +171,24 @@
  </div>
  <div id="projectList"></div>
  <div id="projectKanban" style="display:none"></div>
+
+ <!-- 日行事曆：案場開工日排程，卡片可以直接拖到別的日期上換開工日 -->
+ <div class="proj-cal" id="projCalendar">
+  <div class="pc-hd">
+   <div class="pc-title">📅 開工日行事曆</div>
+   <div class="pc-nav">
+    <button type="button" class="pc-nbtn" id="calPrevM">‹</button>
+    <div class="pc-month" id="calMonthLabel">—</div>
+    <button type="button" class="pc-nbtn" id="calNextM">›</button>
+    <button type="button" class="pc-today" id="calTodayBtn">今天</button>
+   </div>
+  </div>
+  <div class="pc-weekdays">
+   <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
+  </div>
+  <div class="pc-grid" id="calGrid"></div>
+  <div class="pc-hint">💡 把案場卡片拖到別的日期，可以直接改開工日</div>
+ </div>
 </div>
 
 <!-- ══ PROJECT DETAIL 案場詳情 ══ -->
@@ -1072,11 +1090,11 @@
   <!-- 動態上傳區 -->
   <div class="upz" id="vZone" style="border-style:solid;border-width:2px">
    <span class="upz-ic" id="vZoneIc">📷</span>
-   <div class="upz-title" id="vZoneTitle">上傳照片</div>
-   <div class="upz-sub" id="vZoneSub">拍照或截圖上傳 · AI 自動辨識所有欄位</div>
+   <div class="upz-title" id="vZoneTitle">上傳照片（可多張）</div>
+   <div class="upz-sub" id="vZoneSub">📷 可一次選多張，每頁拍一張 · AI 自動辨識所有欄位</div>
    <span style="display:inline-flex;align-items:center;gap:5px;background:var(--gold-pale);border:1px solid var(--gold-l);border-radius:20px;padding:4px 12px;font-size:.72rem;font-weight:800;color:var(--gold-d);margin-top:8px">🤖 AI 完整辨識</span>
   </div>
-  <input type="file" id="vFile" accept="image/*" style="display:none">
+  <input type="file" id="vFile" accept="image/*" multiple style="display:none">
   <div class="ipg" id="vPrev" style="margin-top:10px"></div>
   <div class="ocrp" id="vOcr"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中，請稍候…</div>
 
