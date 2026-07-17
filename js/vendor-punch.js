@@ -325,6 +325,87 @@ function renderVendorCatFilters(){
   }
 }
 
+// ── 合併廠商報價分組（案場總覽沒有重複，是廠商報價自己存的案場文字打法不一致）─────
+let _mergeVGroupSelected=new Set();
+
+function openMergeVendorGroupsModal(){
+  _mergeVGroupSelected=new Set();
+  const list=document.getElementById('mergeVGroupList');
+  const vendors=DB.get('vendors');
+  const byCase={};
+  vendors.forEach(v=>{
+    const k=v.caseN||'（未指定案場）';
+    if(!byCase[k])byCase[k]={count:0,total:0};
+    byCase[k].count++;
+    byCase[k].total+=(v.amount||0);
+  });
+  const groups=Object.entries(byCase).sort((a,b)=>a[0].localeCompare(b[0],'zh-Hant'));
+  if(!list)return;
+  if(groups.length<2){
+    list.innerHTML='<div class="empty-state"><div class="es-ic">🔀</div><div class="es-t">分組數量不足</div><div class="es-s">至少要有 2 個案場分組才能合併</div></div>';
+  }else{
+    list.innerHTML=groups.map(([caseName,info])=>
+      '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);margin-bottom:8px;cursor:pointer" data-vgrow>'+
+        '<input type="checkbox" value="'+esc(caseName)+'" style="width:17px;height:17px;margin-top:2px;cursor:pointer;accent-color:var(--gold)">'+
+        '<div style="flex:1"><div style="font-weight:800;font-size:.9rem">'+esc(caseName)+'</div>'+
+        '<div style="font-size:.75rem;color:var(--g400);margin-top:2px">共 '+info.count+' 筆・NT$'+info.total.toLocaleString()+'</div></div>'+
+      '</label>'
+    ).join('');
+    list.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      cb.addEventListener('change',()=>{
+        if(cb.checked)_mergeVGroupSelected.add(cb.value);else _mergeVGroupSelected.delete(cb.value);
+        cb.closest('[data-vgrow]').style.background=cb.checked?'var(--gold-pale)':'';
+        cb.closest('[data-vgrow]').style.borderColor=cb.checked?'var(--gold-l)':'var(--g200)';
+        updateMergeVGroupUI();
+      });
+    });
+  }
+  updateMergeVGroupUI();
+  openModal('mergeVendorGroupModal');
+}
+
+function updateMergeVGroupUI(){
+  const targetWrap=document.getElementById('mergeVGroupTargetWrap');
+  const targetSel=document.getElementById('mergeVGroupTarget');
+  const btn=document.getElementById('mergeVGroupBtn');
+  const names=[..._mergeVGroupSelected];
+  if(names.length<2){
+    if(targetWrap)targetWrap.style.display='none';
+    if(btn){btn.disabled=true;btn.textContent='選至少 2 個分組才能合併';}
+    return;
+  }
+  if(targetWrap)targetWrap.style.display='block';
+  // 目標一定要是既有案場（延續「一定要先建案場」的規則），不能自己打一個新名字
+  if(targetSel&&typeof buildProjectSelect==='function')buildProjectSelect(targetSel,null);
+  if(btn){btn.disabled=false;btn.textContent='🔀 合併這 '+names.length+' 個分組';}
+}
+
+document.getElementById('mergeVGroupBtn')?.addEventListener('click',()=>{
+  const names=[..._mergeVGroupSelected];
+  const targetId=parseInt(document.getElementById('mergeVGroupTarget')?.value);
+  if(names.length<2||!targetId)return;
+  const targetProj=DB.get('projects').find(p=>p._id===targetId);
+  if(!targetProj)return;
+
+  confirmAction(
+    '確定把這 '+names.length+' 個分組合併到「'+esc(targetProj.name)+'」嗎？裡面的廠商報價會全部改成歸在這個案場底下。',
+    ()=>{
+      let movedCount=0;
+      DB.getAll('vendors').forEach(v=>{
+        const k=v.caseN||'（未指定案場）';
+        if(names.includes(k)){
+          DB.upd('vendors',v._id,{projectId:targetId,caseN:targetProj.name||''});
+          movedCount++;
+        }
+      });
+      closeModal('mergeVendorGroupModal');
+      renderVendorCatFilters();renderVendors(vCurrentFilter);updStats();
+      if(typeof updVCaseFilter==='function')updVCaseFilter();
+      showToast('✅ 已合併！'+movedCount+' 筆廠商報價現在都歸在「'+targetProj.name+'」底下');
+    }
+  );
+});
+
 function renderVendors(filter){
   const list=document.getElementById('vList');if(!list)return;
   let data=DB.get('vendors');
@@ -566,50 +647,31 @@ function doPunch(){
         const lng=pos.coords.longitude.toFixed(6);
         // 先用座標存檔，背景查地址
         save(lat, lng, lat+','+lng);
-        // 用 Claude AI 反查台灣繁體中文地址
-        {
-          try{
-            const r=await fetch('/.netlify/functions/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
-              body:JSON.stringify({
-                model:'claude-sonnet-4-6',
-                max_tokens:3000,
-                messages:[{
-                  role:'user',
-                  content:'GPS座標：緯度'+lat+'，經度'+lng+'。這是台灣哪個地址？只回覆繁體中文地址，格式：縣市＋區＋路名，例如「台北市大安區信義路四段」，不要其他文字。'
-                }]
-              })
-            });
-            const d=await r.json();
-            const addr=(d.content?.[0]?.text||'').trim();
-            if(addr&&addr.length>4&&!addr.includes('{')){
-              // 更新打卡記錄的地址
-              const recs=DB.get('punch_recs');
-              if(recs.length&&recs[0].lat===lat){
-                DB.upd('punch_recs',recs[0]._id,{addr});
-                renderPunchRec&&renderPunchRec();
-              }
+        // 修正重點：原本這裡是拿 GPS 座標去問 AI「這是哪個地址」——AI 語言模型本來就不是地圖服務，
+        // 沒有精確的地址資料庫，用猜的常常猜不準或乾脆猜不出來，這也是「一直只有座標、沒有中文地址」的原因，
+        // 而且每次打卡都要為了這個查詢扣一次 AI 點數，划不來。
+        // 改用 OpenStreetMap 的免費地址反查服務（Nominatim），這是真正的地圖資料庫查詢，不是用猜的，也不用扣點。
+        try{
+          const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&accept-language=zh-TW&zoom=18');
+          const d=await r.json();
+          const a=d.address||{};
+          const addr=[a.state||a.county,a.city||a.town||a.district||a.suburb,a.road,a.house_number].filter(Boolean).join('').trim()
+            || d.display_name || '';
+          if(addr){
+            const recs=DB.get('punch_recs');
+            if(recs.length&&recs[0].lat===lat){
+              DB.upd('punch_recs',recs[0]._id,{addr});
+              renderPunchRec&&renderPunchRec();
             }
-            // 扣點
-            const tu=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
-            const pts=Math.min(30,Math.max(1,Math.round(tu/20)));
-            await deductPoints(pts);
-            const _now=new Date();
-            DB.push('billing',{
-              summary:'打卡地址查詢 -'+pts+'點',
-              desc:'打卡地址查詢',role:'punch',
-              points:pts,tokens:tu,user:curPunchUser||'punch',
-              ts:_now.toLocaleString('zh-TW'),
-              month:_now.getFullYear()+'-'+(_now.getMonth()+1).toString().padStart(2,'0'),
-              day:_now.toLocaleDateString('zh-TW'),
-            });
-          }catch(e){console.log('地址查詢失敗:',e.message);}
-        }
+          }
+        }catch(e){console.log('地址查詢失敗:',e.message);}
       },
       ()=>save(null,null,null),
       {timeout:8000, enableHighAccuracy:true}
     );
   }else save(null,null,null);
 }
+
 
 
 function updatePunchBtn(){
