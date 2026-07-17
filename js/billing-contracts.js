@@ -127,9 +127,12 @@ function saveSettingTags(key,arr){localStorage.setItem('zeju_tags_'+key,JSON.str
 function buildCatSelectWithAdd(selectEl, catKey, selectedValue){
   if(!selectEl)return;
   const tags=getSettingTags(catKey);
-  selectEl.innerHTML=tags.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
+  // 防呆：如果這筆資料當初存的類別，剛好不在目前的分類清單裡（例如清單被誰改過、或資料比較舊），
+  // 補一個選項進去，不要讓瀏覽器默默選成清單第一個、看起來像類別跑掉了
+  const options=(selectedValue&&!tags.includes(selectedValue))?[...tags,selectedValue]:tags;
+  selectEl.innerHTML=options.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
     '<option value="__add_new__">＋ 新增分類…</option>';
-  if(selectedValue&&tags.includes(selectedValue))selectEl.value=selectedValue;
+  if(selectedValue&&options.includes(selectedValue))selectEl.value=selectedValue;
   if(!selectEl._catAddBound){
     selectEl._catAddBound=true;
     selectEl.addEventListener('change',()=>{
@@ -169,6 +172,9 @@ function quickAddCategory(catKey,onAdded){
     saveSettingTags(catKey,tags);
     box.remove();
     showToast('✅ 已新增分類「'+name+'」');
+    // 廠商報價的類別新增，不管是從哪個畫面觸發的，都順便把廠商報價整理頁的篩選/比價按鈕也刷新，
+    // 不然要等重新整理頁面才會看到新分類出現在篩選那邊
+    if(catKey==='vendorCat'&&typeof renderVendorCatFilters==='function')renderVendorCatFilters();
     if(onAdded)onAdded(name);
   };
   document.getElementById('_qcOk').addEventListener('click',doAdd);
