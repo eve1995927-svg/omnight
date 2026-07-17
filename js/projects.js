@@ -482,6 +482,108 @@ document.getElementById('calTodayBtn')?.addEventListener('click',()=>{
 });
 
 
+// ── 合併重複案場（因打錯字/命名不一致而分裂成好幾筆的同一個案場）─────────
+let _mergeSelected=new Set();
+
+function openMergeProjectsModal(){
+  _mergeSelected=new Set();
+  const list=document.getElementById('mergeProjList');
+  const projects=DB.get('projects').slice().sort((a,b)=>(a.name||'').localeCompare(b.name||'','zh-Hant'));
+  if(!list)return;
+  if(projects.length<2){
+    list.innerHTML='<div class="empty-state"><div class="es-ic">🔀</div><div class="es-t">案場數量不足</div><div class="es-s">至少要有 2 筆案場才能合併</div></div>';
+  }else{
+    list.innerHTML=projects.map(p=>{
+      const vCount=DB.get('vendors').filter(v=>v.projectId===p._id).length;
+      const qCount=DB.get('quotes').filter(q=>q.projectId===p._id).length;
+      return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);margin-bottom:8px;cursor:pointer" data-mergerow>'+
+        '<input type="checkbox" value="'+p._id+'" style="width:17px;height:17px;margin-top:2px;cursor:pointer;accent-color:var(--gold)">'+
+        '<div style="flex:1"><div style="font-weight:800;font-size:.9rem">'+esc(p.name||'未命名')+'</div>'+
+        '<div style="font-size:.75rem;color:var(--g400);margin-top:2px">'+esc(p.client||'業主未填')+(p.address?' · '+esc(p.address):'')+'</div>'+
+        '<div style="font-size:.72rem;color:var(--g400);margin-top:3px">📋 報價 '+qCount+' 份 · 🏗️ 廠商報價 '+vCount+' 筆</div></div>'+
+      '</label>';
+    }).join('');
+    list.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      cb.addEventListener('change',()=>{
+        const id=parseInt(cb.value);
+        if(cb.checked)_mergeSelected.add(id);else _mergeSelected.delete(id);
+        cb.closest('[data-mergerow]').style.background=cb.checked?'var(--gold-pale)':'';
+        cb.closest('[data-mergerow]').style.borderColor=cb.checked?'var(--gold-l)':'var(--g200)';
+        updateMergeProjectUI();
+      });
+    });
+  }
+  updateMergeProjectUI();
+  openModal('mergeProjModal');
+}
+
+function updateMergeProjectUI(){
+  const primaryWrap=document.getElementById('mergeProjPrimaryWrap');
+  const primarySel=document.getElementById('mergeProjPrimary');
+  const btn=document.getElementById('mergeProjBtn');
+  const ids=[..._mergeSelected];
+  if(ids.length<2){
+    if(primaryWrap)primaryWrap.style.display='none';
+    if(btn){btn.disabled=true;btn.textContent='選至少 2 筆案場才能合併';}
+    return;
+  }
+  if(primaryWrap)primaryWrap.style.display='block';
+  if(primarySel){
+    const projects=ids.map(id=>DB.get('projects').find(p=>p._id===id)).filter(Boolean);
+    const prevVal=primarySel.value;
+    primarySel.innerHTML=projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名')+'</option>').join('');
+    if(ids.includes(parseInt(prevVal)))primarySel.value=prevVal;
+  }
+  if(btn){btn.disabled=false;btn.textContent='🔀 合併這 '+ids.length+' 筆案場';}
+}
+
+document.getElementById('mergeProjBtn')?.addEventListener('click',()=>{
+  const ids=[..._mergeSelected];
+  const primaryId=parseInt(document.getElementById('mergeProjPrimary')?.value);
+  if(ids.length<2||!primaryId)return;
+  const otherIds=ids.filter(id=>id!==primaryId);
+  const primary=DB.get('projects').find(p=>p._id===primaryId);
+  const others=otherIds.map(id=>DB.get('projects').find(p=>p._id===id)).filter(Boolean);
+
+  confirmAction(
+    '確定合併嗎？「'+esc(primary?.name||'')+'」會保留，其他 '+otherIds.length+' 筆會移到垃圾桶，所有相關資料會轉移過去。',
+    ()=>{
+      // 補齊主記錄缺少的欄位（用被合併掉的案場資料補，不覆蓋主記錄已經有的值）
+      const patch={};
+      ['client','address','type','startDate','endDate','note'].forEach(f=>{
+        if(!primary[f]){
+          const src=others.find(o=>o[f]);
+          if(src)patch[f]=src[f];
+        }
+      });
+      if(Object.keys(patch).length)DB.upd('projects',primaryId,patch);
+
+      // 把其他筆的所有相關資料（報價單、廠商報價、帳款、進度、合約）轉移到主記錄
+      const collections=['quotes','vendors','ledger','progress','contracts'];
+      let movedCount=0;
+      collections.forEach(col=>{
+        DB.getAll(col).forEach(rec=>{
+          if(otherIds.includes(rec.projectId)){
+            const patchRec={projectId:primaryId};
+            // caseN 這種顯示用的文字欄位也一併更新，避免畫面上還顯示舊的案場名稱
+            if(rec.caseN!==undefined)patchRec.caseN=primary.name||'';
+            DB.upd(col,rec._id,patchRec);
+            movedCount++;
+          }
+        });
+      });
+
+      // 其他筆案場移到垃圾桶（可復原，不是永久刪除）
+      otherIds.forEach(id=>DB.softDel('projects',id));
+
+      closeModal('mergeProjModal');
+      renderProjects();
+      if(typeof renderDashboard==='function')renderDashboard();
+      showToast('✅ 已合併！轉移了 '+movedCount+' 筆相關資料到「'+(primary?.name||'')+'」');
+    }
+  );
+});
+
 function toggleProjectArchive(id){
   const p=getProject(id);if(!p)return;
   DB.upd('projects',id,{archived:!p.archived});
