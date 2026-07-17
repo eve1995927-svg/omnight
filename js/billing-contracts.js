@@ -1,6 +1,7 @@
 function updatePtsDisplay(){
-  const pts=parseInt(localStorage.getItem('zeju_pts'))||76500;
-  POINTS=pts;
+  // POINTS 現在是雲端同步的即時值（見 core.js 的 loadPointsFromCloud/startPointsSync），
+  // 這裡只負責顯示，不要再從 localStorage 重新覆蓋一次，避免跟即時同步的值互相打架
+  const pts=(typeof POINTS==='number')?POINTS:(parseInt(localStorage.getItem('zeju_pts'))||76500);
   const el=document.getElementById('ptsNum'); if(el)el.textContent=pts.toLocaleString();
   const bl=document.getElementById('bilPts'); if(bl)bl.textContent=pts.toLocaleString();
 }
@@ -34,7 +35,7 @@ function renderBilling(){
   const curMonth=monthSel?.value||(new Date().toISOString().slice(0,7));
   const recs=allRecs.filter(r=>(!r.month||r.month===curMonth));
   const monthPts=recs.reduce((s,r)=>s+(r.points||0),0);
-  const totalPts=parseInt(localStorage.getItem('zeju_pts'))||76500;
+  const totalPts=(typeof POINTS==='number')?POINTS:(parseInt(localStorage.getItem('zeju_pts'))||76500);
   const ptsFee=Math.round(monthPts*PTS_RATE);
   const totalFee=BASE_FEE+ptsFee;
 
@@ -126,9 +127,12 @@ function saveSettingTags(key,arr){localStorage.setItem('zeju_tags_'+key,JSON.str
 function buildCatSelectWithAdd(selectEl, catKey, selectedValue){
   if(!selectEl)return;
   const tags=getSettingTags(catKey);
-  selectEl.innerHTML=tags.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
+  // 防呆：如果這筆資料當初存的類別，剛好不在目前的分類清單裡（例如清單被誰改過、或資料比較舊），
+  // 補一個選項進去，不要讓瀏覽器默默選成清單第一個、看起來像類別跑掉了
+  const options=(selectedValue&&!tags.includes(selectedValue))?[...tags,selectedValue]:tags;
+  selectEl.innerHTML=options.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
     '<option value="__add_new__">＋ 新增分類…</option>';
-  if(selectedValue&&tags.includes(selectedValue))selectEl.value=selectedValue;
+  if(selectedValue&&options.includes(selectedValue))selectEl.value=selectedValue;
   if(!selectEl._catAddBound){
     selectEl._catAddBound=true;
     selectEl.addEventListener('change',()=>{
