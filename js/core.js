@@ -2,6 +2,7 @@
 
 // ══ 全域變數宣告 ════════════
 let ctImgUrl=null, ctEditId=null, ieId=null;
+let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
 let vItems=[], vCurrentFilter='all', curVType='image';
 let curClientId=null, clientChats={};
@@ -990,6 +991,7 @@ function setupApp(role){
   updHRStats();
   initAdQuote();
   initContractListeners();
+  if(typeof initQuoteFileListeners==='function')initQuoteFileListeners();
   initMultiClientChat();
   // 注意：手機底部導覽已由 buildBN() 統一處理（含案場返回鍵、即時 GROUPS 資料），
   // 不再呼叫舊版 initMobileNav()，避免兩套導覽互相覆蓋

@@ -709,20 +709,89 @@ function updateProjectStatus(id,status){
 function renderProjQuotes(id,p,c){
   const quotes=DB.get('quotes').filter(q=>q.projectId===id);
   c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
-      <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
+      <div style="display:flex;gap:8px">
+        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">📎 上傳報價單檔案</button>
+        <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
+      </div>
     </div>
-    ${quotes.length?quotes.map(q=>`
+    ${quotes.length?quotes.map(q=>{
+      const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
+      const fileCount=(q.fileUrls||[]).length;
+      const amt=Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05);
+      return `
       <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openQuoteEdit(${q._id})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-weight:800">${esc(q.name||'報價單')}</div>
+            <div style="font-weight:800">${esc(q.name||'報價單')}${!hasItems&&fileCount?' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;font-weight:800">📎 檔案 '+fileCount+' 張</span>':''}</div>
             <div style="font-size:.78rem;color:var(--g400);margin-top:2px">${q._ts||''}</div>
           </div>
-          <div style="font-weight:900;color:var(--gold-d)">NT$${Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05).toLocaleString()}</div>
+          <div style="font-weight:900;color:var(--gold-d)">${hasItems?'NT$'+amt.toLocaleString():(fileCount?'':'NT$0')}</div>
         </div>
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無報價單</div><div class="es-s">點右上方新建此案場的報價單</div></div>'}`;
+      </div>`;
+    }).join(''):'<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無報價單</div><div class="es-s">點右上方新建，或直接上傳已經做好的報價單檔案</div></div>'}`;
+}
+
+function openQuoteFileUpload(projectId){
+  curProjectId=projectId;
+  const p=getProject(projectId);
+  qfImgUrl=[];
+  const nameEl=document.getElementById('qfName');if(nameEl)nameEl.value=p?.name?p.name+' 報價單':'';
+  const fc=document.getElementById('qfFileCard');if(fc)fc.style.display='none';
+  const grid=document.getElementById('qfPhotoGrid');if(grid)grid.innerHTML='';
+  const fi=document.getElementById('qfFile');if(fi)fi.value='';
+  openModal('qFileModal');
+}
+
+// 修正重點：這個函式原本在案場總覽的報價分頁裡被呼叫（點開一份已存在的報價單），
+// 但整個程式碼裡從來沒有真的定義過，點下去等於完全沒反應。
+// 現在補上：如果這份報價單只有上傳的檔案、沒有明細（用上面新增的上傳功能存的），開一個小視窗顯示附件；
+// 如果是有明細的報價單（用系統的報價編輯器建立的），才進去完整的編輯畫面。
+function openQuoteEdit(id){
+  const q=DB.get('quotes').find(r=>r._id===id);if(!q)return;
+  const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
+  const fileUrls=q.fileUrls||[];
+
+  if(!hasItems&&fileUrls.length){
+    const titleEl=document.getElementById('qfvTitle');
+    if(titleEl)titleEl.innerHTML=esc(q.name||'報價單')+' <button class="mcl" data-close="qFileViewModal">✕</button>';
+    const grid=document.getElementById('qfvGrid');
+    if(grid){
+      grid.innerHTML='';
+      fileUrls.forEach((f,i)=>{
+        const url=f.url||f;
+        const wrap=document.createElement('div');
+        wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+        if(f.type&&f.type.startsWith('image/')||typeof url==='string'&&url.startsWith('data:image')){
+          const img=document.createElement('img');
+          img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+          img.onclick=()=>openLB(url);
+          wrap.appendChild(img);
+        }else{
+          wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(f.name||'文件')+'</div></div>';
+          wrap.onclick=()=>window.open(url,'_blank');
+        }
+        const pg=document.createElement('div');
+        pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';
+        pg.textContent='P'+(i+1);
+        wrap.appendChild(pg);
+        grid.appendChild(wrap);
+      });
+    }
+    openModal('qFileViewModal');
+    return;
+  }
+
+  // 有明細的報價單：載入完整報價編輯器（跟「報價管理」列表頁點編輯是同一套邏輯）
+  adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
+  const adN=document.getElementById('adN');if(adN)adN.value=q.name||'';
+  const adAd=document.getElementById('adAd');if(adAd)adAd.value=q.addr||'';
+  const qbClient=document.getElementById('adQbClient');if(qbClient)qbClient.textContent=q.name||'—';
+  const qbAddr=document.getElementById('adQbAddr');if(qbAddr)qbAddr.textContent=q.addr||'—';
+  if(typeof renderProQuote==='function')renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+  if(typeof openAllSecs==='function')openAllSecs('adSections');
+  showPanel('ad-newquote');
 }
 
 function newProjQuote(projectId){

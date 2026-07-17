@@ -321,6 +321,85 @@ function renderCtPhotos(){
   grid.appendChild(addMore);
 }
 
+// ══ 報價單檔案上傳（案場總覽 → 報價分頁）═══════════════════════
+function renderQfPhotos(){
+  const photos=Array.isArray(qfImgUrl)?qfImgUrl:[];
+  const fc=document.getElementById('qfFileCard');
+  const grid=document.getElementById('qfPhotoGrid');
+  const cnt=document.getElementById('qfFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+    const url=p.url||p;
+    if(p.type&&p.type.startsWith('image/')||typeof url==='string'&&url.startsWith('data:image')){
+      const img=document.createElement('img');
+      img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+      img.onclick=()=>openLB(url);wrap.appendChild(img);
+    }else{
+      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
+    }
+    const pg=document.createElement('div');
+    pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';
+    pg.textContent='P'+(i+1);
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center';
+    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(qfImgUrl))qfImgUrl.splice(i,1);renderQfPhotos();};
+    wrap.appendChild(pg);wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:3/4;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;color:var(--g400);font-size:.75rem;font-weight:700;transition:all var(--ease)';
+  addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
+  addMore.onclick=()=>document.getElementById('qfFile')?.click();
+  grid.appendChild(addMore);
+}
+
+function initQuoteFileListeners(){
+  function bind(id,evt,fn){
+    const el=document.getElementById(id);
+    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
+  }
+  bind('qfZone','click',()=>document.getElementById('qfFile')?.click());
+  bind('qfFile','change',async e=>{
+    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+    if(!Array.isArray(qfImgUrl))qfImgUrl=[];
+    const rf=async f=>{
+      if(f.type.startsWith('image/')){
+        const compressed=await compressImage(f,1600,0.75);
+        return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+      }
+      return new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
+    };
+    qfImgUrl.push(...await Promise.all(files.map(rf)));
+    renderQfPhotos();
+  });
+  bind('qfDelFile','click',()=>{
+    qfImgUrl=[];
+    const fc=document.getElementById('qfFileCard');if(fc)fc.style.display='none';
+    const fi=document.getElementById('qfFile');if(fi)fi.value='';
+    const grid=document.getElementById('qfPhotoGrid');if(grid)grid.innerHTML='';
+  });
+  bind('qfSaveBtn','click',()=>{
+    const name=(document.getElementById('qfName')?.value||'').trim();
+    if(!name){showToast('⚠️ 請填入報價單名稱');return;}
+    if(!qfImgUrl.length){showToast('⚠️ 請至少上傳一張報價單照片或檔案');return;}
+    const p=curProjectId?getProject(curProjectId):null;
+    DB.push('quotes',{
+      name, caseN:p?.name||'', type:p?.type||'',
+      sections:[], fileUrls:qfImgUrl.slice(),
+      summary:'報價單 '+name+'（檔案上傳）', projectId:curProjectId||null
+    });
+    closeModal('qFileModal');
+    showToast('✅ 報價單已上傳！');
+    if(typeof renderProjectDetail==='function'&&curProjectId)renderProjectDetail(curProjectId,'quote');
+    if(typeof renderQTable==='function')renderQTable();
+  });
+}
+
 // ══ 行銷貼文生成 ══════════════════════════════════════════
 // ── 行銷貼文：案場選擇 ──────────────────────────────────
 function initMkProjectSel(){
