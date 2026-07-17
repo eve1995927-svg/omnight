@@ -551,26 +551,11 @@
   </select>
  </div>
  <!-- 類別篩選 -->
- <!-- 比價工具 -->
- <div style="display:flex;gap:7px;margin-bottom:10px;flex-wrap:wrap;align-items:center">
+ <!-- 比價工具（內容由 JS 動態產生，見 renderVendorCatFilters，跟目前實際的分類清單同步，新增分類會立刻反映在這裡） -->
+ <div style="display:flex;gap:7px;margin-bottom:10px;flex-wrap:wrap;align-items:center" id="vCompareRow">
   <span style="font-size:.78rem;font-weight:700;color:var(--g400)">⚖️ 廠商比價：</span>
-  <button class="btn bo bsm" onclick="compareVendorsByCat('系統櫃')">🪵 系統櫃</button>
-  <button class="btn bo bsm" onclick="compareVendorsByCat('廚具')">🍳 廚具</button>
-  <button class="btn bo bsm" onclick="compareVendorsByCat('鋁窗')">🪟 鋁窗</button>
-  <button class="btn bo bsm" onclick="compareVendorsByCat('水電')">⚡ 水電</button>
-  <button class="btn bo bsm" onclick="compareVendorsByCat('泥作')">🧱 泥作</button>
-  <button class="btn bo bsm" onclick="compareVendorsByCat('油漆')">🎨 油漆</button>
  </div>
- <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap" id="vFilt">
-  <button class="btn bg bsm" data-cat="all">全部</button>
-  <button class="btn bo bsm" data-cat="系統櫃">🪵 系統櫃</button>
-  <button class="btn bo bsm" data-cat="廚具">🍳 廚具</button>
-  <button class="btn bo bsm" data-cat="玻璃">🪟 玻璃</button>
-  <button class="btn bo bsm" data-cat="鋁窗">🪟 鋁窗</button>
-  <button class="btn bo bsm" data-cat="水電">⚡ 水電</button>
-  <button class="btn bo bsm" data-cat="泥作">🧱 泥作</button>
-  <button class="btn bo bsm" data-cat="油漆">🎨 油漆</button>
- </div>
+ <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap" id="vFilt"></div>
  <div id="vList"></div>
 </div>
 
