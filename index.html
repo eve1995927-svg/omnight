@@ -423,7 +423,7 @@
     <div class="ct">👤 業主資料</div>
     <div class="g2">
      <div class="field"><label class="fl">業主姓名</label><input class="fi" id="adN" placeholder="王先生"></div>
-     <div class="field"><label class="fl">案場名稱</label><input class="fi" id="adCase" placeholder="例：景平路案"></div>
+     <div class="field"><label class="fl">案場名稱</label><select class="fi" id="adCase"></select></div>
     </div>
     <div class="field"><label class="fl">施工地址</label><input class="fi" id="adAd" placeholder="台北市大安區某路"></div>
     <div class="g2">
@@ -1092,7 +1092,7 @@
    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
     <div class="field" style="margin:0"><label class="fl">廠商名稱</label><input class="fi" id="vVd" placeholder="廠商名稱"></div>
     <div class="field" style="margin:0"><label class="fl">工程類別</label><select class="fs" id="vCat"><option>系統櫃</option><option>廚具</option><option>玻璃</option><option>鋁窗</option><option>水電</option><option>泥作</option><option>油漆</option><option>鐵件</option><option>其他</option></select></div>
-    <div class="field" style="margin:0"><label class="fl">案場名稱</label><input class="fi" id="vCs" placeholder="景平路案"></div>
+    <div class="field" style="margin:0"><label class="fl">案場名稱</label><select class="fi" id="vCs"></select></div>
    </div>
    <!-- 細項表格 -->
    <div style="border:1.5px solid var(--g200);border-radius:var(--rs);overflow:hidden;margin-bottom:12px">
@@ -1392,7 +1392,7 @@
   <div class="field" style="margin-bottom:12px"><label class="fl">說明</label><input class="fi" id="ldDesc" placeholder="例：景平路案 系統櫃材料費"></div>
   <div class="g2" style="margin-bottom:14px">
    <div class="field" style="margin:0"><label class="fl">分類</label><select class="fi" id="ldCat"><option>材料費</option><option>工資</option><option>廠商費用</option><option>管理費</option><option>設備費</option><option>合約收款</option><option>其他</option></select></div>
-   <div class="field" style="margin:0"><label class="fl">案場</label><input class="fi" id="ldCase" placeholder="景平路案"></div>
+   <div class="field" style="margin:0"><label class="fl">案場</label><select class="fi" id="ldCase"></select></div>
   </div>
 
   <!-- 費用細項（可新增刪除） -->
@@ -1413,7 +1413,7 @@
  <div class="modal" style="max-width:540px">
   <div class="mtit" id="progModalTitle">新增案場進度 <button class="mcl" data-close="progressModal">✕</button></div>
   <div class="g2" style="margin-bottom:12px">
-   <div class="field" style="margin:0"><label class="fl">案場名稱</label><input class="fi" id="progCase" placeholder="景平路案"></div>
+   <div class="field" style="margin:0"><label class="fl">案場名稱</label><select class="fi" id="progCase"></select></div>
    <div class="field" style="margin:0"><label class="fl">業主姓名</label><input class="fi" id="progClient" placeholder="王先生"></div>
   </div>
   <div class="field" style="margin-bottom:14px"><label class="fl">目前狀態</label>
@@ -1511,7 +1511,7 @@
  <div class="modal" style="max-width:480px">
   <div class="mtit">儲存到澤居報價庫 <button class="mcl" data-close="zejuQuoteModal">✕</button></div>
   <div class="field"><label class="fl">報價名稱</label><input class="fi" id="zqName" placeholder="例：景平路案 全室翻新報價"></div>
-  <div class="field"><label class="fl">案場名稱</label><input class="fi" id="zqCase" placeholder="例：景平路案"></div>
+  <div class="field"><label class="fl">案場名稱</label><select class="fi" id="zqCase"></select></div>
   <div class="field"><label class="fl">備注</label><input class="fi" id="zqNote" placeholder="例：含系統廚具，不含燈具"></div>
   <button class="btn bg bfull" id="saveZejuQuoteBtn" style="padding:14px;font-size:.95rem">💾 儲存到報價庫</button>
  </div>
