@@ -276,10 +276,7 @@ async function genMktImg(){
     // 扣點
     const tu=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
     const pts=Math.min(500,Math.max(1,Math.round(tu/20)));
-    POINTS=Math.max(0,POINTS-pts);
-    localStorage.setItem('zeju_pts',POINTS);
-    if(typeof window.storage!=='undefined')window.storage.set('zeju_pts',String(POINTS)).catch(()=>{});
-    const pe=document.getElementById('ptsNum');if(pe)pe.textContent=POINTS.toLocaleString();
+    await deductPoints(pts);
   }catch(err){
     console.log('img gen err',err);
     showToast(friendlyAIError(err)+'（已顯示預設圖片）');

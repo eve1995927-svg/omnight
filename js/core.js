@@ -444,6 +444,69 @@ const DB={
   },
 };
 
+// ══ AI 點數：改用 Firebase transaction 同步，不再各裝置各自為政 ═══
+// 【修正紀錄】原本 POINTS 只是存在瀏覽器 localStorage 裡的一個數字，每台裝置/每個瀏覽器分頭記自己的，
+// 從來沒有真的同步到雲端過（程式裡雖然有呼叫 window.storage.set(...)，但 window.storage 這個東西
+// 在這個網站裡根本不存在，那幾行從來沒有真的執行過，等於點數其實只有「當下這台裝置」自己知道）。
+// 這代表：老闆在電腦上用掉的點數，手機打開來看到的還是舊數字；兩台裝置都在扣點的話，
+// 後寫入的那台會用自己那份舊的餘額去扣，把另一台已經扣掉的紀錄蓋回去——就是合約消失同一種問題，只是這次是點數對不準。
+// 改用 Firebase 的 transaction（交易）機制：不管幾台裝置同時扣點，Firebase 會自動確保每一次扣款
+// 都是根據「當下最新」的餘額去扣，不會漏扣也不會扣兩次，這是 Firebase 官方就是為了處理這種「共用計數器」設計的功能。
+let POINTS=parseInt(localStorage.getItem('zeju_pts'))||76500; // 開機預設值，登入後會立刻用雲端最新值覆蓋
+
+async function loadPointsFromCloud(){
+  if(_fbDB&&_fbReady){
+    try{
+      const snap=await _fbDB.ref('zeju_data/points').once('value');
+      const v=snap.val();
+      POINTS=(typeof v==='number')?v:(parseInt(localStorage.getItem('zeju_pts'))||76500);
+    }catch{
+      POINTS=parseInt(localStorage.getItem('zeju_pts'))||76500;
+    }
+  } else {
+    POINTS=parseInt(localStorage.getItem('zeju_pts'))||76500;
+  }
+  localStorage.setItem('zeju_pts',POINTS);
+  updatePtsDisplay&&updatePtsDisplay();
+}
+
+// 即時監聽：別的裝置扣點之後，這裡的畫面也會跟著自動更新，不用重新整理頁面
+function startPointsSync(){
+  if(!_fbDB||!_fbReady)return;
+  _fbDB.ref('zeju_data/points').on('value',snap=>{
+    const v=snap.val();
+    if(typeof v==='number'){
+      POINTS=v;
+      localStorage.setItem('zeju_pts',POINTS);
+      updatePtsDisplay&&updatePtsDisplay();
+    }
+  });
+}
+
+// 統一扣點入口：全站所有會扣點的功能都要呼叫這個，不要自己寫 POINTS=POINTS-x
+async function deductPoints(amount){
+  amount=Math.max(0,Math.round(amount||0));
+  if(amount<=0)return POINTS;
+  if(_fbDB&&_fbReady){
+    try{
+      const result=await _fbDB.ref('zeju_data/points').transaction(current=>{
+        const base=(typeof current==='number')?current:(parseInt(localStorage.getItem('zeju_pts'))||76500);
+        return Math.max(0,base-amount);
+      });
+      POINTS=(result&&result.committed&&typeof result.snapshot.val()==='number')
+        ? result.snapshot.val()
+        : Math.max(0,POINTS-amount);
+    }catch{
+      POINTS=Math.max(0,POINTS-amount);
+    }
+  } else {
+    POINTS=Math.max(0,POINTS-amount);
+  }
+  localStorage.setItem('zeju_pts',POINTS);
+  updatePtsDisplay&&updatePtsDisplay();
+  return POINTS;
+}
+
 // ── 垃圾桶可支援的資料類型 ──────────────────────────────
 const TRASH_TYPES={
   contracts:{label:'合約',icon:'📄',name:r=>r.name||r.title||'未命名合約'},
@@ -916,9 +979,8 @@ function setupApp(role){
   updContractStats();
   renderLedger();
   updLedgerStats();
-  // 初始化點數（第一次使用設為 76500）
-  if(!localStorage.getItem('zeju_pts')) localStorage.setItem('zeju_pts','76500');
-  updatePtsDisplay();
+  // 初始化點數：改成從雲端讀最新值，並開始即時監聽（其他裝置扣點時這裡也會自動更新畫面）
+  loadPointsFromCloud().then(()=>{ startPointsSync(); });
   renderBilling();
   initSettings();
   if(typeof initLedgerMonth==='function') initLedgerMonth();
@@ -1149,15 +1211,7 @@ async function callAI(role,content,maxTok=1200){
   // ── 扣除點數 ──────────────────────────────────────────
   const tokUsed=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
   const pts=Math.min(500,Math.max(1,Math.round(tokUsed/20)));
-  POINTS=Math.max(0,POINTS-pts);
-  // 更新顯示
-  const ptsEl=document.getElementById('ptsNum');if(ptsEl)ptsEl.textContent=POINTS.toLocaleString();
-  // 存到 localStorage
-  localStorage.setItem('zeju_pts',POINTS);
-  // 同步到雲端
-  if(typeof window.storage!=='undefined'){
-    window.storage.set('zeju_pts',String(POINTS)).catch(()=>{});
-  }
+  await deductPoints(pts);
   // 記錄使用
   const roleNames={cs:'客服對話',mk:'行銷貼文',ad:'報價/廠商辨識',ac:'發票/帳款辨識'};
   const now=new Date();
