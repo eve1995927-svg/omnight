@@ -668,11 +668,12 @@
   <div class="stat"><div class="sn" id="ledProfitRate" style="font-size:.9rem">—</div><div class="sl">毛利率</div></div>
  </div>
 
- <!-- 切換：月度總表 / 明細 -->
+ <!-- 切換：月度總表 / 明細 / 發票 -->
  <div class="ledger-tab" style="margin-bottom:16px">
   <div class="ltab on" data-lt="detail" onclick="switchLedgerView('detail',this)">📋 收支明細</div>
   <div class="ltab" data-lt="monthly" onclick="switchLedgerView('monthly',this)">📅 月度總表</div>
   <div class="ltab" data-lt="project" onclick="switchLedgerView('project',this)">🏗️ 案場分析</div>
+  <div class="ltab" data-lt="invoice" onclick="switchLedgerView('invoice',this)">🧾 發票管理</div>
  </div>
 
  <!-- 明細 view -->
@@ -701,22 +702,22 @@
  <div id="lv-project" class="ledger-view" style="display:none">
   <div id="ledger-project-table"></div>
  </div>
-</div>
 
-<!-- ══ AC INVOICE ══ -->
-<div class="panel" id="p-ac-invoice">
- <div class="ph"><div><div class="ptit">🧾 發票管理</div><div class="psub">上傳照片，AI 自動辨識所有細項，可修改後儲存</div></div><button class="btn bg bsm" id="openInv">＋ 新增發票</button></div>
- <div class="g3" style="margin-bottom:16px">
-  <div class="stat"><div class="sn" id="invCnt">0</div><div class="sl">本月發票張數</div></div>
-  <div class="stat"><div class="sn" id="invSum">—</div><div class="sl">本月發票總額</div></div>
-  <div class="stat"><div class="sn">5%</div><div class="sl">含稅率</div></div>
- </div>
- <div class="card">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
-   <div class="ct" style="margin:0">🧾 發票記錄</div>
-   <input class="fi" style="width:220px;padding:9px 14px;font-size:.85rem" placeholder="🔍 搜尋發票號碼或說明…" id="invSrch">
+ <!-- 發票管理 view -->
+ <div id="lv-invoice" class="ledger-view" style="display:none">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px"><button class="btn bg bsm" id="openInv">＋ 新增發票</button></div>
+  <div class="g3" style="margin-bottom:16px">
+   <div class="stat"><div class="sn" id="invCnt">0</div><div class="sl">本月發票張數</div></div>
+   <div class="stat"><div class="sn" id="invSum">—</div><div class="sl">本月發票總額</div></div>
+   <div class="stat"><div class="sn">5%</div><div class="sl">含稅率</div></div>
   </div>
-  <div id="invList"></div>
+  <div class="card">
+   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px">
+    <div class="ct" style="margin:0">🧾 發票記錄</div>
+    <input class="fi" style="width:220px;padding:9px 14px;font-size:.85rem" placeholder="🔍 搜尋發票號碼或說明…" id="invSrch">
+   </div>
+   <div id="invList"></div>
+  </div>
  </div>
 </div>
 
