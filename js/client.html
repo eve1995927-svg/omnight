@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>工程進度查詢</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --gold:#C8A44A;--gold-d:#9A7830;--gold-l:#E8C870;--gold-pale:#FFFBEE;
+  --ink:#28241C;--g700:#4A4540;--g500:#706860;--g400:#A0998E;--g200:#E8E6DF;--g100:#F4F3EF;--g50:#FAFAF8;
+  --ok:#1E7A58;--ok-bg:#EDFAF4;--ok-bd:#98DEC0;
+  --warn:#B86820;--warn-bg:#FFF3E0;
+  --info:#1A5490;--info-bg:#EBF3FF;
+  --w:#fff;--r:16px;--rs:11px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:'Noto Sans TC',sans-serif;background:var(--g50);color:var(--ink);
+  -webkit-font-smoothing:antialiased;line-height:1.6;padding-bottom:40px;
+}
+.wrap{max-width:520px;margin:0 auto;padding:0 16px}
+
+/* header */
+.top{background:linear-gradient(150deg,var(--ink),#3A342A);color:#fff;padding:28px 0 34px;position:relative;overflow:hidden}
+.top::before{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:26px 26px;mask-image:radial-gradient(ellipse 70% 90% at 80% 10%,#000,transparent);-webkit-mask-image:radial-gradient(ellipse 70% 90% at 80% 10%,#000,transparent)}
+.top .wrap{position:relative;z-index:2}
+.brand{font-size:.78rem;letter-spacing:.16em;color:var(--gold-l);font-weight:700;margin-bottom:14px}
+.pj-name{font-size:1.5rem;font-weight:900;margin-bottom:6px}
+.pj-meta{font-size:.85rem;color:rgba(255,255,255,.7);display:flex;gap:14px;flex-wrap:wrap}
+.status-pill{display:inline-flex;align-items:center;gap:6px;margin-top:14px;padding:6px 14px;border-radius:30px;font-size:.82rem;font-weight:800;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.2)}
+
+/* cards */
+.card{background:var(--w);border:1px solid var(--g200);border-radius:var(--r);padding:20px;margin-top:16px;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.card-t{font-size:.72rem;font-weight:900;letter-spacing:.1em;color:var(--g400);margin-bottom:14px;text-transform:uppercase;display:flex;align-items:center;gap:7px}
+
+/* progress overview bar */
+.prog-pct{display:flex;align-items:baseline;gap:10px;margin-bottom:12px}
+.prog-pct .big{font-size:2.6rem;font-weight:900;color:var(--gold-d);line-height:1}
+.prog-pct .lbl{font-size:.85rem;color:var(--g400)}
+.prog-bar{height:12px;background:var(--g100);border-radius:20px;overflow:hidden}
+.prog-fill{height:100%;background:linear-gradient(90deg,var(--gold-l),var(--gold));border-radius:20px;transition:width 1s cubic-bezier(.3,.7,.3,1)}
+
+/* timeline */
+.tl{position:relative;padding-left:24px;margin-top:6px}
+.tl-item{position:relative;padding-bottom:22px}
+.tl-item:last-child{padding-bottom:0}
+.tl-dot{position:absolute;left:-24px;top:2px;width:14px;height:14px;border-radius:50%;border:2.5px solid var(--w);box-shadow:0 0 0 2px var(--g200);z-index:2}
+.tl-dot.done{background:var(--ok);box-shadow:0 0 0 2px var(--ok-bd)}
+.tl-dot.active{background:var(--gold);box-shadow:0 0 0 2px var(--gold-l);animation:pulse 1.6s infinite}
+.tl-dot.wait{background:var(--g200)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 2px var(--gold-l)}50%{box-shadow:0 0 0 5px rgba(200,164,74,.3)}}
+.tl-line{position:absolute;left:-17.5px;top:14px;bottom:-2px;width:2px;background:var(--g200)}
+.tl-item:last-child .tl-line{display:none}
+.tl-title{font-weight:700;font-size:.98rem}
+.tl-date{font-size:.78rem;color:var(--g400);margin-top:1px}
+.tl-note{font-size:.85rem;color:var(--g500);margin-top:5px;background:var(--g50);padding:8px 11px;border-radius:8px}
+.tl-item.wait .tl-title{color:var(--g400)}
+
+/* payments */
+.pay-row{display:flex;justify-content:space-between;align-items:center;padding:12px 0;border-bottom:1px solid var(--g100)}
+.pay-row:last-child{border-bottom:none}
+.pay-desc{font-size:.92rem;font-weight:600}
+.pay-date{font-size:.75rem;color:var(--g400)}
+.pay-amt{font-weight:900;color:var(--ok);font-family:monospace}
+.pay-sum{margin-top:12px;padding-top:14px;border-top:2px solid var(--g200);display:flex;justify-content:space-between;align-items:center}
+.pay-sum .l{font-weight:700;font-size:.9rem}
+.pay-sum .v{font-weight:900;font-size:1.15rem;color:var(--gold-d);font-family:monospace}
+
+/* contract */
+.doc-row{display:flex;align-items:center;gap:12px;padding:12px;background:var(--g50);border-radius:var(--rs);margin-top:8px}
+.doc-ico{width:40px;height:40px;border-radius:9px;background:var(--info-bg);display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0}
+.doc-info{flex:1;min-width:0}
+.doc-name{font-weight:700;font-size:.9rem}
+.doc-sub{font-size:.75rem;color:var(--g400)}
+.doc-link{color:var(--info);font-size:.82rem;font-weight:700;flex-shrink:0}
+
+/* states */
+.state{text-align:center;padding:70px 20px}
+.state .ico{font-size:3rem;margin-bottom:16px}
+.state h2{font-size:1.2rem;margin-bottom:8px}
+.state p{color:var(--g400);font-size:.92rem}
+.spinner{width:36px;height:36px;border:3px solid var(--g200);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.empty{text-align:center;padding:24px;color:var(--g400);font-size:.88rem}
+.foot{text-align:center;margin-top:28px;font-size:.75rem;color:var(--g400)}
+.reveal{opacity:0;transform:translateY(16px);animation:up .5s ease forwards}
+@keyframes up{to{opacity:1;transform:none}}
+
+/* 合約檔案檢視 */
+.doc-link{background:none;border:none;cursor:pointer;font-family:inherit}
+.lb{position:fixed;inset:0;background:rgba(20,17,10,.88);z-index:999;display:none;align-items:center;justify-content:center;padding:20px;flex-direction:column;gap:14px}
+.lb.show{display:flex}
+.lb-imgs{display:flex;gap:12px;overflow-x:auto;max-width:100%;max-height:78vh;padding:4px}
+.lb-imgs img{max-height:78vh;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.lb-pdf-btn{background:var(--gold);color:var(--ink);border:none;padding:12px 22px;border-radius:10px;font-weight:800;font-size:.9rem;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block}
+.lb-close{background:rgba(255,255,255,.15);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:1.1rem;cursor:pointer;position:absolute;top:18px;right:18px}
+.lb-title{color:#fff;font-weight:800;font-size:.92rem}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div class="state"><div class="spinner"></div><p style="color:var(--g400)">載入工程資料中…</p></div>
+</div>
+
+<div class="lb" id="lbBox">
+  <button class="lb-close" onclick="document.getElementById('lbBox').classList.remove('show')">✕</button>
+  <div class="lb-title" id="lbTitle"></div>
+  <div class="lb-imgs" id="lbImgs"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script>
+const FIREBASE_CONFIG={
+  apiKey:"AIzaSyCOvRcTbj0z9cPMOYxicnqbzHLsUP-jOHg",
+  authDomain:"zeju-62388.firebaseapp.com",
+  databaseURL:"https://zeju-62388-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"zeju-62388",
+  storageBucket:"zeju-62388.firebasestorage.app",
+  messagingSenderId:"424082469080",
+  appId:"1:424082469080:web:247e960d4b604b7c11a7ad"
+};
+
+const STATUS={
+  inquiry:{label:'洽談中',icon:'💬'},
+  quoting:{label:'報價中',icon:'📋'},
+  signed:{label:'已簽約',icon:'✅'},
+  progress:{label:'施工中',icon:'🔨'},
+  done:{label:'已完工',icon:'🏠'},
+  paused:{label:'暫停中',icon:'⏸️'},
+};
+// 各狀態對應的完成百分比（給進度條）
+const STATUS_PCT={inquiry:5,quoting:15,signed:30,progress:65,done:100,paused:50};
+
+function esc(s){return(s===null||s===undefined?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function fmt(n){return'NT$'+Math.round(n||0).toLocaleString();}
+
+function getToken(){
+  return new URLSearchParams(location.search).get('c')||'';
+}
+
+function toArr(v){
+  if(!v)return[];
+  if(Array.isArray(v))return v.filter(x=>x);
+  return Object.values(v).filter(x=>x);
+}
+
+async function load(){
+  const token=getToken();
+  if(!token){return showError('連結不完整','請使用建商提供的完整連結，或重新掃描 QR Code。');}
+
+  try{
+    firebase.initializeApp(FIREBASE_CONFIG);
+    // 修正重點：資料庫安全規則要求「登入（哪怕只是匿名登入）才能讀取」，
+    // 這個頁面原本完全沒有做登入這一步，也沒載入登入用的 SDK，
+    // 所以每次讀取都會被規則擋下來（permission_denied），業主打開連結永遠看不到資料——
+    // 不是連結本身失效，是這個頁面從來沒有通過權限檢查這一關。
+    if(firebase.auth){
+      try{ await firebase.auth().signInAnonymously(); }
+      catch(authErr){ console.warn('匿名登入失敗：',authErr.message); }
+    }
+    const db=firebase.database();
+    const snap=await db.ref('zeju_data').once('value');
+    const data=snap.val()||{};
+
+    const projects=toArr(data.projects);
+    const project=projects.find(p=>p&&p.token===token);
+    if(!project){return showError('找不到工程資料','此連結可能已失效，或工程尚未建立。請聯繫您的建商確認。');}
+
+    const progress=toArr(data.progress).filter(r=>r.projectId==project._id);
+    // 只顯示外帳收入（業主付的款），絕不顯示內帳成本
+    const payments=toArr(data.ledger).filter(l=>l.projectId==project._id&&(l.book==='in')&&l.type==='in'&&!l.deleted);
+    const contracts=toArr(data.contracts).filter(c=>c.projectId==project._id&&!c.deleted);
+
+    render(project,progress,payments,contracts);
+  }catch(err){
+    console.error(err);
+    showError('載入失敗','網路連線出現問題，請稍後再試一次。');
+  }
+}
+
+function showError(title,msg){
+  document.getElementById('app').innerHTML=
+    '<div class="state"><div class="ico">🔍</div><h2>'+esc(title)+'</h2><p>'+esc(msg)+'</p></div>';
+}
+
+function render(p,progress,payments,contracts){
+  const st=STATUS[p.status||'inquiry']||STATUS.inquiry;
+  const pct=STATUS_PCT[p.status||'inquiry']||0;
+
+  // 進度時間軸：每一筆 progress 記錄就是一個時間軸項目（拍照現場記錄）
+  let allSteps=progress.slice().sort((a,b)=>(a._id||0)-(b._id||0));
+  // 若還沒有任何現場記錄，用案場狀態顯示預設里程碑，至少讓業主知道大概進度
+  if(!allSteps.length){
+    const milestones=[
+      {text:'簽約完成',status:['signed','progress','done']},
+      {text:'開工',status:['progress','done']},
+      {text:'施工中',status:['progress','done']},
+      {text:'完工驗收',status:['done']},
+    ];
+    allSteps=milestones.map(m=>({text:m.text,done:m.status.includes(p.status)}));
+  }
+
+  const nextStep=allSteps.find(s=>!s.done);
+  const totalPaid=payments.reduce((s,l)=>s+(l.amount||0),0);
+
+  let html='';
+  // header
+  html+='<div class="top"><div class="wrap">'+
+    '<div class="brand">工程進度查詢</div>'+
+    '<div class="pj-name">'+esc(p.name||'工程案場')+'</div>'+
+    '<div class="pj-meta">'+
+      (p.client?'<span>👤 '+esc(p.client)+'</span>':'')+
+      (p.address?'<span>📍 '+esc(p.address)+'</span>':'')+
+    '</div>'+
+    '<div class="status-pill">'+st.icon+' '+st.label+'</div>'+
+  '</div></div>';
+
+  html+='<div class="wrap">';
+
+  // 進度總覽
+  html+='<div class="card reveal"><div class="card-t">📊 工程進度</div>'+
+    '<div class="prog-pct"><span class="big">'+pct+'%</span><span class="lbl">目前進度</span></div>'+
+    '<div class="prog-bar"><div class="prog-fill" style="width:0%" data-w="'+pct+'"></div></div>'+
+  '</div>';
+
+  // 下一步
+  if(nextStep){
+    html+='<div class="card reveal" style="animation-delay:.05s;background:#FFFBEE;border-color:#E8C870"><div style="display:flex;align-items:center;gap:12px">'+
+      '<span style="font-size:1.5rem">👉</span>'+
+      '<div><div style="font-size:.68rem;font-weight:900;color:#9A7830;letter-spacing:.06em">下一步</div>'+
+      '<div style="font-weight:800;color:#28241C;font-size:.95rem">'+esc(nextStep.text||nextStep.name||'')+'</div></div>'+
+    '</div></div>';
+  }
+
+  // 進度時間軸
+  html+='<div class="card reveal" style="animation-delay:.08s"><div class="card-t">🔨 施工里程碑</div><div class="tl">';
+  if(allSteps.length){
+    // 找第一個未完成的當 active
+    let activeIdx=allSteps.findIndex(s=>!s.done);
+    allSteps.forEach((step,i)=>{
+      let cls='wait',dotcls='wait';
+      if(step.done){cls='done';dotcls='done';}
+      else if(i===activeIdx){cls='active';dotcls='active';}
+      html+='<div class="tl-item '+cls+'">'+
+        '<div class="tl-dot '+dotcls+'"></div><div class="tl-line"></div>'+
+        '<div class="tl-title">'+esc(step.text||step.name||'進度')+'</div>'+
+        (step.date?'<div class="tl-date">'+esc(step.date)+'</div>':'')+
+        (step.note?'<div class="tl-note">'+esc(step.note)+'</div>':'')+
+        (step.photoUrl?'<img src="'+step.photoUrl+'" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px;object-fit:cover;display:block">':'')+
+      '</div>';
+    });
+  }else{
+    html+='<div class="empty">尚未有進度更新</div>';
+  }
+  html+='</div></div>';
+
+  // 收款紀錄
+  html+='<div class="card reveal" style="animation-delay:.16s"><div class="card-t">💰 收款紀錄</div>';
+  if(payments.length){
+    payments.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    payments.forEach(l=>{
+      html+='<div class="pay-row"><div><div class="pay-desc">'+esc(l.desc||l.cat||'工程款')+'</div>'+
+        (l.date?'<div class="pay-date">'+esc(l.date)+'</div>':'')+'</div>'+
+        '<div class="pay-amt">'+fmt(l.amount)+'</div></div>';
+    });
+    html+='<div class="pay-sum"><span class="l">已收款合計</span><span class="v">'+fmt(totalPaid)+'</span></div>';
+  }else{
+    html+='<div class="empty">尚未有收款紀錄</div>';
+  }
+  html+='</div>';
+
+  // 合約
+  if(contracts.length){
+    window._clientContracts=contracts; // 給下面的 openContractFiles 用
+    html+='<div class="card reveal" style="animation-delay:.24s"><div class="card-t">📝 合約文件</div>';
+    contracts.forEach((c,idx)=>{
+      const hasFile=c.fileUrl||(c.fileUrls&&c.fileUrls.length);
+      html+='<div class="doc-row"><div class="doc-ico">📄</div>'+
+        '<div class="doc-info"><div class="doc-name">'+esc(c.name||'工程合約')+'</div>'+
+        '<div class="doc-sub">'+(c.amount?fmt(c.amount):'')+(c._ts?' · '+esc(c._ts.split(' ')[0]):'')+'</div></div>'+
+        (hasFile?'<button class="doc-link" onclick="openContractFiles('+idx+')">查看 →</button>':'')+
+      '</div>';
+    });
+    html+='</div>';
+  }
+
+  html+='<div class="foot">本頁面由建商透過「案場通」系統提供<br>資料即時同步，如有疑問請聯繫您的建商</div>';
+  html+='</div>';
+
+  document.getElementById('app').innerHTML=html;
+
+  // 進度條動畫
+  setTimeout(()=>{
+    document.querySelectorAll('.prog-fill').forEach(el=>{el.style.width=el.dataset.w+'%';});
+  },200);
+}
+
+// 修正重點：合約照片/PDF 存的是 data: 開頭的長字串（base64），瀏覽器基於安全限制，
+// 不允許用 <a href="data:..." target="_blank"> 這種方式直接在新分頁打開，點了會被擋掉或沒反應——
+// 這就是業主看不到合約內容的原因。改成把 data: 字串轉成瀏覽器看得懂的 Blob 網址，
+// 圖片直接在頁面裡用小燈箱顯示，PDF 則正常在新分頁打開（Blob 網址就沒有這個限制）。
+function _dataUrlToBlobUrl(dataUrl){
+  try{
+    const parts=dataUrl.split(',');
+    const meta=parts[0];
+    const isBase64=meta.includes('base64');
+    const mime=(meta.match(/data:([^;]+)/)||[])[1]||'application/octet-stream';
+    const raw=isBase64?atob(parts[1]):decodeURIComponent(parts[1]);
+    const arr=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+    return URL.createObjectURL(new Blob([arr],{type:mime}));
+  }catch(e){console.warn('轉檔失敗：',e.message);return null;}
+}
+
+function openContractFiles(idx){
+  const c=(window._clientContracts||[])[idx];if(!c)return;
+  const files=c.fileUrls&&c.fileUrls.length?c.fileUrls:(c.fileUrl?[{name:c.name,type:'image/jpeg',url:c.fileUrl}]:[]);
+  if(!files.length)return;
+  document.getElementById('lbTitle').textContent=c.name||'工程合約';
+  const wrap=document.getElementById('lbImgs');
+  wrap.innerHTML='';
+  files.forEach(f=>{
+    const url=f.url||f;
+    const isImg=(f.type&&f.type.startsWith('image/'))||(typeof url==='string'&&url.startsWith('data:image'));
+    const blobUrl=typeof url==='string'&&url.startsWith('data:')?_dataUrlToBlobUrl(url):url;
+    if(!blobUrl)return;
+    if(isImg){
+      const img=document.createElement('img');
+      img.src=blobUrl;
+      wrap.appendChild(img);
+    }else{
+      const a=document.createElement('a');
+      a.className='lb-pdf-btn';a.href=blobUrl;a.target='_blank';a.rel='noopener';
+      a.textContent='📄 開啟 PDF 檔案';
+      wrap.appendChild(a);
+    }
+  });
+  document.getElementById('lbBox').classList.add('show');
+}
+document.getElementById('lbBox').addEventListener('click',e=>{if(e.target.id==='lbBox')e.currentTarget.classList.remove('show');});
+
+load();
+</script>
+</body>
+</html>

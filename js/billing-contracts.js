@@ -313,6 +313,7 @@ function switchLedgerView(view,el){
   document.querySelectorAll('.ltab[data-lt]').forEach(t=>t.classList.toggle('on',t.dataset.lt===view));
   if(view==='monthly')renderLedgerMonthly();
   else if(view==='project')renderLedgerByProject();
+  else if(view==='invoice'){if(typeof renderInvoices==='function')renderInvoices();}
   else renderLedger();
 }
 function getFilteredLedger(){

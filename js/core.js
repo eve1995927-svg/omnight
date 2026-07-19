@@ -34,22 +34,23 @@ const ACCTS={
 };
 const GROUPS={
   owner:[
-    {l:'主頁',     items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷', items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
-    {l:'行政',     items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'ad-newquote',l:'新建報價',ic:'➕'},{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'contract',l:'合約管理',ic:'📝'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
-    {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-invoice',l:'發票管理',ic:'🧾'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
-    {l:'人資',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
-    {l:'系統',     items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
+    {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
+    {l:'報價與合約', items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
+    {l:'廠商與進度', items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
+    {l:'人資',       items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
+    {l:'系統',       items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   // 員工可用的模組全集：實際登入時會依照 getEmployeePermissions() 過濾，只顯示老闆開放的部分
   // 每個分組標記 _perm，對應人資管理裡的權限開關 key
   staff:[
-    {l:'案場',     _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷', _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
-    {l:'報價合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'ad-newquote',l:'新建報價',ic:'➕'},{id:'contract',l:'合約管理',ic:'📝'}]},
-    {l:'廠商工程', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
-    {l:'會計',     _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-invoice',l:'發票管理',ic:'🧾'}]},
-    {l:'系統',     _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
+    {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
+    {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
+    {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
+    {l:'系統',       _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
   punch:[
     {l:'打卡',    items:[{id:'punch-clock',l:'上下班打卡',ic:'🕐'}]},
@@ -58,7 +59,7 @@ const GROUPS={
 
 // 手機版簡化選單：現場常用的功能才留在手機上，複雜的（合約、會計細項、人資薪資、系統設定...）
 // 只在電腦版顯示。帳款總覽有留，是因為「標記廠商付款」這個現場常用的小動作剛好放在那一頁裡。
-const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote','ad-newquote','ad-progress','ac-overview'];
+const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote','ad-progress','ac-overview'];
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
