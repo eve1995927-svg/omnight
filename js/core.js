@@ -1210,7 +1210,13 @@ function friendlyAIError(err){
   return '⚠️ AI暫時無法使用，請稍後再試或聯絡老闆';
 }
 
-async function callAI(role,content,maxTok=1200){
+// callAI(role, content, maxTok, fixedPts, taskLabel)
+// fixedPts：不傳的話照舊用 token 數計算（適合聊天這種長度變化很大的）；
+// 傳了固定數字，這次呼叫就固定扣這個點數，不管實際 token 用多少——
+// 適合「輸入一份東西、產出一份結果」這種形狀固定的單次任務（辨識、生成一份報價/文案/圖片），
+// 好處是不會有「同樣的操作這次比較貴」的疑惑，帳單也好對。
+// taskLabel：帳單上要顯示的名稱，不傳就退回舊的、比較籠統的角色名稱分類。
+async function callAI(role,content,maxTok=1200,fixedPts=null,taskLabel=null){
   if(!cHist[role])cHist[role]=[];
   const hist=cHist[role];
   hist.push({role:'user',content:typeof content==='string'?content:content});
@@ -1237,14 +1243,14 @@ async function callAI(role,content,maxTok=1200){
 
   // ── 扣除點數 ──────────────────────────────────────────
   const tokUsed=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
-  const pts=Math.min(500,Math.max(1,Math.round(tokUsed/20)));
+  const pts=(fixedPts!=null)?fixedPts:Math.min(500,Math.max(1,Math.round(tokUsed/20)));
   await deductPoints(pts);
   // 記錄使用
   const roleNames={cs:'客服對話',mk:'行銷貼文',ad:'報價/廠商辨識',ac:'發票/帳款辨識'};
   const now=new Date();
   DB.push('billing',{
-    summary:'AI '+( roleNames[role]||role)+' -'+pts+'點',
-    desc:roleNames[role]||role,
+    summary:'AI '+(taskLabel||roleNames[role]||role)+' -'+pts+'點',
+    desc:taskLabel||roleNames[role]||role,
     role,
     points:pts,
     tokens:tokUsed,

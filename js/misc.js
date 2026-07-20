@@ -273,10 +273,21 @@ async function genMktImg(){
     const rep=d.content?.map(c=>c.text||'').join('')||'';
     const svgM=rep.match(/<svg[\s\S]*?<\/svg>/i);
     if(svgM&&svgM[0].length>200&&canvas)canvas.innerHTML=svgM[0];
-    // 扣點
-    const tu=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
-    const pts=Math.min(500,Math.max(1,Math.round(tu/20)));
+    // 扣點：改成固定點數，不用照 token 算——每次生成一張圖，價格固定，好預期、好對帳
+    // 修正重點：這裡原本只有扣點，沒有記錄到帳單明細裡，導致「行銷圖片生成」這個項目
+    // 完全不會出現在 AI 帳單的使用明細，扣了點但帳上看不到是為什麼扣的。這裡一併補上記錄。
+    const pts=80;
     await deductPoints(pts);
+    const tu=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
+    const _now=new Date();
+    DB.push('billing',{
+      summary:'AI 行銷圖片生成 -'+pts+'點',
+      desc:'行銷圖片生成',role:'mk',
+      points:pts,tokens:tu,user:curRole||'owner',
+      ts:_now.toLocaleString('zh-TW'),
+      month:_now.getFullYear()+'-'+(_now.getMonth()+1).toString().padStart(2,'0'),
+      day:_now.toLocaleDateString('zh-TW'),
+    });
   }catch(err){
     console.log('img gen err',err);
     showToast(friendlyAIError(err)+'（已顯示預設圖片）');
@@ -497,7 +508,7 @@ async function genPost(){
   const tp=document.getElementById('mkTp')?.value||'案例分享 — 日式風格';
   const sp=document.getElementById('mkSp');if(sp)sp.classList.add('show');
   const p=SYS.mk+'\n\n請幫我寫一篇'+pl+'的'+tp+'行銷貼文，要有吸引力、使用繁體中文、加上適當的emoji和hashtag，大約200字。';
-  try{const rep=await callAI('mk',p,3000);showPost(pl,tp,rep);}
+  try{const rep=await callAI('mk',p,3000,60,'行銷貼文生成');showPost(pl,tp,rep);}
   catch(err){
     console.log('genPost err',err);
     showToast(friendlyAIError(err)+'（已套用預設文案，可手動修改）');

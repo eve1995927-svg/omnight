@@ -107,7 +107,7 @@ document.getElementById('vFile').addEventListener('change',async e=>{
       });
       content.push({type:'text',text:getVendorPrompt()+
         (imgs.length>1?'\n\n注意：共'+imgs.length+'頁圖片，請辨識所有頁面的所有細項。':'')});
-      rep=await callAI('ad',content,3000);
+      rep=await callAI('ad',content,3000,100,'廠商報價辨識');
       showVMsg('ok','✅ 辨識完成（共'+imgs.length+'頁）！請確認下方欄位，可直接修改');
 
     } else if(curVType==='pdf'){
@@ -120,7 +120,7 @@ document.getElementById('vFile').addEventListener('change',async e=>{
         {type:'text',text:getVendorPrompt()+
           '\n\n注意：這是完整的報價單 PDF（可能有多頁），請辨識所有頁面的所有細項，不要只取第一頁。'+
           '所有頁面的工項都要列出來。'}
-      ],2000);
+      ],2000,100,'廠商報價辨識');
       showVMsg('ok','✅ PDF 辨識完成（全頁）！請確認下方欄位，可直接修改');
       // 提示：如果內容不完整，可改用「圖片」模式逐頁上傳
       if(vItems.length<3){
@@ -143,7 +143,7 @@ document.getElementById('vFile').addEventListener('change',async e=>{
         text=raw.split(/\s{3,}/).filter(s=>s.trim().length>1&&/[\u4e00-\u9fff\d]/.test(s)).join('\n').slice(0,3000);
       }
       if(!text.trim()){showVMsg('warn','⚠️ 無法讀取檔案內容，請改用圖片或 PDF');ocr.classList.remove('show');return;}
-      rep=await callAI('ad',getVendorPrompt()+'\n\n以下是報價單文字內容（請根據此內容辨識）：\n'+text,3000);
+      rep=await callAI('ad',getVendorPrompt()+'\n\n以下是報價單文字內容（請根據此內容辨識）：\n'+text,3000,100,'廠商報價辨識');
       showVMsg('ok','✅ '+f0.name.match(/\.csv$/i)?'CSV':'Excel'+' 辨識完成！請確認下方欄位');
     }
 
@@ -432,19 +432,22 @@ function renderVendors(filter){
   Object.entries(byCase).forEach(([caseName,vendors])=>{
     // 案場分組標題
     const caseTotal=vendors.reduce((s,v)=>s+(v.amount||0),0);
+    // 這組廠商報價目前實際已經付了多少錢（把每一筆的付款紀錄加總），
+    // 讓人一眼看出「這個案場欠廠商的錢付了多少、還剩多少沒付」，不用一筆一筆點開算
+    const casePaid=vendors.reduce((s,v)=>s+getVendorPaid(v),0);
     const grpHd=document.createElement('div');
     grpHd.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,var(--gold-pale),#FFF0C0);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer;user-select:none';
     grpHd.innerHTML=
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<span style="font-size:1.1rem">📍</span>'+
         '<div>'+
-          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d)">'+caseName+'</div>'+
-          '<div style="font-size:.75rem;color:var(--g400);margin-top:1px">共 '+vendors.length+' 筆廠商報價</div>'+
+          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d)">'+esc(caseName)+'</div>'+
+          '<div style="font-size:.75rem;color:var(--g400);margin-top:1px">共 '+vendors.length+' 筆廠商報價'+(casePaid>0?' · 已付 NT$'+casePaid.toLocaleString():'')+'</div>'+
         '</div>'+
       '</div>'+
       '<div style="text-align:right">'+
         '<div style="font-family:monospace;font-size:1rem;font-weight:900;color:var(--gold-d)">NT$'+caseTotal.toLocaleString()+'</div>'+
-        '<div style="font-size:.68rem;color:var(--g400)">案場合計</div>'+
+        '<div style="font-size:.68rem;color:var(--g400)">案場合計'+(casePaid>0&&casePaid<caseTotal?'（尚欠 NT$'+(caseTotal-casePaid).toLocaleString()+'）':'')+'</div>'+
       '</div>';
 
     const grpBody=document.createElement('div');
@@ -793,7 +796,7 @@ document.getElementById('ldFile').addEventListener('change',async e=>{
         {type:contentType,source:{type:'base64',media_type:mime,data:b64}},
         {type:'text',text:'請從這張單據/發票辨識以下資訊，只回覆純JSON（不加```）：{"date":"YYYY-MM-DD","amount":金額數字,"desc":"說明文字","items":[{"name":"項目名稱","amount":金額}]}。無法辨識的填空字串或0。'}
       ];
-      const rep=await callAI(curLedgerType==='in'?'ac':'ac',parts,3000);
+      const rep=await callAI('ac',parts,3000,30,'帳款憑證辨識');
       const dat=JSON.parse(rep.replace(/```json|```/g,'').trim());
       if(dat.date)document.getElementById('ldDate').value=dat.date;
       if(dat.amount)document.getElementById('ldAmt').value=dat.amount;
