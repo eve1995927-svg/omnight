@@ -502,17 +502,11 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
     display:flex!important;position:fixed;bottom:0;left:0;right:0;
     height:56px;background:var(--w);border-top:1px solid var(--g200);
     box-shadow:0 -4px 16px rgba(0,0,0,.08);z-index:500;
-    padding:0 4px 4px;align-items:flex-end;
+    padding:0 4px 4px;align-items:flex-end;justify-content:space-around;
     padding-bottom:env(safe-area-inset-bottom,4px);
-    /* 修正重點：原本每個項目 flex:1 會被硬擠在一排、擠不下就疊字看不清楚，
-       而且完全沒有辦法左右滑動，多出來的項目使用者根本碰不到。
-       改成固定寬度＋橫向捲動，超過 6 個項目時可以滑動看到其他的，不會再互相擠壓疊字。 */
-    overflow-x:auto;justify-content:flex-start;
-    scrollbar-width:none;-webkit-overflow-scrolling:touch;
   }
-  .bnav::-webkit-scrollbar{display:none}
   .bnav-item{
-    flex:0 0 64px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
     padding:6px 2px;cursor:pointer;border-radius:10px;transition:all .15s;gap:2px;
     font-size:.6rem;color:var(--g400);font-weight:600;min-width:0;
   }
