@@ -1354,12 +1354,12 @@ async function genReply(fmt){
 // ══ PRO QUOTE ENGINE ══════════════════════════════════════
 // 統一的段落式報價單引擎
 const DEF_SECTIONS=[
-  {id:'s1',icon:'🔨',name:'拆除工程',items:[{name:'現場拆除清運',unit:'式',qty:1,price:0}]},
-  {id:'s2',icon:'🧱',name:'泥作工程',items:[{name:'磁磚鋪貼',unit:'坪',qty:0,price:0}]},
-  {id:'s3',icon:'🪵',name:'木作工程',items:[{name:'天花板施作',unit:'式',qty:1,price:0}]},
-  {id:'s4',icon:'⚡',name:'水電工程',items:[{name:'水電更換配置',unit:'式',qty:1,price:0}]},
+  {id:'s1',icon:'🔨',name:'拆除',items:[{name:'現場拆除清運',unit:'式',qty:1,price:0}]},
+  {id:'s2',icon:'🧱',name:'泥作',items:[{name:'磁磚鋪貼',unit:'坪',qty:0,price:0}]},
+  {id:'s3',icon:'🪵',name:'木作',items:[{name:'天花板施作',unit:'式',qty:1,price:0}]},
+  {id:'s4',icon:'⚡',name:'水電',items:[{name:'水電更換配置',unit:'式',qty:1,price:0}]},
   {id:'s5',icon:'🪟',name:'系統傢俱',items:[{name:'系統櫃安裝',unit:'式',qty:1,price:0}]},
-  {id:'s6',icon:'🎨',name:'油漆工程',items:[{name:'全室油漆',unit:'坪',qty:0,price:0}]},
+  {id:'s6',icon:'🎨',name:'油漆',items:[{name:'全室油漆',unit:'坪',qty:0,price:0}]},
 ];
 
 function mkSecId(){return 's'+Date.now();}

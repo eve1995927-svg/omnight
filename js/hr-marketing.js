@@ -581,15 +581,15 @@ async function exportSalaryReport(monthKey){
 
 // ══ 澤居自有工程快速新增 ══════════════════════════════════
 const ZEJU_DEFAULT_ITEMS = {
-  '拆除工程': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
-  '泥作工程': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
-  '木作工程': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
-  '水電工程': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
+  '拆除': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
+  '泥作': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
+  '木作': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
+  '水電': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
   '系統傢俱': [{name:'系統衣櫃',unit:'尺',qty:0,price:0},{name:'系統廚具',unit:'式',qty:1,price:0}],
-  '油漆工程': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
-  '衛浴工程': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
-  '燈具工程': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
-  '其他工程': [{name:'工程項目',unit:'式',qty:1,price:0}],
+  '油漆': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
+  '衛浴': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
+  '燈具': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
+  '其他': [{name:'工程項目',unit:'式',qty:1,price:0}],
 };
 
 function addZejuSection(icon, name){

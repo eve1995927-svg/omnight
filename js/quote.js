@@ -278,7 +278,7 @@ document.getElementById('genQBtn').addEventListener('click',async()=>{
   document.getElementById('pqDate').textContent=new Date().toLocaleDateString('zh-TW');
   document.getElementById('pqSize').textContent=sz+'坪';
   document.getElementById('pqType').textContent=tp;
-  const prompt='請幫客戶'+n+'估算'+sz+'坪'+tp+'（'+st+'風格）工程報價，依照台灣裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式輸出，分工程類別，每類下列細項：\n\n🔨 拆除工程：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作工程：\n工項名稱｜單位｜數量｜單價\n...\n（以此類推）\n只輸出上述格式，不要額外說明文字。';
+  const prompt='請幫客戶'+n+'估算'+sz+'坪'+tp+'（'+st+'風格）工程報價，依照台灣裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式輸出，分工程類別，每類下列細項：\n\n🔨 拆除：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作：\n工項名稱｜單位｜數量｜單價\n...\n（以此類推）\n只輸出上述格式，不要額外說明文字。';
   const ups=uSt['qUp']||{imgs:[]};
   const parts=[...ups.imgs.map(i=>({type:'image',source:{type:'base64',media_type:i.mime,data:i.b64}})),{type:'text',text:prompt}];
   try{
@@ -306,7 +306,7 @@ document.getElementById('genAdQ').addEventListener('click',async()=>{
   const tp=document.getElementById('adTp').value,nt=document.getElementById('adNt').value;
   const sp=document.getElementById('adSp');sp.classList.add('show');
   document.getElementById('adQbClient').textContent=n;document.getElementById('adQbAddr').textContent=ad||'—';document.getElementById('adQbDate').textContent=new Date().toLocaleDateString('zh-TW');
-  const prompt='請為業主'+n+'（'+ad+'）產生'+sz+'坪'+tp+'完整工程報價，依照台灣統包裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式，分類列出所有工程項目：\n\n🔨 拆除工程：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作工程：\n...\n只輸出上述格式。';
+  const prompt='請為業主'+n+'（'+ad+'）產生'+sz+'坪'+tp+'完整工程報價，依照台灣統包裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式，分類列出所有工程項目：\n\n🔨 拆除：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作：\n...\n只輸出上述格式。';
   const ups=uSt['adUp']||{imgs:[]};
   const parts=[...ups.imgs.map(i=>({type:'image',source:{type:'base64',media_type:i.mime,data:i.b64}})),{type:'text',text:prompt}];
   try{
