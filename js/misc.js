@@ -400,6 +400,79 @@ function initQuoteFileListeners(){
   });
 }
 
+// ══ 丈量記錄照片上傳（案場總覽 → 丈量分頁）══════════════════════
+function renderSvPhotos(){
+  const photos=Array.isArray(svImgUrl)?svImgUrl:[];
+  const fc=document.getElementById('svFileCard');
+  const grid=document.getElementById('svPhotoGrid');
+  const cnt=document.getElementById('svFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+    const img=document.createElement('img');
+    img.src=p.url||p;img.style.cssText='width:100%;height:100%;object-fit:cover';
+    img.onclick=()=>openLB(p.url||p);wrap.appendChild(img);
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:3px;right:3px;width:20px;height:20px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.65rem';
+    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(svImgUrl))svImgUrl.splice(i,1);renderSvPhotos();};
+    wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:1/1;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--g400);font-size:1.2rem';
+  addMore.textContent='＋';
+  addMore.onclick=()=>document.getElementById('svFile')?.click();
+  grid.appendChild(addMore);
+}
+
+function updSurveyArea(){
+  const len=parseFloat(document.getElementById('svLen')?.value)||0;
+  const wid=parseFloat(document.getElementById('svWid')?.value)||0;
+  const sqm=len*wid;
+  const ping=sqm/3.305785;
+  const el=document.getElementById('svArea');
+  if(el)el.textContent=(ping?ping.toFixed(2):'0')+' 坪'+(sqm?'（'+sqm.toFixed(2)+' 平方公尺）':'');
+}
+
+function initSurveyListeners(){
+  function bind(id,evt,fn){
+    const el=document.getElementById(id);
+    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
+  }
+  bind('svZone','click',()=>document.getElementById('svFile')?.click());
+  bind('svFile','change',async e=>{
+    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+    if(!Array.isArray(svImgUrl))svImgUrl=[];
+    const rf=async f=>{
+      const compressed=await compressImage(f,1600,0.75);
+      return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+    };
+    svImgUrl.push(...await Promise.all(files.map(rf)));
+    renderSvPhotos();
+  });
+  bind('svSaveBtn','click',()=>{
+    const room=(document.getElementById('svRoom')?.value||'').trim();
+    if(!room){showToast('⚠️ 請填入房間或區域名稱');return;}
+    if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入丈量分頁再新增');return;}
+    const len=parseFloat(document.getElementById('svLen')?.value)||0;
+    const wid=parseFloat(document.getElementById('svWid')?.value)||0;
+    const area=len&&wid?+(len*wid/3.305785).toFixed(2):0;
+    DB.push('measurements',{
+      projectId:curProjectId, room, length:len, width:wid, area,
+      note:(document.getElementById('svNote')?.value||'').trim(),
+      fileUrls:svImgUrl.slice(),
+      summary:'丈量 '+room,
+    });
+    closeModal('surveyModal');
+    showToast('✅ 丈量記錄已儲存！');
+    if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'survey');
+  });
+}
+
 // ══ 行銷貼文生成 ══════════════════════════════════════════
 // ── 行銷貼文：案場選擇 ──────────────────────────────────
 function initMkProjectSel(){

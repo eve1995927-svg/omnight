@@ -3,6 +3,7 @@
 // ══ 全域變數宣告 ════════════
 let ctImgUrl=null, ctEditId=null, ieId=null;
 let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
+let svImgUrl=[]; // 丈量記錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
 let vItems=[], vCurrentFilter='all', curVType='image';
 let curClientId=null, clientChats={};
@@ -35,7 +36,7 @@ const ACCTS={
 const GROUPS={
   owner:[
     {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
+    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
     {l:'報價與合約', items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
     {l:'廠商與進度', items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
     {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
@@ -46,7 +47,7 @@ const GROUPS={
   // 每個分組標記 _perm，對應人資管理裡的權限開關 key
   staff:[
     {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
+    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
     {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
     {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
     {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
@@ -317,7 +318,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests'];
+               'salary_records','leave_requests','measurements'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -1013,6 +1014,7 @@ function setupApp(role){
   initAdQuote();
   initContractListeners();
   if(typeof initQuoteFileListeners==='function')initQuoteFileListeners();
+  if(typeof initSurveyListeners==='function')initSurveyListeners();
   initMultiClientChat();
   // 注意：手機底部導覽已由 buildBN() 統一處理（含案場返回鍵、即時 GROUPS 資料），
   // 不再呼叫舊版 initMobileNav()，避免兩套導覽互相覆蓋

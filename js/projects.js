@@ -664,6 +664,12 @@ function openAddProject(id=null){
     empSel.innerHTML='<option value="">不指定</option>'+emps.map(e=>`<option value="${e._id}"${p?.employeeId===e._id?' selected':''}>${esc(e.name)}</option>`).join('');
   }
 
+  // 業主姓名自動帶出之前的客戶清單，打字就會搜尋，選了會自動關聯到同一個客戶身上
+  const clientDL=document.getElementById('clientDatalist');
+  if(clientDL){
+    clientDL.innerHTML=DB.get('clients').map(cl=>'<option value="'+esc(cl.name)+'">').join('');
+  }
+
   document.getElementById('projModalTitle').textContent=id?'編輯案場':'新增案場';
   openModal('projModal');
 }
@@ -673,8 +679,21 @@ function saveProject(){
   const name=get('projName');
   if(!name){showToast('⚠️ 請填入案場名稱');return;}
   const existing=projEditId?getProject(projEditId):null;
+  const clientName=get('projClient');
+  // 業主姓名比對既有客戶：名字一樣就當作同一個人，掛到同一個客戶底下；
+  // 找不到就自動幫他建一筆新客戶——不用另外跑去「客戶總覽」手動新增，維持原本打名字就好的操作習慣
+  let clientId=existing?.clientId||null;
+  if(clientName){
+    const matched=DB.get('clients').find(cl=>cl.name===clientName);
+    if(matched){
+      clientId=matched._id;
+    }else if(!clientId){
+      const created=DB.push('clients',{name:clientName,phone:'',addr:get('projAddress')});
+      clientId=created[0]._id;
+    }
+  }
   const data={
-    name, client:get('projClient'), address:get('projAddress'),
+    name, client:clientName, clientId, address:get('projAddress'),
     type:get('projType')||PROJECT_TYPES[0], status:get('projStatus')||'inquiry',
     startDate:get('projStart'), endDate:get('projEnd'), note:get('projNote'),
     employeeId:document.getElementById('projEmployee')?.value||'',
@@ -763,8 +782,8 @@ function renderProjectDetail(id, activeTab='overview'){
   }
 
   // Tab 切換
-  const tabs=['overview','quote','vendor','contract','ledger','progress'];
-  const tabLabels={overview:'📊 總覽',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
+  const tabs=['overview','survey','quote','vendor','contract','ledger','progress'];
+  const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
     tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
@@ -776,6 +795,7 @@ function renderProjectDetail(id, activeTab='overview'){
 
   switch(activeTab){
     case 'overview': renderProjOverview(id,p,content); break;
+    case 'survey':   renderProjSurvey(id,p,content);   break;
     case 'quote':    renderProjQuotes(id,p,content);   break;
     case 'vendor':   renderProjVendors(id,p,content);  break;
     case 'contract': renderProjContract(id,p,content); break;
@@ -888,6 +908,57 @@ function openQuoteFileUpload(projectId){
   openModal('qFileModal');
 }
 
+// ── 案場丈量 Tab（現場量尺寸，一個房間一筆，之後報價可以直接參考）───────
+function renderProjSurvey(id,p,c){
+  const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
+        ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
+      </div>
+      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
+    </div>
+    ${items.length?items.map(m=>`
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:.92rem">${esc(m.room||'未命名區域')}</div>
+            <div style="font-size:.78rem;color:var(--g400);margin-top:3px">
+              ${m.length&&m.width?`${m.length}m × ${m.width}m　=　`:''}<strong style="color:var(--gold-d)">${(m.area||0).toFixed(2)} 坪</strong>
+            </div>
+            ${m.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(m.note)}</div>`:''}
+          </div>
+          <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
+        </div>
+        ${(m.fileUrls||[]).length?`
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px">
+            ${m.fileUrls.map(f=>`<img src="${esc(f.url||f)}" onclick="openLB('${esc(f.url||f)}')" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}
+          </div>`:''}
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「＋新增丈量」，一個房間量一次，之後報價可以直接參考</div></div>'}`;
+}
+
+function openSurveyModal(projectId){
+  curProjectId=projectId;
+  svImgUrl=[];
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  set('svRoom','');set('svLen','');set('svWid','');set('svNote','');
+  if(typeof updSurveyArea==='function')updSurveyArea();
+  const fc=document.getElementById('svFileCard');if(fc)fc.style.display='none';
+  const grid=document.getElementById('svPhotoGrid');if(grid)grid.innerHTML='';
+  const fi=document.getElementById('svFile');if(fi)fi.value='';
+  openModal('surveyModal');
+}
+
+function deleteSurvey(measureId,projectId){
+  confirmAction('確定刪除這筆丈量記錄？',()=>{
+    DB.softDel('measurements',measureId);
+    renderProjectDetail(projectId,'survey');
+    showToast('✅ 已刪除');
+  });
+}
+
 // 修正重點：這個函式原本在案場總覽的報價分頁裡被呼叫（點開一份已存在的報價單），
 // 但整個程式碼裡從來沒有真的定義過，點下去等於完全沒反應。
 // 現在補上：如果這份報價單只有上傳的檔案、沒有明細（用上面新增的上傳功能存的），開一個小視窗顯示附件；
@@ -929,6 +1000,14 @@ function openQuoteEdit(id){
 
   // 有明細的報價單：載入完整報價編輯器（跟「報價管理」列表頁點編輯是同一套邏輯）
   adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
+  // 把這份報價單當初存的管理費％數帶回來（沒存過的舊報價單，退回預設 8%）
+  curMgmtRate=(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8;
+  const rateInput=document.getElementById('adMgmtRate');if(rateInput)rateInput.value=curMgmtRate;
+  const waiveBtn=document.getElementById('adMgmtWaive');
+  if(waiveBtn){
+    if(curMgmtRate===0){waiveBtn.textContent='↩️ 取消贈送';waiveBtn.style.background='var(--ok-bg)';waiveBtn.style.color='var(--ok)';waiveBtn.style.borderColor='var(--ok-bd)';}
+    else{waiveBtn.textContent='🎁 贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
+  }
   const adN=document.getElementById('adN');if(adN)adN.value=q.name||'';
   const adAd=document.getElementById('adAd');if(adAd)adAd.value=q.addr||'';
   const qbClient=document.getElementById('adQbClient');if(qbClient)qbClient.textContent=q.name||'—';
