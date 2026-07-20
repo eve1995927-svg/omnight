@@ -417,12 +417,15 @@ function renderProjectCalendar(){
   }
 
   grid.innerHTML='';
+  const MAX_CHIPS=3; // 正方形格子放不下太多，超過用「+N 更多」收起來，跟 Google 日曆一樣
   cells.forEach(cell=>{
     const el=document.createElement('div');
     el.className='pc-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
     el.dataset.date=cell.dateStr;
-    el.innerHTML='<div class="pc-day-num">'+cell.dnum+'</div>';
-    (byDate[cell.dateStr]||[]).forEach(p=>{
+    const dayProjects=byDate[cell.dateStr]||[];
+    el.innerHTML='<div class="pc-day-num">'+cell.dnum+'</div><div class="pc-day-chips"></div>';
+    const chipsWrap=el.querySelector('.pc-day-chips');
+    dayProjects.slice(0,MAX_CHIPS).forEach(p=>{
       const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
       const chip=document.createElement('div');
       chip.className='pc-chip';
@@ -438,8 +441,15 @@ function renderProjectCalendar(){
         e.dataTransfer.effectAllowed='move';
       });
       chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
-      el.appendChild(chip);
+      chipsWrap.appendChild(chip);
     });
+    if(dayProjects.length>MAX_CHIPS){
+      const more=document.createElement('div');
+      more.className='pc-day-more';
+      more.textContent='+'+(dayProjects.length-MAX_CHIPS)+' 更多';
+      more.addEventListener('click',e=>{e.stopPropagation();showDayProjectsPopover(cell.dateStr,dayProjects);});
+      chipsWrap.appendChild(more);
+    }
     el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
     el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
     el.addEventListener('drop',e=>{
@@ -480,6 +490,34 @@ document.getElementById('calTodayBtn')?.addEventListener('click',()=>{
   calViewDate=new Date();
   renderProjectCalendar();
 });
+
+// 正方形格子放不下太多案場時，點「+N 更多」跳出這個小視窗看當天全部案場
+function showDayProjectsPopover(dateStr,projects){
+  const old=document.getElementById('_dayPopover');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_dayPopover';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.35);z-index:9200;display:flex;align-items:center;justify-content:center;padding:20px';
+  const rows=projects.map(p=>{
+    const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+    return '<div class="pc-pop-row" data-id="'+p._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
+      '<span style="font-size:1rem">'+st.icon+'</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name||'未命名案場')+'</div>'+
+      '<div style="font-size:.72rem;color:var(--g400)">'+esc(p.client||'業主未填')+'</div></div>'+
+      '<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+    '</div>';
+  }).join('');
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:18px 20px;max-width:360px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
+    rows+
+    '</div>';
+  box.addEventListener('click',()=>box.remove());
+  box.querySelectorAll('.pc-pop-row').forEach(row=>{
+    row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
+    row.addEventListener('mouseleave',()=>row.style.background='');
+    row.addEventListener('click',()=>{box.remove();openProject(parseInt(row.dataset.id));});
+  });
+  document.body.appendChild(box);
+}
 
 
 // ── 合併重複案場（因打錯字/命名不一致而分裂成好幾筆的同一個案場）─────────
@@ -1018,12 +1056,18 @@ function renderProjLedger(id,p,c){
   const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>b._id-a._id);
   const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
   const cost=items.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
+  // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
+  // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
+  // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
+  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+(v.amount||0),0);
+  const profit=income-cost-vendorCost;
 
   c.innerHTML=`
-    <div class="g3" style="margin-bottom:16px">
+    <div class="g4" style="margin-bottom:16px">
       <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">外帳收入</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'NT$0'}</div><div class="sl">內帳支出</div></div>
-      <div class="stat"><div class="sn" style="color:${income-cost>=0?'var(--ok)':'var(--bad)'}">${(income-cost>=0?'+':'')+'NT$'+Math.abs(income-cost).toLocaleString()}</div><div class="sl">毛利</div></div>
+      <div class="stat"><div class="sn" style="color:var(--bad)">${vendorCost?'NT$'+vendorCost.toLocaleString():'NT$0'}</div><div class="sl">廠商成本</div></div>
+      <div class="stat"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${(profit>=0?'+':'')+'NT$'+Math.abs(profit).toLocaleString()}</div><div class="sl">毛利</div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
