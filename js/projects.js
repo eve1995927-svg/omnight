@@ -791,7 +791,11 @@ function renderProjOverview(id,p,c){
   const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
   const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
   const income=ledgerItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
-  const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
+  // 修正重點：在廠商報價那邊「標記付款」時，系統會自動在帳款裡多記一筆內帳支出（雙式記帳，方便對帳），
+  // 但這筆帳原本的錢，其實已經算在下面的 vendorCost（廠商報價金額）裡了——
+  // 一筆錢被算了兩次：一次是「廠商報價本身」，一次是「付款時自動產生的內帳支出」。
+  // 這裡改成內帳支出只算「跟廠商付款無關」的那些（沒有 vendorId 標記的），廠商的錢統一只透過 vendorCost 算一次。
+  const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
   const vendorCost=vendors.reduce((s,v)=>s+(v.amount||0),0);
   const profit=income-cost-vendorCost;
   const st=PROJECT_STATUS[p.status||'inquiry'];
@@ -1058,7 +1062,11 @@ function openContractForProject(projectId){
 function renderProjLedger(id,p,c){
   const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>b._id-a._id);
   const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
-  const cost=items.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
+  // 修正重點：標記廠商付款時，系統會自動在這裡多記一筆內帳支出方便對帳，
+  // 但那筆錢已經算在下面的「廠商成本」裡了，兩個一起加會把同一筆錢算兩次。
+  // 這裡「內帳支出」這個統計數字，只加總「不是廠商付款」自動產生的那些（沒有 vendorId 標記），
+  // 避免重複計算；下面的交易紀錄清單還是完整顯示每一筆，包含廠商付款那筆，只是不會被重複加進總數。
+  const cost=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
   // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
   // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
   // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
