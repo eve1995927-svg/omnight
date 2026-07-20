@@ -432,19 +432,22 @@ function renderVendors(filter){
   Object.entries(byCase).forEach(([caseName,vendors])=>{
     // 案場分組標題
     const caseTotal=vendors.reduce((s,v)=>s+(v.amount||0),0);
+    // 這組廠商報價目前實際已經付了多少錢（把每一筆的付款紀錄加總），
+    // 讓人一眼看出「這個案場欠廠商的錢付了多少、還剩多少沒付」，不用一筆一筆點開算
+    const casePaid=vendors.reduce((s,v)=>s+getVendorPaid(v),0);
     const grpHd=document.createElement('div');
     grpHd.style.cssText='display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,var(--gold-pale),#FFF0C0);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:6px;cursor:pointer;user-select:none';
     grpHd.innerHTML=
       '<div style="display:flex;align-items:center;gap:10px">'+
         '<span style="font-size:1.1rem">📍</span>'+
         '<div>'+
-          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d)">'+caseName+'</div>'+
-          '<div style="font-size:.75rem;color:var(--g400);margin-top:1px">共 '+vendors.length+' 筆廠商報價</div>'+
+          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d)">'+esc(caseName)+'</div>'+
+          '<div style="font-size:.75rem;color:var(--g400);margin-top:1px">共 '+vendors.length+' 筆廠商報價'+(casePaid>0?' · 已付 NT$'+casePaid.toLocaleString():'')+'</div>'+
         '</div>'+
       '</div>'+
       '<div style="text-align:right">'+
         '<div style="font-family:monospace;font-size:1rem;font-weight:900;color:var(--gold-d)">NT$'+caseTotal.toLocaleString()+'</div>'+
-        '<div style="font-size:.68rem;color:var(--g400)">案場合計</div>'+
+        '<div style="font-size:.68rem;color:var(--g400)">案場合計'+(casePaid>0&&casePaid<caseTotal?'（尚欠 NT$'+(caseTotal-casePaid).toLocaleString()+'）':'')+'</div>'+
       '</div>';
 
     const grpBody=document.createElement('div');

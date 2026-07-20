@@ -955,11 +955,14 @@ function newProjQuote(projectId){
 function renderProjVendors(id,p,c){
   const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
   const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  // 已付款總額：把這個案場底下每一筆廠商報價的付款紀錄加總，一眼看出付了多少、還欠多少
+  const paidTotal=vendors.reduce((s,v)=>s+getVendorPaid(v),0);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div>
         <div style="font-weight:800;color:var(--g700)">廠商報價（${vendors.length} 筆）</div>
         ${total?`<div style="font-size:.82rem;color:var(--bad);font-weight:700">合計成本：NT$${total.toLocaleString()}</div>`:''}
+        ${paidTotal>0?`<div style="font-size:.78rem;color:var(--ok);font-weight:700;margin-top:2px">已付款：NT$${paidTotal.toLocaleString()}${paidTotal<total?'　尚欠：NT$'+(total-paidTotal).toLocaleString():'（已付清）'}</div>`:''}
       </div>
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
