@@ -1145,9 +1145,11 @@ function buildBN(role){
     bn.appendChild(backBtn);
   }
   // 底部快速列：只從「手機版允許」的清單挑，不會出現複雜功能（跟頂部頁籤用同一份白名單，行為一致）
+  // 修正重點：這裡原本用 slice(0,6) 硬砍到剩 6 個，允許清單有 7 項的話，最後一項（帳款總覽）就會被砍掉、
+  // 完全不會出現在手機版——不是排版問題，是根本沒被畫出來。現在改成全部顯示，排不下就靠下面 CSS 讓這排可以左右滑動。
   const allItems=groupsFor(role).flatMap(g=>g.items);
   const items=role==='punch' ? allItems : allItems.filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
-  items.slice(0,isInProject?5:6).forEach(item=>{
+  items.forEach(item=>{
     const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
     b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
