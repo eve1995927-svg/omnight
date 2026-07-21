@@ -649,7 +649,7 @@ function openAddProject(id=null){
   const set=(elId,v)=>{const el=document.getElementById(elId);if(el)el.value=v||'';};
   set('projName',p?.name);set('projClient',p?.client);set('projAddress',p?.address);
   set('projType',p?.type||PROJECT_TYPES[0]);set('projStart',p?.startDate);set('projEnd',p?.endDate);
-  set('projNote',p?.note);
+  set('projNote',p?.note);set('projGeofence',p?.geofenceRadius||80);
 
   // 狀態選項
   const stSel=document.getElementById('projStatus');
@@ -674,6 +674,19 @@ function openAddProject(id=null){
   openModal('projModal');
 }
 
+// 案場地址轉座標（正向地理編碼），這樣打卡才能算出「距離工地多遠」——
+// 跟打卡地址反查用的是同一個免費地圖服務（OpenStreetMap Nominatim），不用另外申請、不用扣點
+async function geocodeProjectAddress(projectId,address){
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(address)+'&countrycodes=tw&limit=1');
+    const arr=await r.json();
+    if(arr&&arr[0]){
+      DB.upd('projects',projectId,{lat:parseFloat(arr[0].lat),lng:parseFloat(arr[0].lon)});
+    }
+  }catch(e){console.log('地址轉座標失敗：',e.message);}
+}
+
+
 function saveProject(){
   const get=id=>document.getElementById(id)?.value?.trim()||'';
   const name=get('projName');
@@ -697,16 +710,20 @@ function saveProject(){
     type:get('projType')||PROJECT_TYPES[0], status:get('projStatus')||'inquiry',
     startDate:get('projStart'), endDate:get('projEnd'), note:get('projNote'),
     employeeId:document.getElementById('projEmployee')?.value||'',
+    geofenceRadius:parseInt(get('projGeofence'))||80,
     token:existing?.token||('zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)),
     summary:'案場 '+name,
   };
+  const addressChanged=!existing||existing.address!==data.address;
   if(projEditId){
     DB.upd('projects',projEditId,data);
     showToast('✅ 案場資料已更新');
+    if(addressChanged&&data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(projEditId,data.address);
   } else {
     const arr=DB.push('projects',data);
     const newId=arr[0]._id;
     showToast('✅ 案場已建立！');
+    if(data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(newId,data.address);
     // 建立後提示下一步
     setTimeout(()=>{
       showNextStep('案場已建立！接下來可以：', [
