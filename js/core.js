@@ -3,7 +3,6 @@
 // ══ 全域變數宣告 ════════════
 let ctImgUrl=null, ctEditId=null, ieId=null;
 let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
-let svImgUrl=[]; // 丈量記錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
 let vItems=[], vCurrentFilter='all', curVType='image';
 let curClientId=null, clientChats={};
@@ -36,7 +35,7 @@ const ACCTS={
 const GROUPS={
   owner:[
     {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
+    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
     {l:'報價與合約', items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
     {l:'廠商與進度', items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
     {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
@@ -47,7 +46,7 @@ const GROUPS={
   // 每個分組標記 _perm，對應人資管理裡的權限開關 key
   staff:[
     {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
+    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
     {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
     {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
     {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
@@ -318,7 +317,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests','measurements'];
+               'salary_records','leave_requests'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -1014,7 +1013,6 @@ function setupApp(role){
   initAdQuote();
   initContractListeners();
   if(typeof initQuoteFileListeners==='function')initQuoteFileListeners();
-  if(typeof initSurveyListeners==='function')initSurveyListeners();
   initMultiClientChat();
   // 注意：手機底部導覽已由 buildBN() 統一處理（含案場返回鍵、即時 GROUPS 資料），
   // 不再呼叫舊版 initMobileNav()，避免兩套導覽互相覆蓋
@@ -1147,11 +1145,9 @@ function buildBN(role){
     bn.appendChild(backBtn);
   }
   // 底部快速列：只從「手機版允許」的清單挑，不會出現複雜功能（跟頂部頁籤用同一份白名單，行為一致）
-  // 修正重點：這裡原本用 slice(0,6) 硬砍到剩 6 個，允許清單有 7 項的話，最後一項（帳款總覽）就會被砍掉、
-  // 完全不會出現在手機版——不是排版問題，是根本沒被畫出來。現在改成全部顯示，排不下就靠下面 CSS 讓這排可以左右滑動。
   const allItems=groupsFor(role).flatMap(g=>g.items);
   const items=role==='punch' ? allItems : allItems.filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
-  items.forEach(item=>{
+  items.slice(0,isInProject?5:6).forEach(item=>{
     const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
     b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
@@ -1210,13 +1206,7 @@ function friendlyAIError(err){
   return '⚠️ AI暫時無法使用，請稍後再試或聯絡老闆';
 }
 
-// callAI(role, content, maxTok, fixedPts, taskLabel)
-// fixedPts：不傳的話照舊用 token 數計算（適合聊天這種長度變化很大的）；
-// 傳了固定數字，這次呼叫就固定扣這個點數，不管實際 token 用多少——
-// 適合「輸入一份東西、產出一份結果」這種形狀固定的單次任務（辨識、生成一份報價/文案/圖片），
-// 好處是不會有「同樣的操作這次比較貴」的疑惑，帳單也好對。
-// taskLabel：帳單上要顯示的名稱，不傳就退回舊的、比較籠統的角色名稱分類。
-async function callAI(role,content,maxTok=1200,fixedPts=null,taskLabel=null){
+async function callAI(role,content,maxTok=1200){
   if(!cHist[role])cHist[role]=[];
   const hist=cHist[role];
   hist.push({role:'user',content:typeof content==='string'?content:content});
@@ -1243,14 +1233,14 @@ async function callAI(role,content,maxTok=1200,fixedPts=null,taskLabel=null){
 
   // ── 扣除點數 ──────────────────────────────────────────
   const tokUsed=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
-  const pts=(fixedPts!=null)?fixedPts:Math.min(500,Math.max(1,Math.round(tokUsed/20)));
+  const pts=Math.min(500,Math.max(1,Math.round(tokUsed/20)));
   await deductPoints(pts);
   // 記錄使用
   const roleNames={cs:'客服對話',mk:'行銷貼文',ad:'報價/廠商辨識',ac:'發票/帳款辨識'};
   const now=new Date();
   DB.push('billing',{
-    summary:'AI '+(taskLabel||roleNames[role]||role)+' -'+pts+'點',
-    desc:taskLabel||roleNames[role]||role,
+    summary:'AI '+( roleNames[role]||role)+' -'+pts+'點',
+    desc:roleNames[role]||role,
     role,
     points:pts,
     tokens:tokUsed,
@@ -1362,12 +1352,12 @@ async function genReply(fmt){
 // ══ PRO QUOTE ENGINE ══════════════════════════════════════
 // 統一的段落式報價單引擎
 const DEF_SECTIONS=[
-  {id:'s1',icon:'🔨',name:'拆除',items:[{name:'現場拆除清運',unit:'式',qty:1,price:0}]},
-  {id:'s2',icon:'🧱',name:'泥作',items:[{name:'磁磚鋪貼',unit:'坪',qty:0,price:0}]},
-  {id:'s3',icon:'🪵',name:'木作',items:[{name:'天花板施作',unit:'式',qty:1,price:0}]},
-  {id:'s4',icon:'⚡',name:'水電',items:[{name:'水電更換配置',unit:'式',qty:1,price:0}]},
+  {id:'s1',icon:'🔨',name:'拆除工程',items:[{name:'現場拆除清運',unit:'式',qty:1,price:0}]},
+  {id:'s2',icon:'🧱',name:'泥作工程',items:[{name:'磁磚鋪貼',unit:'坪',qty:0,price:0}]},
+  {id:'s3',icon:'🪵',name:'木作工程',items:[{name:'天花板施作',unit:'式',qty:1,price:0}]},
+  {id:'s4',icon:'⚡',name:'水電工程',items:[{name:'水電更換配置',unit:'式',qty:1,price:0}]},
   {id:'s5',icon:'🪟',name:'系統傢俱',items:[{name:'系統櫃安裝',unit:'式',qty:1,price:0}]},
-  {id:'s6',icon:'🎨',name:'油漆',items:[{name:'全室油漆',unit:'坪',qty:0,price:0}]},
+  {id:'s6',icon:'🎨',name:'油漆工程',items:[{name:'全室油漆',unit:'坪',qty:0,price:0}]},
 ];
 
 function mkSecId(){return 's'+Date.now();}

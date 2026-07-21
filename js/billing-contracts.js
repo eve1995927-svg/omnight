@@ -107,7 +107,7 @@ function renderBilling(){
 
 // ── 系統設定：分類管理 ─────────────────────────────────────
 const DEFAULT_CATS={
-  quoteCat:['拆除','泥作','木作','水電','系統傢俱','油漆','燈具','衛浴'],
+  quoteCat:['拆除工程','泥作工程','木作工程','水電工程','系統傢俱','油漆工程','燈具工程','衛浴工程'],
   vendorCat:['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'],
   incomeCat:['合約收款','訂金','工程款','尾款','設計費','其他收入'],
   expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','其他支出'],
@@ -717,10 +717,6 @@ function updVCaseFilter(){
 // ── initAdQuote ────────────────────────────────────────────
 function initAdQuote(){
   adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
-  curMgmtRate=8;
-  const rateInput=document.getElementById('adMgmtRate');if(rateInput)rateInput.value=8;
-  const waiveBtn=document.getElementById('adMgmtWaive');
-  if(waiveBtn){waiveBtn.textContent='🎁 贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
   const qbC=document.getElementById('adQbClient');if(qbC)qbC.textContent='—';
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
@@ -745,14 +741,13 @@ function initAdQuote(){
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
         projectId:curProjectId,
-        mgmtFeeRate:curMgmtRate,
         sections:JSON.parse(JSON.stringify(adSections)),total:sub});
       updStats();renderQTable();
       showToast('✅ 報價單已儲存！');
       // 下一步提示
       if(typeof showNextStep==='function'){
         showNextStep('報價單已儲存，接下來呢？',[
-          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate)},
+          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client')},
           {label:'📝 建立合約',action:()=>openModal('contractModal')},
           {label:'稍後再說',action:()=>{}},
         ]);
@@ -763,13 +758,13 @@ function initAdQuote(){
   const adXlsBtn=document.getElementById('adXls');
   if(adXlsBtn&&!adXlsBtn._bound){
     adXlsBtn._bound=true;
-    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal',curMgmtRate));
+    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal'));
   }
 
   const adXlsClientBtn=document.getElementById('adXlsClient');
   if(adXlsClientBtn&&!adXlsClientBtn._bound){
     adXlsClientBtn._bound=true;
-    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate));
+    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client'));
   }
 
   const adAddSecBtn=document.getElementById('adAddSec');
@@ -806,54 +801,6 @@ function initMultiClientChat(){
     if(chat)chat.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--g400);flex-direction:column;gap:12px;font-size:.9rem"><div style="font-size:2.5rem">💬</div><div style="font-weight:700">點右上方「＋ 新增客戶」開始諮詢</div></div>';
   }
 }
-// ── CRM 客戶總覽：把同一個業主在不同案場的紀錄關聯起來 ──────────
-function renderCrmList(filter){
-  const list=document.getElementById('crmList');if(!list)return;
-  const kw=(filter||document.getElementById('crmSearch')?.value||'').trim().toLowerCase();
-  let clients=DB.get('clients');
-  if(kw)clients=clients.filter(cl=>(cl.name||'').toLowerCase().includes(kw)||(cl.phone||'').includes(kw));
-  // 依「最近一次有案場」排序，越活躍的客戶排越前面
-  const allProjects=DB.get('projects');
-  const rows=clients.map(cl=>{
-    const projs=allProjects.filter(p=>p.clientId===cl._id&&!p.deleted);
-    const income=projs.reduce((s,p)=>s+DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((a,l)=>a+(l.amount||0),0),0);
-    const lastTs=Math.max(0,...projs.map(p=>p._id||0));
-    return {cl,projs,income,lastTs};
-  }).sort((a,b)=>b.lastTs-a.lastTs);
-
-  if(!rows.length){
-    list.innerHTML='<div class="empty-state"><div class="es-ic">👥</div><div class="es-t">尚無客戶資料</div><div class="es-s">新增案場時填的業主姓名，會自動出現在這裡</div></div>';
-    return;
-  }
-
-  list.innerHTML=rows.map(({cl,projs,income})=>{
-    const statusIco=(p)=>{const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;return st.icon;};
-    return `
-    <div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:42px;height:42px;border-radius:50%;background:var(--gold-pale);color:var(--gold-d);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;flex-shrink:0">${esc((cl.name||'？').charAt(0))}</div>
-          <div>
-            <div style="font-weight:900;font-size:.95rem">${esc(cl.name||'未命名客戶')}</div>
-            <div style="font-size:.76rem;color:var(--g400);margin-top:2px">${esc(cl.phone||'未留電話')}${cl.addr?' · '+esc(cl.addr):''}</div>
-          </div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-weight:900;font-size:.92rem;color:var(--gold-d)">${projs.length} 個案場</div>
-          <div style="font-size:.74rem;color:var(--ok);font-weight:700;margin-top:2px">${income?'已收 NT$'+income.toLocaleString():'尚無收款'}</div>
-        </div>
-      </div>
-      <div style="display:${projs.length?'block':'none'};margin-top:12px;padding-top:12px;border-top:1px solid var(--g100)">
-        ${projs.length?projs.map(p=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;cursor:pointer" onclick="event.stopPropagation();showPanel('projects');openProject(${p._id})">
-            <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${statusIco(p)} ${esc(p.name||'未命名案場')}</div>
-            <div style="font-size:.74rem;color:var(--g400)">${esc((PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry).label)}</div>
-          </div>`).join(''):'<div style="font-size:.8rem;color:var(--g400);padding:6px 0">這位客戶目前沒有關聯的案場</div>'}
-      </div>
-    </div>`;
-  }).join('');
-}
-
 function renderClientList(filter){
   const list=document.getElementById('clientList');if(!list)return;
   let clients=DB.get('clients');
