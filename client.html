@@ -87,12 +87,28 @@ body{
 .foot{text-align:center;margin-top:28px;font-size:.75rem;color:var(--g400)}
 .reveal{opacity:0;transform:translateY(16px);animation:up .5s ease forwards}
 @keyframes up{to{opacity:1;transform:none}}
+
+/* 合約檔案檢視 */
+.doc-link{background:none;border:none;cursor:pointer;font-family:inherit}
+.lb{position:fixed;inset:0;background:rgba(20,17,10,.88);z-index:999;display:none;align-items:center;justify-content:center;padding:20px;flex-direction:column;gap:14px}
+.lb.show{display:flex}
+.lb-imgs{display:flex;gap:12px;overflow-x:auto;max-width:100%;max-height:78vh;padding:4px}
+.lb-imgs img{max-height:78vh;border-radius:10px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.lb-pdf-btn{background:var(--gold);color:var(--ink);border:none;padding:12px 22px;border-radius:10px;font-weight:800;font-size:.9rem;cursor:pointer;font-family:inherit;text-decoration:none;display:inline-block}
+.lb-close{background:rgba(255,255,255,.15);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:1.1rem;cursor:pointer;position:absolute;top:18px;right:18px}
+.lb-title{color:#fff;font-weight:800;font-size:.92rem}
 </style>
 </head>
 <body>
 
 <div id="app">
   <div class="state"><div class="spinner"></div><p style="color:var(--g400)">載入工程資料中…</p></div>
+</div>
+
+<div class="lb" id="lbBox">
+  <button class="lb-close" onclick="document.getElementById('lbBox').classList.remove('show')">✕</button>
+  <div class="lb-title" id="lbTitle"></div>
+  <div class="lb-imgs" id="lbImgs"></div>
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
@@ -260,14 +276,14 @@ function render(p,progress,payments,contracts){
 
   // 合約
   if(contracts.length){
+    window._clientContracts=contracts; // 給下面的 openContractFiles 用
     html+='<div class="card reveal" style="animation-delay:.24s"><div class="card-t">📝 合約文件</div>';
-    contracts.forEach(c=>{
+    contracts.forEach((c,idx)=>{
       const hasFile=c.fileUrl||(c.fileUrls&&c.fileUrls.length);
-      const url=c.fileUrl||(c.fileUrls&&c.fileUrls[0]&&c.fileUrls[0].url);
       html+='<div class="doc-row"><div class="doc-ico">📄</div>'+
         '<div class="doc-info"><div class="doc-name">'+esc(c.name||'工程合約')+'</div>'+
         '<div class="doc-sub">'+(c.amount?fmt(c.amount):'')+(c._ts?' · '+esc(c._ts.split(' ')[0]):'')+'</div></div>'+
-        (hasFile&&url?'<a class="doc-link" href="'+esc(url)+'" target="_blank" rel="noopener">查看 →</a>':'')+
+        (hasFile?'<button class="doc-link" onclick="openContractFiles('+idx+')">查看 →</button>':'')+
       '</div>';
     });
     html+='</div>';
@@ -283,6 +299,50 @@ function render(p,progress,payments,contracts){
     document.querySelectorAll('.prog-fill').forEach(el=>{el.style.width=el.dataset.w+'%';});
   },200);
 }
+
+// 修正重點：合約照片/PDF 存的是 data: 開頭的長字串（base64），瀏覽器基於安全限制，
+// 不允許用 <a href="data:..." target="_blank"> 這種方式直接在新分頁打開，點了會被擋掉或沒反應——
+// 這就是業主看不到合約內容的原因。改成把 data: 字串轉成瀏覽器看得懂的 Blob 網址，
+// 圖片直接在頁面裡用小燈箱顯示，PDF 則正常在新分頁打開（Blob 網址就沒有這個限制）。
+function _dataUrlToBlobUrl(dataUrl){
+  try{
+    const parts=dataUrl.split(',');
+    const meta=parts[0];
+    const isBase64=meta.includes('base64');
+    const mime=(meta.match(/data:([^;]+)/)||[])[1]||'application/octet-stream';
+    const raw=isBase64?atob(parts[1]):decodeURIComponent(parts[1]);
+    const arr=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)arr[i]=raw.charCodeAt(i);
+    return URL.createObjectURL(new Blob([arr],{type:mime}));
+  }catch(e){console.warn('轉檔失敗：',e.message);return null;}
+}
+
+function openContractFiles(idx){
+  const c=(window._clientContracts||[])[idx];if(!c)return;
+  const files=c.fileUrls&&c.fileUrls.length?c.fileUrls:(c.fileUrl?[{name:c.name,type:'image/jpeg',url:c.fileUrl}]:[]);
+  if(!files.length)return;
+  document.getElementById('lbTitle').textContent=c.name||'工程合約';
+  const wrap=document.getElementById('lbImgs');
+  wrap.innerHTML='';
+  files.forEach(f=>{
+    const url=f.url||f;
+    const isImg=(f.type&&f.type.startsWith('image/'))||(typeof url==='string'&&url.startsWith('data:image'));
+    const blobUrl=typeof url==='string'&&url.startsWith('data:')?_dataUrlToBlobUrl(url):url;
+    if(!blobUrl)return;
+    if(isImg){
+      const img=document.createElement('img');
+      img.src=blobUrl;
+      wrap.appendChild(img);
+    }else{
+      const a=document.createElement('a');
+      a.className='lb-pdf-btn';a.href=blobUrl;a.target='_blank';a.rel='noopener';
+      a.textContent='📄 開啟 PDF 檔案';
+      wrap.appendChild(a);
+    }
+  });
+  document.getElementById('lbBox').classList.add('show');
+}
+document.getElementById('lbBox').addEventListener('click',e=>{if(e.target.id==='lbBox')e.currentTarget.classList.remove('show');});
 
 load();
 </script>
