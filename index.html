@@ -260,15 +260,6 @@
  </div>
 </div>
 
-<!-- ══ CRM 客戶總覽（把同一個業主在不同案場的紀錄關聯在一起）══ -->
-<div class="panel" id="p-crm">
- <div class="ph">
-  <div><div class="ptit">👥 客戶總覽</div><div class="psub">同一個業主做過幾次案子、目前總價值多少，一眼看到</div></div>
- </div>
- <input class="fi" id="crmSearch" placeholder="🔍 搜尋客戶姓名、電話…" style="width:100%;margin-bottom:16px;padding:11px 16px" oninput="renderCrmList(this.value)">
- <div id="crmList"></div>
-</div>
-
 <!-- ══ CS QUOTE (快速報價，可展開細項) ══ -->
 <div class="panel" id="p-cs-quote">
  <div class="ph"><div><div class="ptit">📐 快速報價</div><div class="psub">每個大工項下可展開填細項，參考知名統包格式</div></div></div>
@@ -462,14 +453,14 @@
    <div class="card" style="margin-bottom:12px">
     <div class="ct">⚡ 快速新增工程</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
-     <button class="btn bo bxs" onclick="addZejuSection('🔨','拆除')">🔨 拆除</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🧱','泥作')">🧱 泥作</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🪵','木作')">🪵 木作</button>
-     <button class="btn bo bxs" onclick="addZejuSection('⚡','水電')">⚡ 水電</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🔨','拆除工程')">🔨 拆除</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🧱','泥作工程')">🧱 泥作</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🪵','木作工程')">🪵 木作</button>
+     <button class="btn bo bxs" onclick="addZejuSection('⚡','水電工程')">⚡ 水電</button>
      <button class="btn bo bxs" onclick="addZejuSection('🪟','系統傢俱')">🪟 系統</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🎨','油漆')">🎨 油漆</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🚿','衛浴')">🚿 衛浴</button>
-     <button class="btn bo bxs" onclick="addZejuSection('💡','燈具')">💡 燈具</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🎨','油漆工程')">🎨 油漆</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🚿','衛浴工程')">🚿 衛浴</button>
+     <button class="btn bo bxs" onclick="addZejuSection('💡','燈具工程')">💡 燈具</button>
     </div>
     <div style="display:flex;gap:6px">
      <input class="fi" id="customSecName" placeholder="自訂分類…" style="flex:1;padding:7px 10px;font-size:.82rem">
@@ -515,12 +506,7 @@
     <div id="adSections"></div>
     <div class="pq-footer">
      <div class="pq-tot-row"><span>工程款小計</span><span class="pq-tot-val" id="adSub">NT$0</span></div>
-     <div class="pq-tot-row" style="align-items:center">
-       <span style="display:flex;align-items:center;gap:6px">管理費（<input type="number" id="adMgmtRate" value="8" min="0" max="100" step="0.5" style="width:46px;border:1.5px solid var(--g200);border-radius:6px;text-align:center;font-size:.85rem;padding:3px 2px;font-family:inherit">%）
-         <button type="button" id="adMgmtWaive" title="這筆報價不收管理費" style="padding:3px 10px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit">🎁 贈送</button>
-       </span>
-       <span class="pq-tot-val" id="adMgmt">NT$0</span>
-     </div>
+     <div class="pq-tot-row"><span>管理費（8%）</span><span class="pq-tot-val" id="adMgmt">NT$0</span></div>
      <div class="pq-tot-row"><span>營業稅（5%）</span><span class="pq-tot-val" id="adTax">NT$0</span></div>
      <div class="pq-tot-row main"><span>工程總價</span><span class="pq-tot-val" id="adTotal">NT$0</span></div>
      <div class="pq-note">付款：簽約30%·開工30%·七成完工30%·驗收10%<br>本報價有效期30天，實際以現場丈量為準<br>電話：03-2605199 ｜ LINE：@zj8888</div>
@@ -768,40 +754,12 @@
   <div style="font-size:3rem;font-family:monospace;font-weight:900;color:var(--g800);letter-spacing:3px;line-height:1.1;margin:6px 0" id="punchTime">00:00:00</div>
  </div>
 
- <!-- 今天在哪個案場 -->
+ <!-- 今日案場選擇 -->
  <div style="margin:0 4px 16px">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-   <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.06em">📍 今天在哪個案場？</div>
-   <button type="button" id="punchMapBtn" style="font-size:.72rem;font-weight:800;color:var(--gold-d);background:none;border:none;cursor:pointer">🗺️ 查看地圖</button>
-  </div>
+  <div style="font-size:.78rem;font-weight:900;color:var(--g400);margin-bottom:8px;letter-spacing:.06em">📍 今天在哪個案場？</div>
   <select id="punchProjectSel" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
    <option value="">不指定案場</option>
   </select>
- </div>
-
- <!-- 距離工地中心 / 圍籬狀態 -->
- <div id="punchGeoCard" style="display:none;margin:0 4px 16px;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;padding:14px 16px">
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-   <div>
-    <div style="font-size:.68rem;color:var(--g400);margin-bottom:3px">距工地中心</div>
-    <div style="font-size:1.05rem;font-weight:900;font-family:monospace" id="punchDistVal">—</div>
-   </div>
-   <div>
-    <div style="font-size:.68rem;color:var(--g400);margin-bottom:3px">圍籬狀態</div>
-    <div style="font-size:.85rem;font-weight:800" id="punchFenceVal">—</div>
-   </div>
-  </div>
-  <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--g100);font-size:.72rem;color:var(--g400)" id="punchAccuracyVal"></div>
- </div>
-
- <!-- 拍照佐證 -->
- <div style="margin:0 4px 16px">
-  <button type="button" id="punchPhotoBtn" style="width:100%;padding:11px;border:1.5px dashed var(--g300);border-radius:var(--rs);background:var(--g50);color:var(--g500);font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">📷 拍照佐證（選填）</button>
-  <input type="file" id="punchPhotoFile" accept="image/*" capture="environment" style="display:none">
-  <div id="punchPhotoPreview" style="display:none;margin-top:8px;position:relative;max-width:120px">
-   <img id="punchPhotoImg" style="width:100%;border-radius:10px;border:1.5px solid var(--g200)">
-   <button type="button" id="punchPhotoDel" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--bad);color:#fff;border:2px solid #fff;font-size:.7rem;cursor:pointer">✕</button>
-  </div>
  </div>
 
  <!-- 打卡按鈕 -->
@@ -1296,10 +1254,9 @@
 
   <div class="g2" style="margin-bottom:12px">
    <div class="field"><label class="fl">案場名稱 *</label><input class="fi" id="projName" placeholder="例：林小姐-大安區老屋翻新"></div>
-   <div class="field"><label class="fl">業主姓名</label><input class="fi" id="projClient" list="clientDatalist" placeholder="例：林小姐（打字可以直接搜尋之前的客戶）" autocomplete="off"><datalist id="clientDatalist"></datalist></div>
+   <div class="field"><label class="fl">業主姓名</label><input class="fi" id="projClient" placeholder="例：林小姐"></div>
   </div>
   <div class="field"><label class="fl">地址</label><input class="fi" id="projAddress" placeholder="例：台北市大安區仁愛路三段100號"></div>
-  <div class="field"><label class="fl">打卡圍籬半徑（公尺）</label><input class="fi" type="number" id="projGeofence" placeholder="80" value="80"><div style="font-size:.72rem;color:var(--g400);margin-top:4px">員工打卡時，距離這個地址超過這個範圍會顯示提醒</div></div>
   <div class="g2" style="margin-bottom:12px">
    <div class="field"><label class="fl">工程類型</label>
     <select class="fi" id="projType" style="cursor:pointer">
@@ -1369,18 +1326,6 @@
  </div>
 </div>
 
-<!-- ══ PUNCH MAP MODAL（打卡地圖總覽，顯示所有案場位置跟距離）══ -->
-<div class="mov" id="punchMapModal">
- <div class="modal" style="max-width:600px;padding:0;overflow:hidden">
-  <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--g100)">
-   <div class="mtit" style="margin:0">🗺️ 案場地圖</div>
-   <button class="mcl" data-close="punchMapModal">✕</button>
-  </div>
-  <div id="punchMapCanvas" style="width:100%;height:320px;background:var(--g100)"></div>
-  <div style="max-height:260px;overflow-y:auto;padding:8px 12px" id="punchMapList"></div>
- </div>
-</div>
-
 <!-- ══ MERGE VENDOR GROUPS MODAL（合併廠商報價裡因為案場名稱打法不同而分裂的分組，不動案場總覽的案場資料）══ -->
 <div class="mov" id="mergeVendorGroupModal">
  <div class="modal" style="max-width:560px">
@@ -1395,39 +1340,6 @@
    <select class="fi" id="mergeVGroupTarget"></select>
   </div>
   <button class="btn bg bfull" id="mergeVGroupBtn" style="padding:13px;font-size:.92rem" disabled>選至少 2 個分組才能合併</button>
- </div>
-</div>
-
-<!-- ══ SURVEY MODAL（現場丈量記錄，一個房間一筆，可拍照存現況）══ -->
-<div class="mov" id="surveyModal">
- <div class="modal" style="max-width:520px">
-  <div class="mtit">📐 新增丈量記錄 <button class="mcl" data-close="surveyModal">✕</button></div>
-
-  <div class="field"><label class="fl">房間／區域名稱</label><input class="fi" id="svRoom" placeholder="例：主臥、客廳、廚房"></div>
-
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-   <div class="field"><label class="fl">長（公尺）</label><input class="fi" type="number" step="0.01" id="svLen" placeholder="0" oninput="updSurveyArea()"></div>
-   <div class="field"><label class="fl">寬（公尺）</label><input class="fi" type="number" step="0.01" id="svWid" placeholder="0" oninput="updSurveyArea()"></div>
-  </div>
-  <div style="background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--rs);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
-   <span style="font-size:.82rem;font-weight:700;color:var(--gold-d)">換算坪數</span>
-   <span style="font-size:1.05rem;font-weight:900;color:var(--gold-d)" id="svArea">0 坪</span>
-  </div>
-
-  <div class="field"><label class="fl">備注</label><input class="fi" id="svNote" placeholder="例：有樑柱、插座位置、拆除範圍…"></div>
-
-  <div class="upz" id="svZone" style="border-style:solid;border-width:2px">
-   <span class="upz-ic">📷</span>
-   <div class="upz-title">拍現況照片（可多張，選填）</div>
-   <div class="upz-sub">現場狀況、要拆除的地方，都可以拍起來存檔</div>
-  </div>
-  <input type="file" id="svFile" accept="image/*" multiple style="display:none">
-  <div id="svFileCard" style="display:none;margin:12px 0">
-   <div style="font-size:.82rem;font-weight:700;color:var(--g600);margin-bottom:8px" id="svFileCount">已上傳 0 張</div>
-   <div id="svPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px"></div>
-  </div>
-
-  <button class="btn bg bfull" id="svSaveBtn" style="padding:13px;font-size:.92rem;margin-top:6px">💾 儲存丈量記錄</button>
  </div>
 </div>
 
