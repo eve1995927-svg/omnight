@@ -449,6 +449,81 @@ function updSurveyArea(){
   if(el)el.textContent=(ping?ping.toFixed(2):'0')+' 坪'+(sqm?'（'+sqm.toFixed(2)+' 平方公尺）':'');
 }
 
+// ══ 設計圖／渲染圖上傳（案場總覽 → 設計圖分頁）══════════════════════
+function renderDfPhotos(){
+  const photos=Array.isArray(dfImgUrl)?dfImgUrl:[];
+  const fc=document.getElementById('dfFileCard');
+  const grid=document.getElementById('dfPhotoGrid');
+  const cnt=document.getElementById('dfFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+    const url=p.url||p;
+    if(p.type&&p.type.startsWith('image/')||typeof url==='string'&&url.startsWith('data:image')){
+      const img=document.createElement('img');
+      img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+      img.onclick=()=>openLB(url);wrap.appendChild(img);
+    }else{
+      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
+    }
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem';
+    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(dfImgUrl))dfImgUrl.splice(i,1);renderDfPhotos();};
+    wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:3/4;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;color:var(--g400);font-size:.75rem;font-weight:700';
+  addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
+  addMore.onclick=()=>document.getElementById('dfFile')?.click();
+  grid.appendChild(addMore);
+}
+
+function initDesignFileListeners(){
+  function bind(id,evt,fn){
+    const el=document.getElementById(id);
+    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
+  }
+  bind('dfZone','click',()=>document.getElementById('dfFile')?.click());
+  bind('dfFile','change',async e=>{
+    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+    if(!Array.isArray(dfImgUrl))dfImgUrl=[];
+    const rf=async f=>{
+      if(f.type.startsWith('image/')){
+        const compressed=await compressImage(f,1800,0.8);
+        return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+      }
+      return new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
+    };
+    dfImgUrl.push(...await Promise.all(files.map(rf)));
+    renderDfPhotos();
+  });
+  bind('dfDelFile','click',()=>{
+    dfImgUrl=[];
+    const fc=document.getElementById('dfFileCard');if(fc)fc.style.display='none';
+    const fi=document.getElementById('dfFile');if(fi)fi.value='';
+    const grid=document.getElementById('dfPhotoGrid');if(grid)grid.innerHTML='';
+  });
+  bind('dfSaveBtn','click',()=>{
+    const name=(document.getElementById('dfName')?.value||'').trim();
+    if(!name){showToast('⚠️ 請填入名稱');return;}
+    if(!dfImgUrl.length){showToast('⚠️ 請至少上傳一張圖片或 PDF');return;}
+    if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入設計圖分頁再上傳');return;}
+    DB.push('design_files',{
+      projectId:curProjectId, name, cat:document.getElementById('dfCat')?.value||'render',
+      fileUrls:dfImgUrl.slice(),
+      summary:'設計圖 '+name,
+    });
+    closeModal('designFileModal');
+    showToast('✅ 已上傳！');
+    if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'design');
+  });
+}
+
 function initSurveyListeners(){
   function bind(id,evt,fn){
     const el=document.getElementById(id);
