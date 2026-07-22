@@ -175,8 +175,9 @@ async function load(){
     // 只顯示外帳收入（業主付的款），絕不顯示內帳成本
     const payments=toArr(data.ledger).filter(l=>l.projectId==project._id&&(l.book==='in')&&l.type==='in'&&!l.deleted);
     const contracts=toArr(data.contracts).filter(c=>c.projectId==project._id&&!c.deleted);
+    const designFiles=toArr(data.design_files).filter(f=>f.projectId==project._id&&!f.deleted);
 
-    render(project,progress,payments,contracts);
+    render(project,progress,payments,contracts,designFiles);
   }catch(err){
     console.error(err);
     showError('載入失敗','網路連線出現問題，請稍後再試一次。');
@@ -188,7 +189,7 @@ function showError(title,msg){
     '<div class="state"><div class="ico">🔍</div><h2>'+esc(title)+'</h2><p>'+esc(msg)+'</p></div>';
 }
 
-function render(p,progress,payments,contracts){
+function render(p,progress,payments,contracts,designFiles){
   const st=STATUS[p.status||'inquiry']||STATUS.inquiry;
   const pct=STATUS_PCT[p.status||'inquiry']||0;
 
@@ -274,6 +275,22 @@ function render(p,progress,payments,contracts){
   }
   html+='</div>';
 
+  // 設計圖／渲染圖
+  if(designFiles&&designFiles.length){
+    window._clientDesignFiles=designFiles;
+    const catLabel={render:'🖼️ 渲染圖',plan:'📐 平面圖',other:'📄 圖檔'};
+    html+='<div class="card reveal" style="animation-delay:.22s"><div class="card-t">🖼️ 設計圖／渲染圖</div>';
+    designFiles.forEach((f,idx)=>{
+      const hasFile=(f.fileUrls&&f.fileUrls.length);
+      html+='<div class="doc-row"><div class="doc-ico">🖼️</div>'+
+        '<div class="doc-info"><div class="doc-name">'+esc(f.name||'設計圖')+'</div>'+
+        '<div class="doc-sub">'+esc(catLabel[f.cat]||'')+(f._ts?' · '+esc(f._ts.split(' ')[0]):'')+'</div></div>'+
+        (hasFile?'<button class="doc-link" onclick="openDesignFiles('+idx+')">查看 →</button>':'')+
+      '</div>';
+    });
+    html+='</div>';
+  }
+
   // 合約
   if(contracts.length){
     window._clientContracts=contracts; // 給下面的 openContractFiles 用
@@ -327,6 +344,32 @@ function openContractFiles(idx){
   files.forEach(f=>{
     const url=f.url||f;
     const isImg=(f.type&&f.type.startsWith('image/'))||(typeof url==='string'&&url.startsWith('data:image'));
+    const blobUrl=typeof url==='string'&&url.startsWith('data:')?_dataUrlToBlobUrl(url):url;
+    if(!blobUrl)return;
+    if(isImg){
+      const img=document.createElement('img');
+      img.src=blobUrl;
+      wrap.appendChild(img);
+    }else{
+      const a=document.createElement('a');
+      a.className='lb-pdf-btn';a.href=blobUrl;a.target='_blank';a.rel='noopener';
+      a.textContent='📄 開啟 PDF 檔案';
+      wrap.appendChild(a);
+    }
+  });
+  document.getElementById('lbBox').classList.add('show');
+}
+// 設計圖／渲染圖用同一套燈箱，不用另外寫一份
+function openDesignFiles(idx){
+  const f=(window._clientDesignFiles||[])[idx];if(!f)return;
+  const files=f.fileUrls&&f.fileUrls.length?f.fileUrls:[];
+  if(!files.length)return;
+  document.getElementById('lbTitle').textContent=f.name||'設計圖';
+  const wrap=document.getElementById('lbImgs');
+  wrap.innerHTML='';
+  files.forEach(ff=>{
+    const url=ff.url||ff;
+    const isImg=(ff.type&&ff.type.startsWith('image/'))||(typeof url==='string'&&url.startsWith('data:image'));
     const blobUrl=typeof url==='string'&&url.startsWith('data:')?_dataUrlToBlobUrl(url):url;
     if(!blobUrl)return;
     if(isImg){
