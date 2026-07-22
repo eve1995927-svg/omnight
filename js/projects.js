@@ -799,8 +799,8 @@ function renderProjectDetail(id, activeTab='overview'){
   }
 
   // Tab 切換
-  const tabs=['overview','survey','design','quote','vendor','contract','ledger','progress'];
-  const tabLabels={overview:'📊 總覽',survey:'📐 丈量',design:'🖼️ 設計圖',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
+  const tabs=['overview','memo','survey','design','quote','vendor','contract','ledger','progress'];
+  const tabLabels={overview:'📊 總覽',memo:'📝 備忘錄',survey:'📐 丈量',design:'🖼️ 設計圖',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
     tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
@@ -812,6 +812,7 @@ function renderProjectDetail(id, activeTab='overview'){
 
   switch(activeTab){
     case 'overview': renderProjOverview(id,p,content); break;
+    case 'memo':     renderProjMemo(id,p,content);      break;
     case 'survey':   renderProjSurvey(id,p,content);   break;
     case 'design':   renderProjDesignFiles(id,p,content); break;
     case 'quote':    renderProjQuotes(id,p,content);   break;
@@ -930,31 +931,96 @@ function openQuoteFileUpload(projectId){
 function renderProjSurvey(id,p,c){
   const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
   const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
+  const totalPhotos=items.reduce((s,m)=>s+(m.fileUrls||[]).length,0);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
+        <div style="font-weight:800;color:var(--g700)">丈量記錄（共 ${totalPhotos} 張照片）</div>
         ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
       </div>
-      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
+      <button class="btn bg bsm" onclick="openSurveyModal(${id})">📷 新增丈量照片</button>
     </div>
-    ${items.length?items.map(m=>`
+    ${items.length?items.map(m=>{
+      const photos=m.fileUrls||[];
+      const previewCount=6;
+      return `
       <div class="card" style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:800;font-size:.92rem">${esc(m.room||'未命名區域')}</div>
+            <div style="font-weight:800;font-size:.92rem">${esc(m.room||'丈量記錄')}</div>
             <div style="font-size:.78rem;color:var(--g400);margin-top:3px">
-              ${m.length&&m.width?`${m.length}m × ${m.width}m　=　`:''}<strong style="color:var(--gold-d)">${(m.area||0).toFixed(2)} 坪</strong>
+              ${m.length&&m.width?`${m.length}m × ${m.width}m　=　<strong style="color:var(--gold-d)">${(m.area||0).toFixed(2)} 坪</strong>　·　`:''}${photos.length} 張照片
             </div>
             ${m.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(m.note)}</div>`:''}
           </div>
           <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
         </div>
-        ${(m.fileUrls||[]).length?`
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px">
-            ${m.fileUrls.map(f=>`<img src="${esc(f.url||f)}" onclick="openLB('${esc(f.url||f)}')" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}
+        ${photos.length?`
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px;cursor:pointer" onclick="openSurveyGallery(${m._id})">
+            ${photos.slice(0,previewCount).map(f=>`<div style="position:relative;aspect-ratio:1/1"><img src="${esc(f.url||f)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid var(--g200)"></div>`).join('')}
+            ${photos.length>previewCount?`<div style="aspect-ratio:1/1;border-radius:8px;background:var(--g100);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:var(--g500)">+${photos.length-previewCount}</div>`:''}
+          </div>
+          <div style="font-size:.72rem;color:var(--gold-d);font-weight:700;margin-top:8px">🔍 點照片查看全部、放大、下載 →</div>`:''}
+      </div>`;
+    }).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「📷 新增丈量照片」，整場一次拍完就好，不用一個房間分開建</div></div>'}`;
+}
+
+// ── 案場備忘錄 Tab（文字或照片都可以，手機也能用，就是一個簡單的記事流水帳）───────
+function renderProjMemo(id,p,c){
+  const items=DB.get('memos').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">備忘錄（${items.length}）</div>
+      <button class="btn bg bsm" onclick="openMemoModal(${id})">📝 新增備忘錄</button>
+    </div>
+    ${items.length?items.map(m=>{
+      const photos=m.photos||[];
+      return `
+      <div class="card" style="margin-bottom:10px;padding:12px 14px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+          <div style="font-size:.72rem;color:var(--g400)">${esc(m._ts||'')}</div>
+          <button onclick="deleteMemo(${m._id},${id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;flex-shrink:0">🗑</button>
+        </div>
+        ${m.text?`<div style="font-size:.88rem;color:var(--g800);margin-top:6px;white-space:pre-wrap;line-height:1.6">${esc(m.text)}</div>`:''}
+        ${photos.length?`
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px;cursor:pointer" onclick="openMemoGallery(${m._id})">
+            ${photos.slice(0,6).map(f=>`<img src="${esc(f.url||f)}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;border:1px solid var(--g200)">`).join('')}
+            ${photos.length>6?`<div style="aspect-ratio:1/1;border-radius:8px;background:var(--g100);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:var(--g500)">+${photos.length-6}</div>`:''}
           </div>`:''}
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「＋新增丈量」，一個房間量一次，之後報價可以直接參考</div></div>'}`;
+      </div>`;
+    }).join(''):'<div class="empty-state"><div class="es-ic">📝</div><div class="es-t">尚無備忘錄</div><div class="es-s">業主的臨時要求、廠商的口頭約定，隨手記下來，文字或照片都可以</div></div>'}`;
+}
+
+function openMemoModal(projectId){
+  curProjectId=projectId;
+  moImgUrl=[];
+  const textEl=document.getElementById('moText');if(textEl)textEl.value='';
+  const fc=document.getElementById('moFileCard');if(fc)fc.style.display='none';
+  const grid=document.getElementById('moPhotoGrid');if(grid)grid.innerHTML='';
+  const fi=document.getElementById('moFile');if(fi)fi.value='';
+  openModal('memoModal');
+}
+
+function deleteMemo(memoId,projectId){
+  confirmAction('確定刪除這則備忘錄？',()=>{
+    DB.softDel('memos',memoId);
+    renderProjectDetail(projectId,'memo');
+    showToast('✅ 已刪除');
+  });
+}
+
+function openMemoGallery(memoId){
+  const m=DB.get('memos').find(r=>r._id===memoId);if(!m)return;
+  const photos=m.photos||[];
+  if(!photos.length){showToast('⚠️ 此則備忘錄沒有照片');return;}
+  openPhotoGallery('備忘錄照片',photos);
+}
+
+function openSurveyGallery(measureId){
+  const m=DB.get('measurements').find(r=>r._id===measureId);if(!m)return;
+  const photos=m.fileUrls||[];
+  if(!photos.length){showToast('⚠️ 此筆記錄沒有照片');return;}
+  openPhotoGallery(m.room||'丈量記錄',photos);
 }
 
 function openSurveyModal(projectId){
@@ -1028,62 +1094,9 @@ function deleteDesignFile(fileId,projectId){
 // 不會像用連結開新分頁那樣被瀏覽器擋掉）
 function previewDesignFiles(id){
   const f=DB.get('design_files').find(r=>r._id===id);if(!f)return;
-  const urls=(f.fileUrls||[]).map(x=>typeof x==='string'?x:(x.url||'')).filter(Boolean);
-  if(!urls.length){showToast('⚠️ 此檔案尚未上傳內容');return;}
-
-  const ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;';
-  let cur=0;
-
-  function render(){
-    ov.innerHTML='';
-    const close=document.createElement('button');
-    close.textContent='✕';
-    close.style.cssText='position:absolute;top:16px;right:20px;background:none;border:none;color:#fff;font-size:1.8rem;cursor:pointer;z-index:1;';
-    close.onclick=()=>ov.remove();
-    ov.appendChild(close);
-
-    const title=document.createElement('div');
-    title.style.cssText='color:#fff;font-size:.95rem;font-weight:800;margin-bottom:10px;text-align:center';
-    title.textContent=f.name||'設計圖';
-    ov.appendChild(title);
-
-    if(urls.length>1){
-      const pg=document.createElement('div');
-      pg.style.cssText='color:#fff;font-size:.85rem;margin-bottom:10px;opacity:.7';
-      pg.textContent=(cur+1)+' / '+urls.length;
-      ov.appendChild(pg);
-    }
-
-    const u=urls[cur];
-    if(u.startsWith('data:image')||u.match(/\.(jpg|jpeg|png|gif|webp)/i)){
-      const img=document.createElement('img');
-      img.src=u;
-      img.style.cssText='max-width:92vw;max-height:74vh;object-fit:contain;border-radius:8px;';
-      ov.appendChild(img);
-    } else {
-      const fr=document.createElement('iframe');
-      fr.src=u;
-      fr.style.cssText='width:90vw;height:76vh;border:none;background:#fff;border-radius:8px;';
-      ov.appendChild(fr);
-    }
-
-    if(urls.length>1){
-      const nav=document.createElement('div');
-      nav.style.cssText='display:flex;gap:20px;margin-top:14px;';
-      const prev=document.createElement('button');
-      prev.textContent='← 上一頁';prev.style.cssText='background:#fff2;color:#fff;border:none;padding:8px 20px;border-radius:20px;cursor:pointer;font-size:.95rem;';
-      prev.onclick=()=>{cur=(cur-1+urls.length)%urls.length;render();};
-      const next=document.createElement('button');
-      next.textContent='下一頁 →';next.style.cssText='background:#fff2;color:#fff;border:none;padding:8px 20px;border-radius:20px;cursor:pointer;font-size:.95rem;';
-      next.onclick=()=>{cur=(cur+1)%urls.length;render();};
-      if(cur>0)nav.appendChild(prev);
-      if(cur<urls.length-1)nav.appendChild(next);
-      ov.appendChild(nav);
-    }
-  }
-  render();
-  document.body.appendChild(ov);
+  const files=f.fileUrls||[];
+  if(!files.length){showToast('⚠️ 此檔案尚未上傳內容');return;}
+  openPhotoGallery(f.name||'設計圖',files);
 }
 
 // 修正重點：這個函式原本在案場總覽的報價分頁裡被呼叫（點開一份已存在的報價單），

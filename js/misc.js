@@ -524,6 +524,65 @@ function initDesignFileListeners(){
   });
 }
 
+// ══ 備忘錄照片上傳（案場總覽 → 備忘錄分頁）══════════════════════
+function renderMoPhotos(){
+  const photos=Array.isArray(moImgUrl)?moImgUrl:[];
+  const fc=document.getElementById('moFileCard');
+  const grid=document.getElementById('moPhotoGrid');
+  const cnt=document.getElementById('moFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);border:1.5px solid var(--g200)';
+    const img=document.createElement('img');
+    img.src=p.url||p;img.style.cssText='width:100%;height:100%;object-fit:cover';
+    wrap.appendChild(img);
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:3px;right:3px;width:20px;height:20px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.65rem';
+    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(moImgUrl))moImgUrl.splice(i,1);renderMoPhotos();};
+    wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:1/1;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--g400);font-size:1.2rem';
+  addMore.textContent='＋';
+  addMore.onclick=()=>document.getElementById('moFile')?.click();
+  grid.appendChild(addMore);
+}
+
+function initMemoListeners(){
+  function bind(id,evt,fn){
+    const el=document.getElementById(id);
+    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
+  }
+  bind('moZone','click',()=>document.getElementById('moFile')?.click());
+  bind('moFile','change',async e=>{
+    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+    if(!Array.isArray(moImgUrl))moImgUrl=[];
+    const rf=async f=>{
+      const compressed=await compressImage(f,1400,0.72);
+      return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+    };
+    moImgUrl.push(...await Promise.all(files.map(rf)));
+    renderMoPhotos();
+  });
+  bind('moSaveBtn','click',()=>{
+    const text=(document.getElementById('moText')?.value||'').trim();
+    if(!text&&!moImgUrl.length){showToast('⚠️ 文字或照片至少要填一個');return;}
+    if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入備忘錄分頁再新增');return;}
+    DB.push('memos',{
+      projectId:curProjectId, text, photos:moImgUrl.slice(),
+      summary:'備忘錄 '+(text||'（照片）').slice(0,20),
+    });
+    closeModal('memoModal');
+    showToast('✅ 備忘錄已儲存！');
+    if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'memo');
+  });
+}
+
 function initSurveyListeners(){
   function bind(id,evt,fn){
     const el=document.getElementById(id);
@@ -541,9 +600,12 @@ function initSurveyListeners(){
     renderSvPhotos();
   });
   bind('svSaveBtn','click',()=>{
-    const room=(document.getElementById('svRoom')?.value||'').trim();
-    if(!room){showToast('⚠️ 請填入房間或區域名稱');return;}
+    // 修正重點：實際使用情境是整場一次拍完，不是一個房間分開存一筆，
+    // 房間名稱改成選填（沒填就用「丈量記錄」+ 時間當預設名稱），改成要求至少要有照片才能存
     if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入丈量分頁再新增');return;}
+    if(!svImgUrl.length){showToast('⚠️ 請至少拍一張照片');return;}
+    const roomInput=(document.getElementById('svRoom')?.value||'').trim();
+    const room=roomInput||('丈量記錄 '+new Date().toLocaleDateString('zh-TW'));
     const len=parseFloat(document.getElementById('svLen')?.value)||0;
     const wid=parseFloat(document.getElementById('svWid')?.value)||0;
     const area=len&&wid?+(len*wid/3.305785).toFixed(2):0;

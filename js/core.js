@@ -5,6 +5,7 @@ let ctImgUrl=null, ctEditId=null, ieId=null;
 let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
 let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
+let moImgUrl=[]; // 備忘錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
 let vItems=[], vCurrentFilter='all', curVType='image';
 let curClientId=null, clientChats={};
@@ -319,7 +320,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages'];
+               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','memos'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -762,7 +763,104 @@ function showInfoBox(title,message){
 function showToast(msg,dur=2600){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 
 // ══ LIGHTBOX ═════════════════════════════════════════════
-function openLB(src){document.getElementById('lbimg').src=src;document.getElementById('lb').classList.add('show');}
+function openLB(src,filename){
+  document.getElementById('lbimg').src=src;
+  document.getElementById('lb').classList.add('show');
+  document.getElementById('lb').dataset.curSrc=src;
+  document.getElementById('lb').dataset.curName=filename||('照片_'+Date.now()+'.jpg');
+}
+function downloadCurrentLB(){
+  const lb=document.getElementById('lb');
+  const src=lb.dataset.curSrc;if(!src)return;
+  const a=document.createElement('a');
+  a.href=src;a.download=lb.dataset.curName||'照片.jpg';
+  document.body.appendChild(a);a.click();a.remove();
+}
+
+// ── 共用相片總覽（合約、設計圖、丈量都用這個）：一次看到全部縮圖，點放大，可整包或單張下載 ──
+let _jsZipLoading=null;
+function loadJSZip(){
+  if(window.JSZip)return Promise.resolve();
+  if(_jsZipLoading)return _jsZipLoading;
+  _jsZipLoading=new Promise((res,rej)=>{
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+    sc.onload=res;sc.onerror=rej;
+    document.head.appendChild(sc);
+  });
+  return _jsZipLoading;
+}
+
+// files: [{name, type, url}] 或純字串網址陣列都可以
+function openPhotoGallery(title, files){
+  const list=(files||[]).map((f,i)=>{
+    const url=typeof f==='string'?f:(f.url||f);
+    const name=(typeof f==='object'&&f.name)?f.name:('照片_'+(i+1)+'.jpg');
+    const type=(typeof f==='object'&&f.type)||'';
+    return {url,name,type};
+  }).filter(f=>f.url);
+  if(!list.length){showToast('⚠️ 沒有可顯示的檔案');return;}
+
+  document.getElementById('galTitle').textContent=title||'照片';
+  const grid=document.getElementById('galGrid');
+  grid.innerHTML='';
+  list.forEach((f,i)=>{
+    const isImg=(f.type&&f.type.startsWith('image/'))||f.url.startsWith('data:image')||/\.(jpg|jpeg|png|gif|webp)/i.test(f.url);
+    const cell=document.createElement('div');
+    cell.style.cssText='position:relative;aspect-ratio:1/1;border-radius:10px;overflow:hidden;background:var(--g100);border:1.5px solid var(--g200);cursor:pointer';
+    if(isImg){
+      const img=document.createElement('img');
+      img.src=f.url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+      img.onclick=()=>openLB(f.url,f.name);
+      cell.appendChild(img);
+    }else{
+      cell.style.cssText+=';display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px';
+      cell.innerHTML='<div style="font-size:1.8rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 6px;word-break:break-all">'+esc(f.name)+'</div>';
+      cell.onclick=()=>window.open(f.url,'_blank');
+    }
+    const pg=document.createElement('div');
+    pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.55);color:#fff;font-size:.62rem;font-weight:700;padding:1px 6px;border-radius:10px;pointer-events:none';
+    pg.textContent=i+1;
+    cell.appendChild(pg);
+    const dl=document.createElement('button');
+    dl.textContent='⬇️';
+    dl.title='下載這一張';
+    dl.style.cssText='position:absolute;bottom:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;border:none;cursor:pointer;font-size:.7rem';
+    dl.onclick=e=>{e.stopPropagation();const a=document.createElement('a');a.href=f.url;a.download=f.name;document.body.appendChild(a);a.click();a.remove();};
+    cell.appendChild(dl);
+    grid.appendChild(cell);
+  });
+
+  const dlAllBtn=document.getElementById('galDownloadAllBtn');
+  dlAllBtn.textContent='⬇️ 下載全部（打包）';
+  dlAllBtn.disabled=false;
+  dlAllBtn.onclick=async()=>{
+    dlAllBtn.disabled=true;dlAllBtn.textContent='打包中…';
+    try{
+      await loadJSZip();
+      const zip=new JSZip();
+      list.forEach((f,i)=>{
+        const m=f.url.match(/^data:(.+);base64,(.+)$/);
+        if(m){
+          zip.file(f.name||('檔案_'+(i+1)),m[2],{base64:true});
+        }
+      });
+      const blob=await zip.generateAsync({type:'blob'});
+      const a=document.createElement('a');
+      a.href=URL.createObjectURL(blob);
+      a.download=(title||'照片')+'.zip';
+      document.body.appendChild(a);a.click();a.remove();
+      showToast('✅ 已下載打包檔案');
+    }catch(e){
+      console.error(e);
+      showToast('⚠️ 打包下載失敗，請檢查網路連線');
+    }finally{
+      dlAllBtn.disabled=false;dlAllBtn.textContent='⬇️ 下載全部（打包）';
+    }
+  };
+
+  openModal('galleryModal');
+}
 
 // ══ LOGIN ════════════════════════════════════════════════
 let curRole='owner';
@@ -1017,6 +1115,7 @@ function setupApp(role){
   if(typeof initQuoteFileListeners==='function')initQuoteFileListeners();
   if(typeof initSurveyListeners==='function')initSurveyListeners();
   if(typeof initDesignFileListeners==='function')initDesignFileListeners();
+  if(typeof initMemoListeners==='function')initMemoListeners();
   initMultiClientChat();
   // 注意：手機底部導覽已由 buildBN() 統一處理（含案場返回鍵、即時 GROUPS 資料），
   // 不再呼叫舊版 initMobileNav()，避免兩套導覽互相覆蓋
