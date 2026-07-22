@@ -1,7 +1,7 @@
 {
-  "name": "zeju-backend",
-  "version": "1.0.0",
+  "name": "zeju-netlify-functions",
+  "private": true,
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "firebase-admin": "^12.0.0"
   }
 }
