@@ -20,7 +20,21 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 </head>
 <body>
-<div id="lb"><div id="lbx">✕</div><img id="lbimg" src="" alt=""></div>
+<!-- ══ PHOTO GALLERY MODAL（縮圖總覽：合約、設計圖、丈量共用，一次看到全部，可放大、可下載）══ -->
+<div class="mov" id="galleryModal">
+ <div class="modal" style="max-width:680px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+   <div class="mtit" id="galTitle" style="margin:0">照片</div>
+   <button class="mcl" data-close="galleryModal">✕</button>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:14px">
+   <button class="btn bg bsm" id="galDownloadAllBtn">⬇️ 下載全部（打包）</button>
+  </div>
+  <div id="galGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:10px;max-height:60vh;overflow-y:auto"></div>
+ </div>
+</div>
+
+<div id="lb"><div id="lbx">✕</div><button id="lbdl" onclick="downloadCurrentLB()" style="position:fixed;top:16px;right:64px;z-index:10000;background:rgba(255,255,255,.15);color:#fff;border:none;width:38px;height:38px;border-radius:50%;font-size:1.1rem;cursor:pointer">⬇️</button><img id="lbimg" src="" alt=""></div>
 <div id="toast"></div>
 <div id="ls">
  <div class="lbox">
@@ -1409,13 +1423,48 @@
  </div>
 </div>
 
-<!-- ══ SURVEY MODAL（現場丈量記錄，一個房間一筆，可拍照存現況）══ -->
+<!-- ══ MEMO MODAL（案場備忘錄：文字＋照片都可以，手機也能用）══ -->
+<div class="mov" id="memoModal">
+ <div class="modal" style="max-width:480px">
+  <div class="mtit">📝 新增備忘錄 <button class="mcl" data-close="memoModal">✕</button></div>
+
+  <div class="field"><label class="fl">內容</label><textarea class="fi" id="moText" rows="4" placeholder="想記什麼都可以，例如：業主希望浴室磁磚改米色、廠商說明天會晚一小時到…" style="resize:vertical"></textarea></div>
+
+  <div class="upz" id="moZone" style="border-style:solid;border-width:2px">
+   <span class="upz-ic">📷</span>
+   <div class="upz-title">附加照片（選填，可多張）</div>
+   <div class="upz-sub">文字、照片至少要有一個</div>
+  </div>
+  <input type="file" id="moFile" accept="image/*" multiple style="display:none">
+  <div id="moFileCard" style="display:none;margin:12px 0">
+   <div style="font-size:.82rem;font-weight:700;color:var(--g600);margin-bottom:8px" id="moFileCount">已上傳 0 張</div>
+   <div id="moPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px"></div>
+  </div>
+
+  <button class="btn bg bfull" id="moSaveBtn" style="padding:13px;font-size:.92rem;margin-top:6px">💾 儲存備忘錄</button>
+ </div>
+</div>
+
+<!-- ══ SURVEY MODAL（現場丈量記錄：主要是一次拍很多張照片，房間/尺寸都是選填，不用刻意分區塊）══ -->
 <div class="mov" id="surveyModal">
  <div class="modal" style="max-width:520px">
   <div class="mtit">📐 新增丈量記錄 <button class="mcl" data-close="surveyModal">✕</button></div>
 
-  <div class="field"><label class="fl">房間／區域名稱</label><input class="fi" id="svRoom" placeholder="例：主臥、客廳、廚房"></div>
+  <div class="upz" id="svZone" style="border-style:solid;border-width:2px">
+   <span class="upz-ic">📷</span>
+   <div class="upz-title">拍現場照片（可一次選很多張）</div>
+   <div class="upz-sub">整場一次拍完就好，不用一個房間分開建一筆</div>
+  </div>
+  <input type="file" id="svFile" accept="image/*" multiple style="display:none">
+  <div id="svFileCard" style="display:none;margin:12px 0">
+   <div style="font-size:.82rem;font-weight:700;color:var(--g600);margin-bottom:8px" id="svFileCount">已上傳 0 張</div>
+   <div id="svPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px"></div>
+  </div>
 
+  <div class="field"><label class="fl">名稱（選填，不填預設「丈量記錄」）</label><input class="fi" id="svRoom" placeholder="例：整體丈量、主臥"></div>
+  <div class="field"><label class="fl">備注（選填）</label><input class="fi" id="svNote" placeholder="例：有樑柱、插座位置、拆除範圍…"></div>
+
+  <div style="font-size:.78rem;font-weight:700;color:var(--g400);margin:14px 0 8px">尺寸換算坪數（選填，不用每次都填）</div>
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
    <div class="field"><label class="fl">長（公尺）</label><input class="fi" type="number" step="0.01" id="svLen" placeholder="0" oninput="updSurveyArea()"></div>
    <div class="field"><label class="fl">寬（公尺）</label><input class="fi" type="number" step="0.01" id="svWid" placeholder="0" oninput="updSurveyArea()"></div>
@@ -1423,19 +1472,6 @@
   <div style="background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--rs);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
    <span style="font-size:.82rem;font-weight:700;color:var(--gold-d)">換算坪數</span>
    <span style="font-size:1.05rem;font-weight:900;color:var(--gold-d)" id="svArea">0 坪</span>
-  </div>
-
-  <div class="field"><label class="fl">備注</label><input class="fi" id="svNote" placeholder="例：有樑柱、插座位置、拆除範圍…"></div>
-
-  <div class="upz" id="svZone" style="border-style:solid;border-width:2px">
-   <span class="upz-ic">📷</span>
-   <div class="upz-title">拍現況照片（可多張，選填）</div>
-   <div class="upz-sub">現場狀況、要拆除的地方，都可以拍起來存檔</div>
-  </div>
-  <input type="file" id="svFile" accept="image/*" multiple style="display:none">
-  <div id="svFileCard" style="display:none;margin:12px 0">
-   <div style="font-size:.82rem;font-weight:700;color:var(--g600);margin-bottom:8px" id="svFileCount">已上傳 0 張</div>
-   <div id="svPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px"></div>
   </div>
 
   <button class="btn bg bfull" id="svSaveBtn" style="padding:13px;font-size:.92rem;margin-top:6px">💾 儲存丈量記錄</button>
