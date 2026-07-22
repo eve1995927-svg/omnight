@@ -241,6 +241,17 @@
      <button class="btn bo bxs" id="clearCsBtn">🗑 清除對話</button>
     </div>
    </div>
+
+   <!-- LINE 真人對話記錄（只有這位客戶有連結 LINE 帳號時才會顯示）-->
+   <div id="lineThreadBox" style="display:none;border-bottom:1px solid var(--g200);background:#F7FFF9">
+    <div style="padding:8px 18px;font-size:.72rem;font-weight:800;color:#06C755;letter-spacing:.04em">📱 LINE 對話記錄（實際訊息）</div>
+    <div id="lineThreadList" style="max-height:220px;overflow-y:auto;padding:6px 18px 12px"></div>
+    <div style="display:flex;gap:8px;padding:0 18px 14px">
+     <input class="fi" id="lineReplyInput" placeholder="回覆這位客戶的 LINE…" style="flex:1;padding:9px 12px;font-size:.85rem">
+     <button class="btn bsm" id="lineReplyBtn" onclick="sendLineReply()" style="background:#06C755;color:#fff;white-space:nowrap">傳送到 LINE →</button>
+    </div>
+   </div>
+
    <div id="cs-chat" style="flex:1;min-height:0"></div>
   </div>
  </div>
