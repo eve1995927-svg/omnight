@@ -38,12 +38,14 @@ function importBackup(input){
 }
 
 // ══ Modal 事件委派 ══
+// 修正重點：原本點彈窗外面的背景（半透明那層）也會把彈窗關掉，
+// 很容易在填資料填到一半、手滑點到旁邊，整份資料就不見要重填。
+// 改成只能透過右上角的 ✕ 或明確的關閉按鈕才能關閉，點背景不會有反應。
 document.addEventListener('click',function(e){
   const cb=e.target.closest('[data-close]');
   if(cb){closeModal(cb.dataset.close);return;}
   const mcl=e.target.closest('.mcl');
   if(mcl){const mov=mcl.closest('.mov');if(mov)mov.classList.remove('show');return;}
-  if(e.target.classList?.contains('mov')){e.target.classList.remove('show');return;}
   // lightbox：僅 ✕ 按鈕可關閉（避免滑動瀏覽圖片時誤觸背景而關閉）
   if(e.target.id==='lbx'||e.target.closest('#lbx')){
     document.getElementById('lb')?.classList.remove('show');return;
@@ -273,21 +275,13 @@ async function genMktImg(){
     const rep=d.content?.map(c=>c.text||'').join('')||'';
     const svgM=rep.match(/<svg[\s\S]*?<\/svg>/i);
     if(svgM&&svgM[0].length>200&&canvas)canvas.innerHTML=svgM[0];
-    // 扣點：改成固定點數，不用照 token 算——每次生成一張圖，價格固定，好預期、好對帳
-    // 修正重點：這裡原本只有扣點，沒有記錄到帳單明細裡，導致「行銷圖片生成」這個項目
-    // 完全不會出現在 AI 帳單的使用明細，扣了點但帳上看不到是為什麼扣的。這裡一併補上記錄。
-    const pts=80;
-    await deductPoints(pts);
+    // 扣點
     const tu=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
-    const _now=new Date();
-    DB.push('billing',{
-      summary:'AI 行銷圖片生成 -'+pts+'點',
-      desc:'行銷圖片生成',role:'mk',
-      points:pts,tokens:tu,user:curRole||'owner',
-      ts:_now.toLocaleString('zh-TW'),
-      month:_now.getFullYear()+'-'+(_now.getMonth()+1).toString().padStart(2,'0'),
-      day:_now.toLocaleDateString('zh-TW'),
-    });
+    const pts=Math.min(500,Math.max(1,Math.round(tu/20)));
+    POINTS=Math.max(0,POINTS-pts);
+    localStorage.setItem('zeju_pts',POINTS);
+    if(typeof window.storage!=='undefined')window.storage.set('zeju_pts',String(POINTS)).catch(()=>{});
+    const pe=document.getElementById('ptsNum');if(pe)pe.textContent=POINTS.toLocaleString();
   }catch(err){
     console.log('img gen err',err);
     showToast(friendlyAIError(err)+'（已顯示預設圖片）');
@@ -315,7 +309,7 @@ function renderCtPhotos(){
       img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
       img.onclick=()=>openLB(url);wrap.appendChild(img);
     }else{
-      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
+      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+(p.name||'文件')+'</div></div>';
     }
     const pg=document.createElement('div');
     pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';
@@ -330,295 +324,6 @@ function renderCtPhotos(){
   addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
   addMore.onclick=()=>document.getElementById('ctFile')?.click();
   grid.appendChild(addMore);
-}
-
-// ══ 報價單檔案上傳（案場總覽 → 報價分頁）═══════════════════════
-function renderQfPhotos(){
-  const photos=Array.isArray(qfImgUrl)?qfImgUrl:[];
-  const fc=document.getElementById('qfFileCard');
-  const grid=document.getElementById('qfPhotoGrid');
-  const cnt=document.getElementById('qfFileCount');
-  if(!photos.length){if(fc)fc.style.display='none';return;}
-  if(fc)fc.style.display='block';
-  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
-  if(!grid)return;
-  grid.innerHTML='';
-  photos.forEach((p,i)=>{
-    const wrap=document.createElement('div');
-    wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
-    const url=p.url||p;
-    if(p.type&&p.type.startsWith('image/')||typeof url==='string'&&url.startsWith('data:image')){
-      const img=document.createElement('img');
-      img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
-      img.onclick=()=>openLB(url);wrap.appendChild(img);
-    }else{
-      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
-    }
-    const pg=document.createElement('div');
-    pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';
-    pg.textContent='P'+(i+1);
-    const del=document.createElement('button');
-    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center';
-    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(qfImgUrl))qfImgUrl.splice(i,1);renderQfPhotos();};
-    wrap.appendChild(pg);wrap.appendChild(del);grid.appendChild(wrap);
-  });
-  const addMore=document.createElement('div');
-  addMore.style.cssText='aspect-ratio:3/4;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;color:var(--g400);font-size:.75rem;font-weight:700;transition:all var(--ease)';
-  addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
-  addMore.onclick=()=>document.getElementById('qfFile')?.click();
-  grid.appendChild(addMore);
-}
-
-function initQuoteFileListeners(){
-  function bind(id,evt,fn){
-    const el=document.getElementById(id);
-    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
-  }
-  bind('qfZone','click',()=>document.getElementById('qfFile')?.click());
-  bind('qfFile','change',async e=>{
-    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
-    if(!Array.isArray(qfImgUrl))qfImgUrl=[];
-    const rf=async f=>{
-      if(f.type.startsWith('image/')){
-        const compressed=await compressImage(f,1600,0.75);
-        return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
-      }
-      return new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
-    };
-    qfImgUrl.push(...await Promise.all(files.map(rf)));
-    renderQfPhotos();
-  });
-  bind('qfDelFile','click',()=>{
-    qfImgUrl=[];
-    const fc=document.getElementById('qfFileCard');if(fc)fc.style.display='none';
-    const fi=document.getElementById('qfFile');if(fi)fi.value='';
-    const grid=document.getElementById('qfPhotoGrid');if(grid)grid.innerHTML='';
-  });
-  bind('qfSaveBtn','click',()=>{
-    const name=(document.getElementById('qfName')?.value||'').trim();
-    if(!name){showToast('⚠️ 請填入報價單名稱');return;}
-    if(!qfImgUrl.length){showToast('⚠️ 請至少上傳一張報價單照片或檔案');return;}
-    const p=curProjectId?getProject(curProjectId):null;
-    DB.push('quotes',{
-      name, caseN:p?.name||'', type:p?.type||'',
-      sections:[], fileUrls:qfImgUrl.slice(),
-      summary:'報價單 '+name+'（檔案上傳）', projectId:curProjectId||null
-    });
-    closeModal('qFileModal');
-    showToast('✅ 報價單已上傳！');
-    if(typeof renderProjectDetail==='function'&&curProjectId)renderProjectDetail(curProjectId,'quote');
-    if(typeof renderQTable==='function')renderQTable();
-  });
-}
-
-// ══ 丈量記錄照片上傳（案場總覽 → 丈量分頁）══════════════════════
-function renderSvPhotos(){
-  const photos=Array.isArray(svImgUrl)?svImgUrl:[];
-  const fc=document.getElementById('svFileCard');
-  const grid=document.getElementById('svPhotoGrid');
-  const cnt=document.getElementById('svFileCount');
-  if(!photos.length){if(fc)fc.style.display='none';return;}
-  if(fc)fc.style.display='block';
-  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
-  if(!grid)return;
-  grid.innerHTML='';
-  photos.forEach((p,i)=>{
-    const wrap=document.createElement('div');
-    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
-    const img=document.createElement('img');
-    img.src=p.url||p;img.style.cssText='width:100%;height:100%;object-fit:cover';
-    img.onclick=()=>openLB(p.url||p);wrap.appendChild(img);
-    const del=document.createElement('button');
-    del.style.cssText='position:absolute;top:3px;right:3px;width:20px;height:20px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.65rem';
-    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(svImgUrl))svImgUrl.splice(i,1);renderSvPhotos();};
-    wrap.appendChild(del);grid.appendChild(wrap);
-  });
-  const addMore=document.createElement('div');
-  addMore.style.cssText='aspect-ratio:1/1;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--g400);font-size:1.2rem';
-  addMore.textContent='＋';
-  addMore.onclick=()=>document.getElementById('svFile')?.click();
-  grid.appendChild(addMore);
-}
-
-function updSurveyArea(){
-  const len=parseFloat(document.getElementById('svLen')?.value)||0;
-  const wid=parseFloat(document.getElementById('svWid')?.value)||0;
-  const sqm=len*wid;
-  const ping=sqm/3.305785;
-  const el=document.getElementById('svArea');
-  if(el)el.textContent=(ping?ping.toFixed(2):'0')+' 坪'+(sqm?'（'+sqm.toFixed(2)+' 平方公尺）':'');
-}
-
-// ══ 設計圖／渲染圖上傳（案場總覽 → 設計圖分頁）══════════════════════
-function renderDfPhotos(){
-  const photos=Array.isArray(dfImgUrl)?dfImgUrl:[];
-  const fc=document.getElementById('dfFileCard');
-  const grid=document.getElementById('dfPhotoGrid');
-  const cnt=document.getElementById('dfFileCount');
-  if(!photos.length){if(fc)fc.style.display='none';return;}
-  if(fc)fc.style.display='block';
-  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
-  if(!grid)return;
-  grid.innerHTML='';
-  photos.forEach((p,i)=>{
-    const wrap=document.createElement('div');
-    wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
-    const url=p.url||p;
-    if(p.type&&p.type.startsWith('image/')||typeof url==='string'&&url.startsWith('data:image')){
-      const img=document.createElement('img');
-      img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
-      img.onclick=()=>openLB(url);wrap.appendChild(img);
-    }else{
-      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
-    }
-    const del=document.createElement('button');
-    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem';
-    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(dfImgUrl))dfImgUrl.splice(i,1);renderDfPhotos();};
-    wrap.appendChild(del);grid.appendChild(wrap);
-  });
-  const addMore=document.createElement('div');
-  addMore.style.cssText='aspect-ratio:3/4;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;color:var(--g400);font-size:.75rem;font-weight:700';
-  addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
-  addMore.onclick=()=>document.getElementById('dfFile')?.click();
-  grid.appendChild(addMore);
-}
-
-function initDesignFileListeners(){
-  function bind(id,evt,fn){
-    const el=document.getElementById(id);
-    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
-  }
-  bind('dfZone','click',()=>document.getElementById('dfFile')?.click());
-  bind('dfFile','change',async e=>{
-    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
-    if(!Array.isArray(dfImgUrl))dfImgUrl=[];
-    const rf=async f=>{
-      if(f.type.startsWith('image/')){
-        const compressed=await compressImage(f,1800,0.8);
-        return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
-      }
-      return new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
-    };
-    dfImgUrl.push(...await Promise.all(files.map(rf)));
-    renderDfPhotos();
-  });
-  bind('dfDelFile','click',()=>{
-    dfImgUrl=[];
-    const fc=document.getElementById('dfFileCard');if(fc)fc.style.display='none';
-    const fi=document.getElementById('dfFile');if(fi)fi.value='';
-    const grid=document.getElementById('dfPhotoGrid');if(grid)grid.innerHTML='';
-  });
-  bind('dfSaveBtn','click',()=>{
-    const name=(document.getElementById('dfName')?.value||'').trim();
-    if(!name){showToast('⚠️ 請填入名稱');return;}
-    if(!dfImgUrl.length){showToast('⚠️ 請至少上傳一張圖片或 PDF');return;}
-    if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入設計圖分頁再上傳');return;}
-    DB.push('design_files',{
-      projectId:curProjectId, name, cat:document.getElementById('dfCat')?.value||'render',
-      fileUrls:dfImgUrl.slice(),
-      summary:'設計圖 '+name,
-    });
-    closeModal('designFileModal');
-    showToast('✅ 已上傳！');
-    if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'design');
-  });
-}
-
-// ══ 備忘錄照片上傳（案場總覽 → 備忘錄分頁）══════════════════════
-function renderMoPhotos(){
-  const photos=Array.isArray(moImgUrl)?moImgUrl:[];
-  const fc=document.getElementById('moFileCard');
-  const grid=document.getElementById('moPhotoGrid');
-  const cnt=document.getElementById('moFileCount');
-  if(!photos.length){if(fc)fc.style.display='none';return;}
-  if(fc)fc.style.display='block';
-  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
-  if(!grid)return;
-  grid.innerHTML='';
-  photos.forEach((p,i)=>{
-    const wrap=document.createElement('div');
-    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);border:1.5px solid var(--g200)';
-    const img=document.createElement('img');
-    img.src=p.url||p;img.style.cssText='width:100%;height:100%;object-fit:cover';
-    wrap.appendChild(img);
-    const del=document.createElement('button');
-    del.style.cssText='position:absolute;top:3px;right:3px;width:20px;height:20px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.65rem';
-    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(moImgUrl))moImgUrl.splice(i,1);renderMoPhotos();};
-    wrap.appendChild(del);grid.appendChild(wrap);
-  });
-  const addMore=document.createElement('div');
-  addMore.style.cssText='aspect-ratio:1/1;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--g400);font-size:1.2rem';
-  addMore.textContent='＋';
-  addMore.onclick=()=>document.getElementById('moFile')?.click();
-  grid.appendChild(addMore);
-}
-
-function initMemoListeners(){
-  function bind(id,evt,fn){
-    const el=document.getElementById(id);
-    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
-  }
-  bind('moZone','click',()=>document.getElementById('moFile')?.click());
-  bind('moFile','change',async e=>{
-    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
-    if(!Array.isArray(moImgUrl))moImgUrl=[];
-    const rf=async f=>{
-      const compressed=await compressImage(f,1400,0.72);
-      return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
-    };
-    moImgUrl.push(...await Promise.all(files.map(rf)));
-    renderMoPhotos();
-  });
-  bind('moSaveBtn','click',()=>{
-    const text=(document.getElementById('moText')?.value||'').trim();
-    if(!text&&!moImgUrl.length){showToast('⚠️ 文字或照片至少要填一個');return;}
-    if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入備忘錄分頁再新增');return;}
-    DB.push('memos',{
-      projectId:curProjectId, text, photos:moImgUrl.slice(),
-      summary:'備忘錄 '+(text||'（照片）').slice(0,20),
-    });
-    closeModal('memoModal');
-    showToast('✅ 備忘錄已儲存！');
-    if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'memo');
-  });
-}
-
-function initSurveyListeners(){
-  function bind(id,evt,fn){
-    const el=document.getElementById(id);
-    if(el&&!el['_b_'+evt]){el['_b_'+evt]=true;el.addEventListener(evt,fn);}
-  }
-  bind('svZone','click',()=>document.getElementById('svFile')?.click());
-  bind('svFile','change',async e=>{
-    const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
-    if(!Array.isArray(svImgUrl))svImgUrl=[];
-    const rf=async f=>{
-      const compressed=await compressImage(f,1600,0.75);
-      return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
-    };
-    svImgUrl.push(...await Promise.all(files.map(rf)));
-    renderSvPhotos();
-  });
-  bind('svSaveBtn','click',()=>{
-    // 修正重點：實際使用情境是整場一次拍完，不是一個房間分開存一筆，
-    // 房間名稱改成選填（沒填就用「丈量記錄」+ 時間當預設名稱），改成要求至少要有照片才能存
-    if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入丈量分頁再新增');return;}
-    if(!svImgUrl.length){showToast('⚠️ 請至少拍一張照片');return;}
-    const roomInput=(document.getElementById('svRoom')?.value||'').trim();
-    const room=roomInput||('丈量記錄 '+new Date().toLocaleDateString('zh-TW'));
-    const len=parseFloat(document.getElementById('svLen')?.value)||0;
-    const wid=parseFloat(document.getElementById('svWid')?.value)||0;
-    const area=len&&wid?+(len*wid/3.305785).toFixed(2):0;
-    DB.push('measurements',{
-      projectId:curProjectId, room, length:len, width:wid, area,
-      note:(document.getElementById('svNote')?.value||'').trim(),
-      fileUrls:svImgUrl.slice(),
-      summary:'丈量 '+room,
-    });
-    closeModal('surveyModal');
-    showToast('✅ 丈量記錄已儲存！');
-    if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'survey');
-  });
 }
 
 // ══ 行銷貼文生成 ══════════════════════════════════════════
@@ -645,7 +350,7 @@ async function genPost(){
   const tp=document.getElementById('mkTp')?.value||'案例分享 — 日式風格';
   const sp=document.getElementById('mkSp');if(sp)sp.classList.add('show');
   const p=SYS.mk+'\n\n請幫我寫一篇'+pl+'的'+tp+'行銷貼文，要有吸引力、使用繁體中文、加上適當的emoji和hashtag，大約200字。';
-  try{const rep=await callAI('mk',p,3000,60,'行銷貼文生成');showPost(pl,tp,rep);}
+  try{const rep=await callAI('mk',p,3000);showPost(pl,tp,rep);}
   catch(err){
     console.log('genPost err',err);
     showToast(friendlyAIError(err)+'（已套用預設文案，可手動修改）');
@@ -851,9 +556,8 @@ async function uploadLocalToFirebase(){
       if(raw){
         const data=JSON.parse(raw);
         if(Array.isArray(data)&&data.length>0){
-          const keyed=_normalizeToKeyedObj(data);
-          await _fbDB.ref('zeju_data/'+k).set(keyed);
-          _cache[k]=keyed;
+          await _fbDB.ref('zeju_data/'+k).set(data);
+          _cache[k]=data;
           count++;
         }
       }
@@ -910,9 +614,9 @@ function setVType(type){
 // ══ 澤居報價庫 Modal ══════════════════════════════════
 function openZejuQuoteModal(){
   const n=document.getElementById('adN')?.value||'';
-  const pid=document.getElementById('adCase')?.value||'';
+  const c=document.getElementById('adCase')?.value||document.getElementById('adAd')?.value||'';
   const nEl=document.getElementById('zqName');if(nEl)nEl.value=n?n+' 報價':'';
-  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('zqCase'),pid);
+  const cEl=document.getElementById('zqCase');if(cEl)cEl.value=c;
   const noEl=document.getElementById('zqNote');if(noEl)noEl.value='';
   openModal('zejuQuoteModal');
 }
@@ -954,9 +658,8 @@ function renderZejuQuotes(filter){
         renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
         if(typeof updProfitBar==='function')updProfitBar();
         if(q.clientName){const el=document.getElementById('adN');if(el)el.value=q.clientName;}
-        // 報價庫是可重複套用的範本，裡面存的案場名稱不一定對應到現在系統裡的真實案場，
-        // 所以這裡不再自動填案場選單，改成請使用者自己選要套用到哪個案場，比較不會選錯
-        showToast('✅ 已載入「'+q.name+'」！請記得選擇案場');
+        if(q.caseN){const el=document.getElementById('adCase');if(el)el.value=q.caseN;}
+        showToast('✅ 已載入「'+q.name+'」！');
       },false);
     });
     row.querySelector('[data-zqdel]').addEventListener('click',e=>{
@@ -988,14 +691,12 @@ function updZejuCaseFilter(){
 document.getElementById('saveZejuQuoteBtn')?.addEventListener('click',()=>{
   const name=(document.getElementById('zqName')?.value||'').trim();
   if(!name){showToast('⚠️ 請填入報價名稱');return;}
-  const pid=document.getElementById('zqCase')?.value||'';
-  const proj=pid?DB.get('projects').find(p=>String(p._id)===String(pid)):null;
-  const caseN=proj?.name||'';
+  const caseN=(document.getElementById('zqCase')?.value||'').trim();
   const note=(document.getElementById('zqNote')?.value||'').trim();
   const total=calcAll(adSections);
   DB.push('zeju_quotes',{
     summary:'澤居報價 '+name,
-    name,caseN,note,projectId:pid?parseInt(pid):null,
+    name,caseN,note,
     sections:JSON.parse(JSON.stringify(adSections)),
     total,
     clientName:document.getElementById('adN')?.value||'',
@@ -1022,13 +723,16 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
   const phone=(document.getElementById('newClientPhone')?.value||'').trim();
   const addr=(document.getElementById('newClientAddr')?.value||'').trim();
   const client={
+    _id:Date.now(),
     name,phone,addr,
     created:new Date().toLocaleString('zh-TW')
   };
-  const [newClient]=DB.push('clients',client);
+  const clients=DB.get('clients');
+  clients.unshift(client);
+  DB.set('clients',clients);
   closeModal('addClientModal');
   renderClientList();
-  if(typeof switchClient==='function') switchClient(newClient._id);
+  if(typeof switchClient==='function') switchClient(client._id);
   showToast('✅ 客戶「'+name+'」已建立！');
 });
 

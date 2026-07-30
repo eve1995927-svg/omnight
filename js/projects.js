@@ -507,10 +507,12 @@ function showDayProjectsPopover(dateStr,projects){
     '</div>';
   }).join('');
   box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:18px 20px;max-width:360px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
-    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+      '<div style="font-weight:900;font-size:.92rem">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
+      '<button onclick="document.getElementById(\'_dayPopover\').remove()" style="background:none;border:none;color:var(--g400);font-size:1.1rem;cursor:pointer;line-height:1;padding:2px 4px">✕</button>'+
+    '</div>'+
     rows+
     '</div>';
-  box.addEventListener('click',()=>box.remove());
   box.querySelectorAll('.pc-pop-row').forEach(row=>{
     row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
     row.addEventListener('mouseleave',()=>row.style.background='');
@@ -799,8 +801,8 @@ function renderProjectDetail(id, activeTab='overview'){
   }
 
   // Tab 切換
-  const tabs=['overview','memo','survey','design','quote','vendor','contract','ledger','progress'];
-  const tabLabels={overview:'📊 總覽',memo:'📝 備忘錄',survey:'📐 丈量',design:'🖼️ 設計圖',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
+  const tabs=['overview','survey','quote','vendor','contract','ledger','progress'];
+  const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
     tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
@@ -812,9 +814,7 @@ function renderProjectDetail(id, activeTab='overview'){
 
   switch(activeTab){
     case 'overview': renderProjOverview(id,p,content); break;
-    case 'memo':     renderProjMemo(id,p,content);      break;
     case 'survey':   renderProjSurvey(id,p,content);   break;
-    case 'design':   renderProjDesignFiles(id,p,content); break;
     case 'quote':    renderProjQuotes(id,p,content);   break;
     case 'vendor':   renderProjVendors(id,p,content);  break;
     case 'contract': renderProjContract(id,p,content); break;
@@ -931,96 +931,31 @@ function openQuoteFileUpload(projectId){
 function renderProjSurvey(id,p,c){
   const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
   const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
-  const totalPhotos=items.reduce((s,m)=>s+(m.fileUrls||[]).length,0);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-weight:800;color:var(--g700)">丈量記錄（共 ${totalPhotos} 張照片）</div>
+        <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
         ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
       </div>
-      <button class="btn bg bsm" onclick="openSurveyModal(${id})">📷 新增丈量照片</button>
+      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
     </div>
-    ${items.length?items.map(m=>{
-      const photos=m.fileUrls||[];
-      const previewCount=6;
-      return `
+    ${items.length?items.map(m=>`
       <div class="card" style="margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start">
           <div style="flex:1;min-width:0">
-            <div style="font-weight:800;font-size:.92rem">${esc(m.room||'丈量記錄')}</div>
+            <div style="font-weight:800;font-size:.92rem">${esc(m.room||'未命名區域')}</div>
             <div style="font-size:.78rem;color:var(--g400);margin-top:3px">
-              ${m.length&&m.width?`${m.length}m × ${m.width}m　=　<strong style="color:var(--gold-d)">${(m.area||0).toFixed(2)} 坪</strong>　·　`:''}${photos.length} 張照片
+              ${m.length&&m.width?`${m.length}m × ${m.width}m　=　`:''}<strong style="color:var(--gold-d)">${(m.area||0).toFixed(2)} 坪</strong>
             </div>
             ${m.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(m.note)}</div>`:''}
           </div>
           <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
         </div>
-        ${photos.length?`
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px;cursor:pointer" onclick="openSurveyGallery(${m._id})">
-            ${photos.slice(0,previewCount).map(f=>`<div style="position:relative;aspect-ratio:1/1"><img src="${esc(f.url||f)}" style="width:100%;height:100%;object-fit:cover;border-radius:8px;border:1px solid var(--g200)"></div>`).join('')}
-            ${photos.length>previewCount?`<div style="aspect-ratio:1/1;border-radius:8px;background:var(--g100);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:var(--g500)">+${photos.length-previewCount}</div>`:''}
-          </div>
-          <div style="font-size:.72rem;color:var(--gold-d);font-weight:700;margin-top:8px">🔍 點照片查看全部、放大、下載 →</div>`:''}
-      </div>`;
-    }).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「📷 新增丈量照片」，整場一次拍完就好，不用一個房間分開建</div></div>'}`;
-}
-
-// ── 案場備忘錄 Tab（文字或照片都可以，手機也能用，就是一個簡單的記事流水帳）───────
-function renderProjMemo(id,p,c){
-  const items=DB.get('memos').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
-  c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-weight:800;color:var(--g700)">備忘錄（${items.length}）</div>
-      <button class="btn bg bsm" onclick="openMemoModal(${id})">📝 新增備忘錄</button>
-    </div>
-    ${items.length?items.map(m=>{
-      const photos=m.photos||[];
-      return `
-      <div class="card" style="margin-bottom:10px;padding:12px 14px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-          <div style="font-size:.72rem;color:var(--g400)">${esc(m._ts||'')}</div>
-          <button onclick="deleteMemo(${m._id},${id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;flex-shrink:0">🗑</button>
-        </div>
-        ${m.text?`<div style="font-size:.88rem;color:var(--g800);margin-top:6px;white-space:pre-wrap;line-height:1.6">${esc(m.text)}</div>`:''}
-        ${photos.length?`
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px;cursor:pointer" onclick="openMemoGallery(${m._id})">
-            ${photos.slice(0,6).map(f=>`<img src="${esc(f.url||f)}" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;border:1px solid var(--g200)">`).join('')}
-            ${photos.length>6?`<div style="aspect-ratio:1/1;border-radius:8px;background:var(--g100);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:800;color:var(--g500)">+${photos.length-6}</div>`:''}
+        ${(m.fileUrls||[]).length?`
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px">
+            ${m.fileUrls.map(f=>`<img src="${esc(f.url||f)}" onclick="openLB('${esc(f.url||f)}')" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}
           </div>`:''}
-      </div>`;
-    }).join(''):'<div class="empty-state"><div class="es-ic">📝</div><div class="es-t">尚無備忘錄</div><div class="es-s">業主的臨時要求、廠商的口頭約定，隨手記下來，文字或照片都可以</div></div>'}`;
-}
-
-function openMemoModal(projectId){
-  curProjectId=projectId;
-  moImgUrl=[];
-  const textEl=document.getElementById('moText');if(textEl)textEl.value='';
-  const fc=document.getElementById('moFileCard');if(fc)fc.style.display='none';
-  const grid=document.getElementById('moPhotoGrid');if(grid)grid.innerHTML='';
-  const fi=document.getElementById('moFile');if(fi)fi.value='';
-  openModal('memoModal');
-}
-
-function deleteMemo(memoId,projectId){
-  confirmAction('確定刪除這則備忘錄？',()=>{
-    DB.softDel('memos',memoId);
-    renderProjectDetail(projectId,'memo');
-    showToast('✅ 已刪除');
-  });
-}
-
-function openMemoGallery(memoId){
-  const m=DB.get('memos').find(r=>r._id===memoId);if(!m)return;
-  const photos=m.photos||[];
-  if(!photos.length){showToast('⚠️ 此則備忘錄沒有照片');return;}
-  openPhotoGallery('備忘錄照片',photos);
-}
-
-function openSurveyGallery(measureId){
-  const m=DB.get('measurements').find(r=>r._id===measureId);if(!m)return;
-  const photos=m.fileUrls||[];
-  if(!photos.length){showToast('⚠️ 此筆記錄沒有照片');return;}
-  openPhotoGallery(m.room||'丈量記錄',photos);
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「＋新增丈量」，一個房間量一次，之後報價可以直接參考</div></div>'}`;
 }
 
 function openSurveyModal(projectId){
@@ -1041,62 +976,6 @@ function deleteSurvey(measureId,projectId){
     renderProjectDetail(projectId,'survey');
     showToast('✅ 已刪除');
   });
-}
-
-// ── 案場設計圖／渲染圖 Tab（SketchUp、AutoCAD、空間魔法師匯出的圖，不是上傳原始檔案）───
-const DESIGN_CAT_LABEL={render:'🖼️ 渲染圖',plan:'📐 平面／CAD 圖面',other:'📄 其他'};
-
-function renderProjDesignFiles(id,p,c){
-  const items=DB.get('design_files').filter(f=>f.projectId===id&&!f.deleted).sort((a,b)=>b._id-a._id);
-  c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-      <div style="font-weight:800;color:var(--g700)">設計圖／渲染圖（${items.length}）</div>
-      <button class="btn bg bsm" onclick="openDesignFileUpload(${id})">🖼️ 上傳圖檔</button>
-    </div>
-    ${items.length?items.map(f=>{
-      const thumb=(f.fileUrls&&f.fileUrls[0])?(f.fileUrls[0].url||f.fileUrls[0]):null;
-      const isImg=thumb&&(thumb.startsWith('data:image')||/\.(jpg|jpeg|png|gif|webp)/i.test(thumb));
-      return `
-      <div class="card" style="margin-bottom:10px;cursor:pointer;padding:12px" onclick="previewDesignFiles(${f._id})">
-        <div style="display:flex;gap:12px;align-items:center">
-          <div style="width:56px;height:56px;border-radius:10px;overflow:hidden;background:var(--g100);flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--g200)">
-            ${isImg?'<img src="'+esc(thumb)+'" style="width:100%;height:100%;object-fit:cover">':'<span style="font-size:1.4rem">📄</span>'}
-          </div>
-          <div style="flex:1;min-width:0">
-            <div style="font-weight:800;font-size:.88rem">${esc(f.name||'未命名圖檔')} <span style="font-size:.66rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800;margin-left:4px">${DESIGN_CAT_LABEL[f.cat]||f.cat||''}</span></div>
-            <div style="font-size:.72rem;color:var(--g400);margin-top:3px">${(f.fileUrls||[]).length} 個檔案・${esc(f._ts||'')}</div>
-          </div>
-        </div>
-      </div>`;
-    }).join(''):'<div class="empty-state"><div class="es-ic">🖼️</div><div class="es-t">尚無設計圖／渲染圖</div><div class="es-s">SketchUp、AutoCAD、空間魔法師匯出成圖片或 PDF 後上傳，業主分享頁也看得到</div></div>'}`;
-}
-
-function openDesignFileUpload(projectId){
-  curProjectId=projectId;
-  dfImgUrl=[];
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-  set('dfName','');set('dfCat','render');
-  const fc=document.getElementById('dfFileCard');if(fc)fc.style.display='none';
-  const grid=document.getElementById('dfPhotoGrid');if(grid)grid.innerHTML='';
-  const fi=document.getElementById('dfFile');if(fi)fi.value='';
-  openModal('designFileModal');
-}
-
-function deleteDesignFile(fileId,projectId){
-  confirmAction('確定刪除這份設計圖？',()=>{
-    DB.softDel('design_files',fileId);
-    renderProjectDetail(projectId,'design');
-    showToast('✅ 已刪除');
-  });
-}
-
-// 檢視設計圖／渲染圖：跟合約用同一套燈箱邏輯（圖片用 img、PDF 用 iframe，都在頁面裡顯示，
-// 不會像用連結開新分頁那樣被瀏覽器擋掉）
-function previewDesignFiles(id){
-  const f=DB.get('design_files').find(r=>r._id===id);if(!f)return;
-  const files=f.fileUrls||[];
-  if(!files.length){showToast('⚠️ 此檔案尚未上傳內容');return;}
-  openPhotoGallery(f.name||'設計圖',files);
 }
 
 // 修正重點：這個函式原本在案場總覽的報價分頁裡被呼叫（點開一份已存在的報價單），
@@ -1328,35 +1207,15 @@ function openProjLedgerModal(projectId, dir){
 function renderProjProgress(id,p,c){
   const items=DB.get('progress').filter(r=>r.projectId===id).sort((a,b)=>a._id-b._id);
   const nextItem=items.find(x=>!x.done);
-  const vReports=DB.get('vendor_reports').filter(r=>r.projectId===id&&!r.deleted).sort((a,b)=>b._id-a._id);
 
   c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">工程進度</div>
-      <div style="display:flex;gap:8px">
-        <button class="btn bo bsm" onclick="shareVendorReportLink(${id})">📲 分享回報連結給廠商</button>
-        <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">📷 新增進度</button>
-      </div>
+      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">📷 新增進度</button>
     </div>
     ${nextItem?`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);margin-bottom:18px">
       <span style="font-size:1.4rem">👉</span>
       <div><div style="font-size:.7rem;font-weight:900;color:var(--gold-d);letter-spacing:.06em">下一步</div><div style="font-weight:800;color:var(--g800);font-size:.92rem">${esc(nextItem.text)}</div></div>
-    </div>`:''}
-    ${vReports.length?`
-    <div style="margin-bottom:20px">
-      <div style="font-size:.78rem;font-weight:900;color:var(--g400);margin-bottom:10px;letter-spacing:.06em">📷 廠商回報（${vReports.length}）</div>
-      ${vReports.map(r=>`
-        <div class="card" style="padding:12px 14px;margin-bottom:10px">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
-            <div>
-              <div style="font-weight:800;font-size:.86rem">${esc(r.vendorName||'廠商')} <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800;margin-left:4px">${esc(r.cat||'')}</span></div>
-              <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(r._ts||'')}</div>
-            </div>
-            <button onclick="deleteVendorReport(${r._id},${id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem">🗑</button>
-          </div>
-          ${r.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(r.note)}</div>`:''}
-          ${(r.photos||[]).length?`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px">${r.photos.map(ph=>`<img src="${esc(ph.url||ph)}" onclick="openLB('${esc(ph.url||ph)}')" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}</div>`:''}
-        </div>`).join('')}
     </div>`:''}
     <div style="position:relative;padding-left:20px">
       ${items.length?items.map((item,i)=>`
@@ -1424,7 +1283,6 @@ function openAddProgressEntry(projectId, editId){
       <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
     </div>
   </div>`;
-  box.addEventListener('click',()=>box.remove());
   document.body.appendChild(box);
 
   let photoUrl=existing?.photoUrl||null;
@@ -1510,6 +1368,8 @@ function openVendorPay(vendorId){
      <button onclick="document.getElementById('_payAmt').value=${remain}" style="padding:6px 12px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:800">付清 NT$${remain.toLocaleString()}</button>
     </div>
     <input type="number" id="_payAmt" placeholder="輸入金額" value="${remain}" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
+    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:6px">付款日期</div>
+    <input type="date" id="_payDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
     <input type="text" id="_payNote" placeholder="備注（例：第二期款）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
 
     <div style="display:flex;gap:8px">
@@ -1517,7 +1377,6 @@ function openVendorPay(vendorId){
      <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">✅ 確認付款並記帳</button>
     </div>
    </div>`;
-  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 }
 
@@ -1526,7 +1385,10 @@ function confirmVendorPay(){
   const amt=parseInt(document.getElementById('_payAmt')?.value)||0;
   if(amt<=0){showToast('⚠️ 請輸入付款金額');return;}
   const note=document.getElementById('_payNote')?.value?.trim()||'';
-  const today=new Date().toISOString().split('T')[0];
+  // 修正重點：付款日期原本是寫死抓「今天」，沒辦法補登之前的付款紀錄。
+  // 改成讀取畫面上的日期欄位（預設還是今天，但可以自己改成實際付款的那天）。
+  const dateInput=document.getElementById('_payDate')?.value;
+  const today=dateInput||new Date().toISOString().split('T')[0];
 
   // 1. 記錄到廠商付款歷史
   const payments=[...(v.payments||[]),{amount:amt,date:today,note}];
@@ -1572,7 +1434,6 @@ function quickExpense(cat){
      <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">💾 記帳</button>
     </div>
    </div>`;
-  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
   setTimeout(()=>document.getElementById('_qeAmt')?.focus(),100);
 }
@@ -1597,72 +1458,6 @@ function saveQuickExpense(cat){
 
 
 // ══ 分享給業主（產生 QR Code + 連結）════════════════════
-// 廠商回報連結：用獨立的 token（跟業主分享連結分開），
-// 這樣萬一業主連結外流，不會連帶讓外人也能冒充廠商上傳照片；
-// 重新產生其中一組連結，也不會影響到另一組還在使用中
-function shareVendorReportLink(id){
-  const p=getProject(id);if(!p)return;
-  if(!p.vendorToken){
-    const vendorToken='vr'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
-    DB.upd('projects',id,{vendorToken});
-  }
-  renderVendorShareBox(id);
-}
-
-function renderVendorShareBox(id){
-  const p=getProject(id);if(!p)return;
-  const base=location.origin+location.pathname.replace(/[^/]*$/,'');
-  const url=base+'vendor-report.html?c='+p.vendorToken;
-
-  const old=document.getElementById('_vrShareBox');if(old)old.remove();
-  const box=document.createElement('div');
-  box.id='_vrShareBox';
-  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
-  box.innerHTML=`
-   <div style="background:var(--w);border-radius:var(--rl);padding:26px;max-width:400px;width:100%;box-shadow:var(--sh4);text-align:center" onclick="event.stopPropagation()">
-    <div style="font-size:1.1rem;font-weight:900;color:var(--g800);margin-bottom:4px">📲 分享回報連結給廠商</div>
-    <div style="font-size:.82rem;color:var(--g400);margin-bottom:18px">${esc(p.name)}</div>
-    <div id="_vrQrImg" style="width:200px;height:200px;margin:0 auto 18px;background:var(--g50);border-radius:var(--rs);display:flex;align-items:center;justify-content:center;padding:10px"></div>
-    <div style="font-size:.78rem;color:var(--g500);margin-bottom:8px;text-align:left;font-weight:700">廠商回報專屬連結</div>
-    <div style="display:flex;gap:6px;margin-bottom:12px">
-      <input id="_vrShareUrl" readonly value="${url}" style="flex:1;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:monospace;background:var(--g50);color:var(--g600);min-width:0">
-      <button onclick="navigator.clipboard.writeText('${url}').then(()=>showToast('✅ 已複製連結'))" style="padding:10px 14px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">複製</button>
-    </div>
-    <button id="_vrShareRegenBtn" style="width:100%;padding:9px;border:1.5px solid var(--bad-bd);border-radius:var(--rs);background:var(--bad-bg);color:var(--bad);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">🔄 重新產生連結（舊連結會立刻失效）</button>
-    <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 廠商不用登入，打開連結就能直接拍照上傳進度，會出現在這個案場的「進度」分頁裡。這組連結跟分享給業主的連結是分開的，互不影響。</div>
-    <button onclick="document.getElementById('_vrShareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
-   </div>`;
-  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
-  document.body.appendChild(box);
-
-  document.getElementById('_vrShareRegenBtn').addEventListener('click',()=>{
-    confirmAction('重新產生連結後，舊的QR Code和連結會立刻失效，廠商要用新的才能上傳。確定要換一組嗎？',()=>{
-      const newToken='vr'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4);
-      DB.upd('projects',id,{vendorToken:newToken});
-      showToast('✅ 已產生新連結，記得重新傳給廠商');
-      renderVendorShareBox(id);
-    });
-  });
-
-  const qrDiv=document.getElementById('_vrQrImg');
-  if(qrDiv){
-    const img=document.createElement('img');
-    img.src='https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=0&data='+encodeURIComponent(url);
-    img.style.cssText='width:100%;height:100%;object-fit:contain';
-    img.alt='QR Code';
-    img.onerror=()=>{qrDiv.innerHTML='<div style="font-size:.75rem;color:var(--g400)">QR 產生失敗<br>請直接複製連結</div>';};
-    qrDiv.innerHTML='';qrDiv.appendChild(img);
-  }
-}
-
-function deleteVendorReport(reportId,projectId){
-  confirmAction('確定刪除這筆廠商回報？',()=>{
-    DB.softDel('vendor_reports',reportId);
-    renderProjectDetail(projectId,'progress');
-    showToast('✅ 已刪除');
-  });
-}
-
 function shareProjectToClient(id){
   const p=getProject(id);if(!p)return;
   // 確保有 token
@@ -1696,7 +1491,6 @@ function renderShareBox(id){
     <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 業主打開連結就能看到：施工進度、收款紀錄、合約摘要。<br>看不到你的成本內帳，安全放心。</div>
     <button onclick="document.getElementById('_shareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
    </div>`;
-  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 
   document.getElementById('_shareRegenBtn').addEventListener('click',()=>{

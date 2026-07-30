@@ -713,15 +713,8 @@ async function apiTestConn(){
 function openModal(id){const el=document.getElementById(id);if(el)el.classList.add('show');}
 function closeModal(id){const el=document.getElementById(id);if(el)el.classList.remove('show');}
 
-// ESC 鍵關閉目前開啟的彈窗（官方 .mov 點外部關閉的機制已存在於 misc.js，這裡只補上 ESC 鍵支援，
-// 同時涵蓋自訂輕量彈窗，如快速新增分類、進度照片等等）
-document.addEventListener('keydown',(e)=>{
-  if(e.key!=='Escape')return;
-  const openMov=document.querySelector('.mov.show');
-  if(openMov){openMov.classList.remove('show');return;}
-  const liteBox=document.querySelector('[id^="_"][id$="Box"]');
-  if(liteBox)liteBox.remove();
-});
+// 修正重點：原本按 ESC 鍵也會把彈窗關掉，這次一起拿掉——
+// 現在彈窗只能透過右上角的 ✕ 或明確的關閉/取消按鈕關閉，避免填資料填到一半不小心按到 ESC 整份不見。
 
 // ── 確認對話（替代 confirm()，不阻斷 UI）───────────────────
 function confirmAction(msg,onConfirm,danger=true){

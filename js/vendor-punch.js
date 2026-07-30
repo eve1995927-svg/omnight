@@ -599,6 +599,18 @@ function renderVendors(filter){
 
 // ══ 打卡系統 ══════════════════════════════════════════════
 let punchInterval=null;
+// 兩個座標之間的距離（公尺），拿來算「員工現在距離工地多遠」
+function haversineDist(lat1,lng1,lat2,lng2){
+  const R=6371000;
+  const toRad=d=>d*Math.PI/180;
+  const dLat=toRad(lat2-lat1),dLng=toRad(lng2-lng1);
+  const a=Math.sin(dLat/2)**2+Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+let punchPhotoData=null; // 打卡拍照佐證（base64），選填
+let punchCurPos=null; // 目前定位座標，算距離用
+
 function initPunchClock(){
   const el=document.getElementById('punchTime');const de=document.getElementById('punchDate');
   if(!el)return;
@@ -610,6 +622,152 @@ function initPunchClock(){
   tick();if(punchInterval)clearInterval(punchInterval);punchInterval=setInterval(tick,1000);
   renderPunchRec();updatePunchBtn();
   if(typeof renderMyLeaveStatus==='function')renderMyLeaveStatus();
+
+  // 案場選單：帶入之前用過的那個案場，不用每次重選
+  const sel=document.getElementById('punchProjectSel');
+  if(sel&&typeof buildProjectSelect==='function'){
+    const lastId=localStorage.getItem('zeju_last_punch_proj');
+    buildProjectSelect(sel,lastId,true);
+    if(!sel._geoBound){
+      sel._geoBound=true;
+      sel.addEventListener('change',updatePunchGeoCard);
+    }
+  }
+
+  // 先取得一次定位，用來算距離；拿不到定位就跳過，不影響打卡本身
+  if(navigator.geolocation&&!punchCurPos){
+    navigator.geolocation.getCurrentPosition(
+      pos=>{punchCurPos={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy};updatePunchGeoCard();},
+      ()=>{},
+      {timeout:6000}
+    );
+  } else {
+    updatePunchGeoCard();
+  }
+
+  initPunchPhotoCapture();
+  initPunchMapBtn();
+}
+
+// 算目前位置距離選定案場多遠，跟案場設定的圍籬半徑比較，顯示狀態（跟截圖那款系統同樣的邏輯）
+function updatePunchGeoCard(){
+  const card=document.getElementById('punchGeoCard');
+  const sel=document.getElementById('punchProjectSel');
+  if(!card||!sel)return;
+  const pid=sel.value;
+  if(!pid||!punchCurPos){card.style.display='none';return;}
+  const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
+  if(!proj||proj.lat==null||proj.lng==null){
+    card.style.display='block';
+    document.getElementById('punchDistVal').textContent='尚無座標';
+    document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場還沒有地址座標，請請老闆到案場總覽補上地址</span>';
+    document.getElementById('punchAccuracyVal').textContent='';
+    return;
+  }
+  const dist=haversineDist(punchCurPos.lat,punchCurPos.lng,proj.lat,proj.lng);
+  const radius=proj.geofenceRadius||80;
+  const inFence=dist<=radius;
+  card.style.display='block';
+  document.getElementById('punchDistVal').textContent=(dist<1000?Math.round(dist)+'m':((dist/1000).toFixed(2)+'km'));
+  document.getElementById('punchFenceVal').innerHTML=inFence
+    ?'<span style="color:var(--ok)">✓ 在圍籬範圍內</span>'
+    :'<span style="color:var(--warn,#B86820)">⚠ 超出圍籬（半徑'+radius+'m）</span>';
+  document.getElementById('punchAccuracyVal').textContent=punchCurPos.acc?('定位精度 ±'+Math.round(punchCurPos.acc)+'m'):'';
+}
+
+// 拍照佐證
+function initPunchPhotoCapture(){
+  const btn=document.getElementById('punchPhotoBtn');
+  const file=document.getElementById('punchPhotoFile');
+  const del=document.getElementById('punchPhotoDel');
+  if(btn&&!btn._bound){
+    btn._bound=true;
+    btn.addEventListener('click',()=>file?.click());
+  }
+  if(file&&!file._bound){
+    file._bound=true;
+    file.addEventListener('change',async e=>{
+      const f=e.target.files[0];if(!f)return;e.target.value='';
+      const compressed=await compressImage(f,1200,0.7);
+      punchPhotoData=compressed||null;
+      if(punchPhotoData){
+        document.getElementById('punchPhotoImg').src=punchPhotoData;
+        document.getElementById('punchPhotoPreview').style.display='block';
+      }
+    });
+  }
+  if(del&&!del._bound){
+    del._bound=true;
+    del.addEventListener('click',()=>{
+      punchPhotoData=null;
+      document.getElementById('punchPhotoPreview').style.display='none';
+      const f=document.getElementById('punchPhotoFile');if(f)f.value='';
+    });
+  }
+}
+
+// 地圖總覽：顯示所有有座標的案場位置
+function initPunchMapBtn(){
+  const btn=document.getElementById('punchMapBtn');
+  if(btn&&!btn._bound){
+    btn._bound=true;
+    btn.addEventListener('click',openPunchMap);
+  }
+}
+
+let _leafletLoading=null;
+function loadLeaflet(){
+  if(window.L)return Promise.resolve();
+  if(_leafletLoading)return _leafletLoading;
+  _leafletLoading=new Promise((res,rej)=>{
+    const css=document.createElement('link');
+    css.rel='stylesheet';css.href='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const sc=document.createElement('script');
+    sc.src='https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    sc.onload=res;sc.onerror=rej;
+    document.head.appendChild(sc);
+  });
+  return _leafletLoading;
+}
+
+async function openPunchMap(){
+  openModal('punchMapModal');
+  const canvas=document.getElementById('punchMapCanvas');
+  const listEl=document.getElementById('punchMapList');
+  canvas.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--g400);font-size:.85rem">地圖載入中…</div>';
+  try{ await loadLeaflet(); }catch(e){ canvas.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--g400);font-size:.85rem">地圖載入失敗，請檢查網路連線</div>'; return; }
+
+  const projects=DB.get('projects').filter(p=>p.lat!=null&&p.lng!=null&&!p.archived);
+  canvas.innerHTML='';
+  if(!projects.length){
+    canvas.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--g400);font-size:.85rem;text-align:center;padding:20px">尚無案場有座標<br>案場總覽新增／編輯地址後會自動定位</div>';
+    listEl.innerHTML='';
+    return;
+  }
+  const center=punchCurPos?[punchCurPos.lat,punchCurPos.lng]:[projects[0].lat,projects[0].lng];
+  const map=L.map(canvas).setView(center,12);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'© OpenStreetMap · CARTO',maxZoom:19}).addTo(map);
+
+  if(punchCurPos){
+    L.circleMarker([punchCurPos.lat,punchCurPos.lng],{radius:7,color:'#3B82F6',fillColor:'#3B82F6',fillOpacity:.8}).addTo(map).bindPopup('我的位置');
+  }
+  const rows=[];
+  projects.forEach(p=>{
+    const marker=L.circleMarker([p.lat,p.lng],{radius:8,color:'#C8A44A',fillColor:'#C8A44A',fillOpacity:.85}).addTo(map);
+    marker.bindPopup('<b>'+esc(p.name||'未命名案場')+'</b><br>'+esc(p.address||''));
+    const dist=punchCurPos?haversineDist(punchCurPos.lat,punchCurPos.lng,p.lat,p.lng):null;
+    rows.push({p,dist});
+  });
+  rows.sort((a,b)=>(a.dist??1e15)-(b.dist??1e15));
+  listEl.innerHTML=rows.map(({p,dist})=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--g100);cursor:pointer" onclick="document.getElementById('punchProjectSel').value='${p._id}';updatePunchGeoCard();closeModal('punchMapModal');">
+      <div>
+        <div style="font-size:.85rem;font-weight:800">${esc(p.name||'未命名案場')}</div>
+        <div style="font-size:.72rem;color:var(--g400)">${esc(p.address||'')}</div>
+      </div>
+      <div style="font-size:.78rem;font-weight:800;color:var(--gold-d)">${dist!=null?(dist<1000?Math.round(dist)+'m':(dist/1000).toFixed(1)+'km'):''}</div>
+    </div>`).join('');
 }
 
 function doPunch(){
@@ -631,23 +789,22 @@ function doPunch(){
       time:now.toLocaleTimeString('zh-TW',{hour12:false}),
       type:isIn?'in':'out',
       lat:lat||null,lng:lng||null,addr:addr||null,
+      photo:punchPhotoData||null,
       projectId:(()=>{const sel=document.getElementById('punchProjectSel');if(sel?.value){localStorage.setItem('zeju_last_punch_proj',sel.value);return sel.value;}return null;})()
     });
+    // 打卡完清空這次的拍照佐證，下一次打卡不會誤帶到上一次的照片
+    punchPhotoData=null;
+    const preview=document.getElementById('punchPhotoPreview');if(preview)preview.style.display='none';
+    const photoFile=document.getElementById('punchPhotoFile');if(photoFile)photoFile.value='';
     renderPunchRec();updatePunchBtn();
     showToast('✅ '+(isIn?'上班':'下班')+'打卡成功！'+now.toLocaleTimeString('zh-TW',{hour12:false}));
-    // 推送到 Firebase（即時跨裝置同步）
-    // Firebase 已透過 _cloudSet 自動同步
-    // 也推送到 window.storage
-    if(typeof window.storage!=='undefined'){
-      const recs=DB.get('punch_recs');
-      window.storage.set('z7_punch_recs',JSON.stringify(recs)).catch(()=>{});
-    }
   };
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
       async pos=>{
         const lat=pos.coords.latitude.toFixed(6);
         const lng=pos.coords.longitude.toFixed(6);
+        punchCurPos={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy};
         // 先用座標存檔，背景查地址
         save(lat, lng, lat+','+lng);
         // 修正重點：原本這裡是拿 GPS 座標去問 AI「這是哪個地址」——AI 語言模型本來就不是地圖服務，
