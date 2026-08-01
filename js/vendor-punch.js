@@ -406,6 +406,46 @@ document.getElementById('mergeVGroupBtn')?.addEventListener('click',()=>{
   );
 });
 
+// 點廠商名稱：這家廠商在所有案場、所有類別底下的報價全部列出來，方便看這家廠商總共接了多少案子、報過多少項目
+function showVendorSeries(vendorName){
+  const all=DB.get('vendors').filter(v=>v.vendor===vendorName&&!v.deleted).sort((a,b)=>b._id-a._id);
+  if(!all.length){showToast('⚠️ 找不到這家廠商的其他報價');return;}
+  const total=all.reduce((s,v)=>s+(v.amount||0),0);
+  const paidTotal=all.reduce((s,v)=>s+getVendorPaid(v),0);
+
+  const rows=all.map(v=>{
+    const ps=getVendorPayStatus(v);
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--g100)">'+
+      '<div>'+
+        '<div style="font-weight:800;font-size:.86rem">'+esc(v.cat||'')+' <span style="font-size:.7rem;color:var(--g400);font-weight:400">'+esc(v.caseN||'—')+'</span></div>'+
+        '<div style="font-size:.7rem;color:var(--g400);margin-top:2px">'+esc((v._ts||'').split(' ')[0])+'</div>'+
+      '</div>'+
+      '<div style="text-align:right">'+
+        '<div style="font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+        '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+'</div>'+
+      '</div>'+
+    '</div>';
+  }).join('');
+
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:520px">'+
+    '<div class="mtit">🏗️ '+esc(vendorName)+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="display:flex;gap:10px;margin-bottom:14px">'+
+      '<div style="flex:1;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--rs);padding:10px 12px;text-align:center">'+
+        '<div style="font-size:.68rem;color:var(--gold-d);font-weight:800">總報價金額</div>'+
+        '<div style="font-family:monospace;font-weight:900;font-size:1.05rem;color:var(--gold-d)">NT$'+total.toLocaleString()+'</div>'+
+      '</div>'+
+      '<div style="flex:1;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);padding:10px 12px;text-align:center">'+
+        '<div style="font-size:.68rem;color:var(--ok);font-weight:800">已付款</div>'+
+        '<div style="font-family:monospace;font-weight:900;font-size:1.05rem;color:var(--ok)">NT$'+paidTotal.toLocaleString()+'</div>'+
+      '</div>'+
+    '</div>'+
+    '<div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:8px">共 '+all.length+' 筆報價（所有案場）</div>'+
+    '<div style="max-height:50vh;overflow-y:auto;border:1px solid var(--g100);border-radius:var(--rs)">'+rows+'</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+}
+
 function renderVendors(filter){
   const list=document.getElementById('vList');if(!list)return;
   let data=DB.get('vendors');
@@ -471,7 +511,8 @@ function renderVendors(filter){
       hd.innerHTML=
         '<span style="font-size:1.3rem;flex-shrink:0">'+catIco+'</span>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.9rem;font-weight:900">'+esc(v.vendor)+
+          '<div style="font-size:.9rem;font-weight:900">'+
+            '<span data-vname-series style="cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px" title="點擊查看這家廠商的所有報價">'+esc(v.vendor)+'</span>'+
             ' <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800">'+esc(v.cat)+'</span>'+
           '</div>'+
           '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
@@ -485,6 +526,10 @@ function renderVendors(filter){
           '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
           '<button class="btn brd bxs" data-vdel>🗑</button>'+
         '</div>';
+      hd.querySelector('[data-vname-series]').addEventListener('click',e=>{
+        e.stopPropagation();
+        showVendorSeries(v.vendor);
+      });
 
       // 展開明細 body
       const body=document.createElement('div');body.className='vcbody';

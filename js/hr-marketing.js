@@ -581,7 +581,7 @@ const ZEJU_DEFAULT_ITEMS = {
 function addZejuSection(icon, name){
   const defaults = ZEJU_DEFAULT_ITEMS[name] || [{name:'工程項目',unit:'式',qty:1,price:0}];
   adSections.push({
-    id:'s'+Date.now(),
+    id:mkSecId(),
     icon, name,
     items: defaults.map(it=>({...it}))
   });
@@ -748,12 +748,38 @@ function switchHRTab(tab){
 function compareVendorsByCat(cat){
   const vendors=DB.get('vendors').filter(v=>v.cat===cat);
   if(vendors.length<2){showToast('同類別廠商不足 2 家，無法比較');return;}
-  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+v.vendor+'</td><td style="padding:10px 14px;color:var(--g400)">'+( v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+( v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+( v._ts||'').split(' ')[0]+'</td></tr>').join('');
   const min=Math.min(...vendors.map(v=>v.amount||0));
+
+  // 修正重點：原本比價只列總價，看不出「同樣是這個類別，各家細項報什麼、單價差在哪」，
+  // 這次改成每家廠商底下把工項明細也攤開列出來，可以直接比較同一個工項不同廠商的單價差異。
+  const cards=vendors.map(v=>{
+    const isMin=(v.amount||0)===min;
+    const items=v.items||[];
+    const itemRows=items.length
+      ? items.map(it=>'<tr>'+
+          '<td style="padding:6px 10px;font-size:.82rem">'+esc(it.name||'（未命名）')+'</td>'+
+          '<td style="padding:6px 10px;font-size:.78rem;color:var(--g400);text-align:center">'+esc(String(it.qty||''))+'</td>'+
+          '<td style="padding:6px 10px;font-size:.82rem;text-align:right;font-family:monospace">NT$'+(it.unitPrice||0).toLocaleString()+'</td>'+
+          '<td style="padding:6px 10px;font-size:.82rem;text-align:right;font-family:monospace;font-weight:700">NT$'+(it.amount||0).toLocaleString()+'</td>'+
+        '</tr>').join('')
+      : '<tr><td colspan="4" style="padding:8px 10px;font-size:.78rem;color:var(--g400);text-align:center">此廠商報價沒有拆細項，只有總價</td></tr>';
+    return '<div style="border:1.5px solid '+(isMin?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--r);margin-bottom:12px;overflow:hidden'+(isMin?';background:var(--ok-bg)':'')+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-bottom:1.5px solid '+(isMin?'var(--ok-bd)':'var(--g100)')+'">'+
+        '<div><div style="font-weight:900;font-size:.92rem">'+esc(v.vendor)+(isMin?' <span style="font-size:.68rem;background:var(--ok);color:#fff;padding:2px 8px;border-radius:20px;font-weight:800;margin-left:4px">💡 最低</span>':'')+'</div>'+
+        '<div style="font-size:.76rem;color:var(--g400);margin-top:2px">'+esc(v.caseN||'—')+' · '+esc((v._ts||'').split(' ')[0])+'</div></div>'+
+        '<div style="font-family:monospace;font-weight:900;font-size:1.05rem;color:'+(isMin?'var(--ok)':'var(--gold-d)')+'">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+      '</div>'+
+      '<table style="width:100%;border-collapse:collapse">'+
+        '<thead><tr style="background:var(--g50)"><th style="padding:6px 10px;font-size:.7rem;color:var(--g400);text-align:left">工項名稱</th><th style="padding:6px 10px;font-size:.7rem;color:var(--g400)">數量</th><th style="padding:6px 10px;font-size:.7rem;color:var(--g400);text-align:right">單價</th><th style="padding:6px 10px;font-size:.7rem;color:var(--g400);text-align:right">金額</th></tr></thead>'+
+        '<tbody>'+itemRows+'</tbody>'+
+      '</table>'+
+    '</div>';
+  }).join('');
+
   const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+cat+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
-    '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>廠商</th><th>案場</th><th>報價</th><th>日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+vendors.find(v=>v.amount===min)?.vendor+'）</div>'+
+  modal.innerHTML='<div class="modal" style="max-width:640px"><div class="mtit">'+esc(cat)+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="max-height:65vh;overflow-y:auto;padding-right:4px">'+cards+'</div>'+
+    '<div style="margin-top:4px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+esc(vendors.find(v=>v.amount===min)?.vendor||'')+'）</div>'+
     '</div>';
   document.body.appendChild(modal);
 }
@@ -917,12 +943,12 @@ document.getElementById('svRpl')?.addEventListener('click',()=>{
 });
 
 document.getElementById('qAddSec')?.addEventListener('click',()=>{
-  qSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  qSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('qSections',qSections,{allowDelSec:true,totIds:{sub:'pqSub',total:'pqTotal'}});
 });
 
 document.getElementById('adAddSec')?.addEventListener('click',()=>{
-  adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 });
 
