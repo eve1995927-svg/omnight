@@ -545,34 +545,32 @@ function showVendorSeries(vendorName){
   const total=all.reduce((s,v)=>s+(v.amount||0),0);
   const paidTotal=all.reduce((s,v)=>s+getVendorPaid(v),0);
 
-  // 修正重點：原本每一筆只顯示類別＋總金額，看不到實際報了哪些工項，
-  // 現在把每一筆的細項都攤開列出來，跟明細分頁看到的一樣完整
-  const rows=all.map(v=>{
+  // 修正重點：原本每一筆報價是上下疊著顯示，要比較「這家廠商在不同案場報得怎麼樣」得一直往下捲動、
+  // 上面看完忘了下面寫什麼。改成左右並排，一個案場一欄，總價、每個工項都在同一排高度，
+  // 用橫向掃視的方式比較，不用再上下捲動硬記。工項名稱通常每個案場都是量身訂做的尺寸（不會一樣），
+  // 所以這裡不強行對齊成同一列，各欄各自列出自己的工項，方便你直接看「這一欄總共列了哪些、多少錢」。
+  const cols=all.map(v=>{
     const ps=getVendorPayStatus(v);
     const items=v.items||[];
     const itemRows=items.length
-      ? items.map(it=>'<div style="display:flex;justify-content:space-between;padding:5px 14px 5px 24px;font-size:.78rem;border-top:1px dashed var(--g100)">'+
-          '<span style="color:var(--g600)">'+esc(it.name||'（未命名）')+'　<span style="color:var(--g400)">'+esc(String(it.qty||''))+'</span></span>'+
-          '<span style="font-family:monospace;color:var(--g600)">NT$'+(it.amount||0).toLocaleString()+'</span>'+
+      ? items.map(it=>'<div style="display:flex;justify-content:space-between;gap:6px;padding:5px 0;font-size:.74rem;border-top:1px dashed var(--g100)">'+
+          '<span style="color:var(--g600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name||'（未命名）')+'</span>'+
+          '<span style="font-family:monospace;color:var(--g600);flex-shrink:0">'+(it.amount||0).toLocaleString()+'</span>'+
         '</div>').join('')
-      : '<div style="padding:5px 14px 5px 24px;font-size:.76rem;color:var(--g400);border-top:1px dashed var(--g100)">此筆沒有拆細項，只有總價</div>';
-    return '<div style="border-bottom:1px solid var(--g100)">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px">'+
-        '<div>'+
-          '<div style="font-weight:800;font-size:.86rem">'+esc(v.cat||'')+' <span style="font-size:.7rem;color:var(--g400);font-weight:400">'+esc(v.caseN||'—')+'</span></div>'+
-          '<div style="font-size:.7rem;color:var(--g400);margin-top:2px">'+esc((v._ts||'').split(' ')[0])+'</div>'+
-        '</div>'+
-        '<div style="text-align:right">'+
-          '<div style="font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
-          '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+'</div>'+
-        '</div>'+
+      : '<div style="padding:6px 0;font-size:.74rem;color:var(--g400)">沒有拆細項，只有總價</div>';
+    return '<div style="min-width:210px;max-width:230px;flex-shrink:0;border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden">'+
+      '<div style="padding:10px 12px;background:var(--g50);border-bottom:1.5px solid var(--g200)">'+
+        '<div style="font-weight:800;font-size:.84rem">'+esc(v.cat||'')+'</div>'+
+        '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+esc(v.caseN||'—')+' · '+esc((v._ts||'').split(' ')[0])+'</div>'+
+        '<div style="font-family:monospace;font-weight:900;color:var(--gold-d);font-size:.95rem;margin-top:6px">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+        '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:4px;display:inline-block">'+ps.label+'</div>'+
       '</div>'+
-      itemRows+
+      '<div style="padding:6px 12px;max-height:260px;overflow-y:auto">'+itemRows+'</div>'+
     '</div>';
   }).join('');
 
   const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:520px">'+
+  modal.innerHTML='<div class="modal" style="max-width:'+Math.min(960,260+all.length*230)+'px">'+
     '<div class="mtit">🏗️ '+esc(vendorName)+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
     '<div style="display:flex;gap:10px;margin-bottom:14px">'+
       '<div style="flex:1;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--rs);padding:10px 12px;text-align:center">'+
@@ -584,8 +582,8 @@ function showVendorSeries(vendorName){
         '<div style="font-family:monospace;font-weight:900;font-size:1.05rem;color:var(--ok)">NT$'+paidTotal.toLocaleString()+'</div>'+
       '</div>'+
     '</div>'+
-    '<div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:8px">共 '+all.length+' 筆報價（所有案場）</div>'+
-    '<div style="max-height:50vh;overflow-y:auto;border:1px solid var(--g100);border-radius:var(--rs)">'+rows+'</div>'+
+    '<div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:8px">共 '+all.length+' 筆報價（所有案場，左右滑動比較）</div>'+
+    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px">'+cols+'</div>'+
     '</div>';
   document.body.appendChild(modal);
 }

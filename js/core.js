@@ -305,13 +305,23 @@ function initFirebase(){
 function _ensureFirebaseAuth(){
   return new Promise((resolve)=>{
     if(typeof firebase==='undefined'||!firebase.auth){resolve(false);return;}
+    // 修正重點：跟下面 initCloudDB 同一種問題——網路很差的時候，這個登入動作可能永遠不會
+    // 成功也不會失敗，一直卡著。這裡也加上等待上限，逾時就當作失敗處理，讓後面的流程可以繼續走，
+    // 不會卡在這一步就出不去。
+    let settled=false;
+    const finish=(ok)=>{if(settled)return;settled=true;resolve(ok);};
+    const timeoutId=setTimeout(()=>{
+      console.warn('Firebase Auth 逾時，視為登入失敗，改走離線模式');
+      finish(false);
+    },6000);
     try{
       firebase.auth().signInAnonymously()
-        .then(()=>resolve(true))
-        .catch((e)=>{console.warn('Firebase Auth 匿名登入失敗：',e.message);resolve(false);});
+        .then(()=>{clearTimeout(timeoutId);finish(true);})
+        .catch((e)=>{clearTimeout(timeoutId);console.warn('Firebase Auth 匿名登入失敗：',e.message);finish(false);});
     }catch(e){
+      clearTimeout(timeoutId);
       console.warn('Firebase Auth 初始化失敗：',e.message);
-      resolve(false);
+      finish(false);
     }
   });
 }
@@ -365,7 +375,23 @@ async function initCloudDB(){
     // 沒有這一步，規則設好之後資料反而會讀不到（不是資安漏洞了，但變成功能壞掉）
     await _ensureFirebaseAuth();
     return new Promise(res=>{
+      // 修正重點：Firebase 的 once('value', 成功, 失敗) 這個「失敗」callback，
+      // 只有在真的收到明確錯誤（例如權限被拒）時才會觸發——如果是網路很差、完全連不上、
+      // 訊號斷斷續續這種狀況，Firebase SDK 會自己一直在背景重試，兩個 callback 都不會被呼叫，
+      // 這個 Promise 就永遠不會有結果，登入頁的按鈕會卡在「同步資料中…」動不了，
+      // 這就是「有時候登入頁面卡在同步中」的原因。現在加上一個等待上限（8秒），
+      // 等太久還沒回應，就直接切換成離線模式（用手機本機之前存過的資料），
+      // 讓使用者至少能先登進去用，不會被卡死在等待畫面。
+      let settled=false;
+      const finish=(ok)=>{if(settled)return;settled=true;res(ok);};
+      const timeoutId=setTimeout(()=>{
+        console.log('⚠️ Firebase 連線逾時，改用本機離線資料');
+        _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
+        setSyncStatus('offline');
+        finish(false);
+      },8000);
       _fbDB.ref('zeju_data').once('value', snap=>{
+        clearTimeout(timeoutId);
         const data=snap.val()||{};
         _KEYS.forEach(k=>{
           if(data[k]){
@@ -376,11 +402,12 @@ async function initCloudDB(){
         console.log('✅ Firebase data loaded');
         setSyncStatus('ok');
         loadCompanyProfileFromCloud();
-        res(true);
+        finish(true);
       }, ()=>{
+        clearTimeout(timeoutId);
         _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
         setSyncStatus('offline');
-        res(false);
+        finish(false);
       });
     });
   }
@@ -1464,7 +1491,13 @@ const DEF_SECTIONS=[
   {id:'s6',icon:'🎨',name:'油漆',items:[{name:'全室油漆',unit:'坪',qty:0,price:0}]},
 ];
 
-function mkSecId(){return 's'+Date.now();}
+// 修正重點：原本只用 Date.now() 當分類 id，同一毫秒內連續呼叫好幾次（例如一次勾選多個廠商報價、
+// 一次全部置入報價單）會產生一模一樣的 id。畫面上每個分類底下的細項容器是用這個 id 去對應
+// （id="pi-那個id"），id 重複的話，瀏覽器抓到的永遠是「第一個」符合的容器，導致後面幾個分類
+// 的細項全部被誤塞進第一個分類裡、或者根本抓不到自己的容器而顯示空白——這就是「廠商報價一次
+// 置入好幾筆，後面的都變成空的」的真正原因。改成加上一個遞增計數器，保證同一毫秒內呼叫幾次都不會重複。
+let _mkSecIdCounter=0;
+function mkSecId(){return 's'+Date.now()+'_'+(_mkSecIdCounter++);}
 function calcSec(items){return items.reduce((s,it)=>s+it.qty*it.price,0);}
 function calcAll(sections){return sections.reduce((s,sec)=>s+calcSec(sec.items),0);}
 function fmt(n){return'NT$'+Math.round(n).toLocaleString();}
