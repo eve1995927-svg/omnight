@@ -1,7 +1,6 @@
 function updatePtsDisplay(){
-  // POINTS 現在是雲端同步的即時值（見 core.js 的 loadPointsFromCloud/startPointsSync），
-  // 這裡只負責顯示，不要再從 localStorage 重新覆蓋一次，避免跟即時同步的值互相打架
-  const pts=(typeof POINTS==='number')?POINTS:(parseInt(localStorage.getItem('zeju_pts'))||76500);
+  const pts=parseInt(localStorage.getItem('zeju_pts'))||76500;
+  POINTS=pts;
   const el=document.getElementById('ptsNum'); if(el)el.textContent=pts.toLocaleString();
   const bl=document.getElementById('bilPts'); if(bl)bl.textContent=pts.toLocaleString();
 }
@@ -35,7 +34,7 @@ function renderBilling(){
   const curMonth=monthSel?.value||(new Date().toISOString().slice(0,7));
   const recs=allRecs.filter(r=>(!r.month||r.month===curMonth));
   const monthPts=recs.reduce((s,r)=>s+(r.points||0),0);
-  const totalPts=(typeof POINTS==='number')?POINTS:(parseInt(localStorage.getItem('zeju_pts'))||76500);
+  const totalPts=parseInt(localStorage.getItem('zeju_pts'))||76500;
   const ptsFee=Math.round(monthPts*PTS_RATE);
   const totalFee=BASE_FEE+ptsFee;
 
@@ -107,8 +106,8 @@ function renderBilling(){
 
 // ── 系統設定：分類管理 ─────────────────────────────────────
 const DEFAULT_CATS={
-  quoteCat:['拆除','泥作','木作','水電','系統傢俱','油漆','燈具','衛浴'],
-  vendorCat:['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'],
+  quoteCat:['拆除工程','泥作工程','木作工程','水電工程','系統傢俱','油漆工程','燈具工程','衛浴工程'],
+  vendorCat:['系統櫃','廚具','玻璃','水電','泥作','油漆','鐵件','其他'],
   incomeCat:['合約收款','訂金','工程款','尾款','設計費','其他收入'],
   expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','其他支出'],
 };
@@ -127,12 +126,9 @@ function saveSettingTags(key,arr){localStorage.setItem('zeju_tags_'+key,JSON.str
 function buildCatSelectWithAdd(selectEl, catKey, selectedValue){
   if(!selectEl)return;
   const tags=getSettingTags(catKey);
-  // 防呆：如果這筆資料當初存的類別，剛好不在目前的分類清單裡（例如清單被誰改過、或資料比較舊），
-  // 補一個選項進去，不要讓瀏覽器默默選成清單第一個、看起來像類別跑掉了
-  const options=(selectedValue&&!tags.includes(selectedValue))?[...tags,selectedValue]:tags;
-  selectEl.innerHTML=options.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
+  selectEl.innerHTML=tags.map(t=>'<option value="'+t+'">'+t+'</option>').join('')+
     '<option value="__add_new__">＋ 新增分類…</option>';
-  if(selectedValue&&options.includes(selectedValue))selectEl.value=selectedValue;
+  if(selectedValue&&tags.includes(selectedValue))selectEl.value=selectedValue;
   if(!selectEl._catAddBound){
     selectEl._catAddBound=true;
     selectEl.addEventListener('change',()=>{
@@ -172,9 +168,6 @@ function quickAddCategory(catKey,onAdded){
     saveSettingTags(catKey,tags);
     box.remove();
     showToast('✅ 已新增分類「'+name+'」');
-    // 廠商報價的類別新增，不管是從哪個畫面觸發的，都順便把廠商報價整理頁的篩選/比價按鈕也刷新，
-    // 不然要等重新整理頁面才會看到新分類出現在篩選那邊
-    if(catKey==='vendorCat'&&typeof renderVendorCatFilters==='function')renderVendorCatFilters();
     if(onAdded)onAdded(name);
   };
   document.getElementById('_qcOk').addEventListener('click',doAdd);
@@ -313,7 +306,6 @@ function switchLedgerView(view,el){
   document.querySelectorAll('.ltab[data-lt]').forEach(t=>t.classList.toggle('on',t.dataset.lt===view));
   if(view==='monthly')renderLedgerMonthly();
   else if(view==='project')renderLedgerByProject();
-  else if(view==='invoice'){if(typeof renderInvoices==='function')renderInvoices();}
   else renderLedger();
 }
 function getFilteredLedger(){
@@ -480,8 +472,7 @@ function setLedgerDir(dir){
 function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),curProjectId,true);
+  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
@@ -513,10 +504,10 @@ function renderInvoices(filter){
     }else{thumb.className='ino';thumb.textContent='🧾';}
     card.innerHTML=
       '<div style="flex:1;min-width:0">'+
-        '<div style="font-size:.88rem;font-weight:900;color:var(--info);font-family:monospace">'+esc(v.no||'—')+'</div>'+
-        '<div style="font-size:.85rem;font-weight:700;margin-top:3px">'+esc(v.desc||'—')+
-          ' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;border:1px solid var(--info-bd)">'+esc(v.cat||'')+'</span></div>'+
-        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px;font-family:monospace">'+esc(v.date||'')+' · '+esc((v._ts||'').split(' ')[0])+'</div>'+
+        '<div style="font-size:.88rem;font-weight:900;color:var(--info);font-family:monospace">'+(v.no||'—')+'</div>'+
+        '<div style="font-size:.85rem;font-weight:700;margin-top:3px">'+(v.desc||'—')+
+          ' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;border:1px solid var(--info-bd)">'+(v.cat||'')+'</span></div>'+
+        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px;font-family:monospace">'+(v.date||'')+' · '+(v._ts||'').split(' ')[0]+'</div>'+
       '</div>'+
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">'+
         '<div style="font-size:1rem;font-weight:900;font-family:monospace">'+fmt(v.amount||0)+'</div>'+
@@ -717,15 +708,10 @@ function updVCaseFilter(){
 // ── initAdQuote ────────────────────────────────────────────
 function initAdQuote(){
   adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
-  curMgmtRate=8;
-  const rateInput=document.getElementById('adMgmtRate');if(rateInput)rateInput.value=8;
-  const waiveBtn=document.getElementById('adMgmtWaive');
-  if(waiveBtn){waiveBtn.textContent='🎁 贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
   const qbC=document.getElementById('adQbClient');if(qbC)qbC.textContent='—';
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
-  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),curProjectId);
 
   // ── 按鈕綁定（每次初始化都重綁，避免遺失）──
   const getN=()=>document.getElementById('adN')?.value||'業主';
@@ -736,23 +722,18 @@ function initAdQuote(){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
       const sub=calcAll(adSections);
-      const pid=document.getElementById('adCase')?.value||'';
-      if(!pid){showToast('⚠️ 請先選擇案場，沒有案場的話請先到「案場總覽」新增');return;}
-      const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
-      const caseNv=proj?.name||'';
-      curProjectId=parseInt(pid);
+      const caseNv=document.getElementById('adCase')?.value||'';
       DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
-        projectId:curProjectId,
-        mgmtFeeRate:curMgmtRate,
+        projectId:curProjectId||null,
         sections:JSON.parse(JSON.stringify(adSections)),total:sub});
       updStats();renderQTable();
       showToast('✅ 報價單已儲存！');
       // 下一步提示
       if(typeof showNextStep==='function'){
         showNextStep('報價單已儲存，接下來呢？',[
-          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate)},
+          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client')},
           {label:'📝 建立合約',action:()=>openModal('contractModal')},
           {label:'稍後再說',action:()=>{}},
         ]);
@@ -763,20 +744,20 @@ function initAdQuote(){
   const adXlsBtn=document.getElementById('adXls');
   if(adXlsBtn&&!adXlsBtn._bound){
     adXlsBtn._bound=true;
-    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal',curMgmtRate));
+    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal'));
   }
 
   const adXlsClientBtn=document.getElementById('adXlsClient');
   if(adXlsClientBtn&&!adXlsClientBtn._bound){
     adXlsClientBtn._bound=true;
-    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate));
+    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client'));
   }
 
   const adAddSecBtn=document.getElementById('adAddSec');
   if(adAddSecBtn&&!adAddSecBtn._bound){
     adAddSecBtn._bound=true;
     adAddSecBtn.addEventListener('click',()=>{
-      adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+      adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
       renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
     });
   }
@@ -806,54 +787,6 @@ function initMultiClientChat(){
     if(chat)chat.innerHTML='<div style="height:100%;display:flex;align-items:center;justify-content:center;color:var(--g400);flex-direction:column;gap:12px;font-size:.9rem"><div style="font-size:2.5rem">💬</div><div style="font-weight:700">點右上方「＋ 新增客戶」開始諮詢</div></div>';
   }
 }
-// ── CRM 客戶總覽：把同一個業主在不同案場的紀錄關聯起來 ──────────
-function renderCrmList(filter){
-  const list=document.getElementById('crmList');if(!list)return;
-  const kw=(filter||document.getElementById('crmSearch')?.value||'').trim().toLowerCase();
-  let clients=DB.get('clients');
-  if(kw)clients=clients.filter(cl=>(cl.name||'').toLowerCase().includes(kw)||(cl.phone||'').includes(kw));
-  // 依「最近一次有案場」排序，越活躍的客戶排越前面
-  const allProjects=DB.get('projects');
-  const rows=clients.map(cl=>{
-    const projs=allProjects.filter(p=>p.clientId===cl._id&&!p.deleted);
-    const income=projs.reduce((s,p)=>s+DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((a,l)=>a+(l.amount||0),0),0);
-    const lastTs=Math.max(0,...projs.map(p=>p._id||0));
-    return {cl,projs,income,lastTs};
-  }).sort((a,b)=>b.lastTs-a.lastTs);
-
-  if(!rows.length){
-    list.innerHTML='<div class="empty-state"><div class="es-ic">👥</div><div class="es-t">尚無客戶資料</div><div class="es-s">新增案場時填的業主姓名，會自動出現在這裡</div></div>';
-    return;
-  }
-
-  list.innerHTML=rows.map(({cl,projs,income})=>{
-    const statusIco=(p)=>{const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;return st.icon;};
-    return `
-    <div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:42px;height:42px;border-radius:50%;background:var(--gold-pale);color:var(--gold-d);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:1rem;flex-shrink:0">${esc((cl.name||'？').charAt(0))}</div>
-          <div>
-            <div style="font-weight:900;font-size:.95rem">${esc(cl.name||'未命名客戶')}</div>
-            <div style="font-size:.76rem;color:var(--g400);margin-top:2px">${esc(cl.phone||'未留電話')}${cl.addr?' · '+esc(cl.addr):''}</div>
-          </div>
-        </div>
-        <div style="text-align:right">
-          <div style="font-weight:900;font-size:.92rem;color:var(--gold-d)">${projs.length} 個案場</div>
-          <div style="font-size:.74rem;color:var(--ok);font-weight:700;margin-top:2px">${income?'已收 NT$'+income.toLocaleString():'尚無收款'}</div>
-        </div>
-      </div>
-      <div style="display:${projs.length?'block':'none'};margin-top:12px;padding-top:12px;border-top:1px solid var(--g100)">
-        ${projs.length?projs.map(p=>`
-          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;cursor:pointer" onclick="event.stopPropagation();showPanel('projects');openProject(${p._id})">
-            <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${statusIco(p)} ${esc(p.name||'未命名案場')}</div>
-            <div style="font-size:.74rem;color:var(--g400)">${esc((PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry).label)}</div>
-          </div>`).join(''):'<div style="font-size:.8rem;color:var(--g400);padding:6px 0">這位客戶目前沒有關聯的案場</div>'}
-      </div>
-    </div>`;
-  }).join('');
-}
-
 function renderClientList(filter){
   const list=document.getElementById('clientList');if(!list)return;
   let clients=DB.get('clients');
@@ -861,7 +794,7 @@ function renderClientList(filter){
   const cnt=document.getElementById('clientCount');
   if(cnt)cnt.textContent=DB.get('clients').length+' 位客戶';
   if(!clients.length){
-    list.innerHTML='<div style="padding:20px 14px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">👤</div><div style="font-size:.82rem;color:var(--g400);font-weight:600">'+(filter?'找不到「'+filter+'」':'尚無客戶')+'</div>'+(filter?'':'<div style="font-size:.75rem;color:var(--g300);margin-top:4px">點上方按鈕新增</div>')+'</div>';
+    list.innerHTML='<div style="padding:20px 14px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">👤</div><div style="font-size:.82rem;color:var(--g400);font-weight:600">'+(filter?'找不到「'+esc(filter)+'」':'尚無客戶')+'</div>'+(filter?'':'<div style="font-size:.75rem;color:var(--g300);margin-top:4px">點上方按鈕新增</div>')+'</div>';
     return;
   }
   list.innerHTML='';
@@ -870,12 +803,12 @@ function renderClientList(filter){
     const el=document.createElement('div');
     el.style.cssText='padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--g100);transition:all var(--ease);position:relative;'+(isActive?'background:var(--gold-pale);border-left:3px solid var(--gold)':'border-left:3px solid transparent');
 
-    const initials=(c.name||'?').charAt(0);
+    const initials=esc(c.name.charAt(0));
     el.innerHTML=
       '<div style="display:flex;align-items:center;gap:9px">'+
-        '<div style="width:32px;height:32px;border-radius:50%;background:'+(isActive?'linear-gradient(135deg,var(--gold-d),var(--gold))':'var(--g200)')+';color:'+(isActive?'var(--w)':'var(--g500)')+';font-size:.82rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--ease)">'+esc(initials)+'</div>'+
+        '<div style="width:32px;height:32px;border-radius:50%;background:'+(isActive?'linear-gradient(135deg,var(--gold-d),var(--gold))':'var(--g200)')+';color:'+(isActive?'var(--w)':'var(--g500)')+';font-size:.82rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--ease)">'+initials+'</div>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.name||'未命名客戶')+'</div>'+
+          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.name)+'</div>'+
           '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+esc(c.phone||'未填電話')+'</div>'+
         '</div>'+
       '</div>';
@@ -890,6 +823,9 @@ function renderClientList(filter){
     delBtn.addEventListener('click',e=>{
       e.stopPropagation();
       confirmAction('刪除客戶「'+c.name+'」及所有對話？此動作不可復原。',()=>{
+        // 修正重點：這裡原本是「整包客戶清單抓出來、過濾掉這一個、整包寫回去」，
+        // 這種整包覆蓋的寫法，如果剛好另一台裝置同時也在寫入客戶資料，會互相蓋掉對方的異動、
+        // 資料無故消失（跟很早之前修過的「合約消失」是同一種病因）。改成只刪除這一筆，不會動到其他人剛好在異動的資料。
         DB.del('clients',c._id);
         if(curClientId===c._id){curClientId=null;const chat=document.getElementById('cs-chat');if(chat)chat.innerHTML='';}
         renderClientList();showToast('✅ 已刪除客戶「'+c.name+'」');
@@ -906,71 +842,15 @@ function switchClient(id){
   const hd=document.getElementById('chatClientHeader');
   if(hd)hd.style.display='flex';
   const av=document.getElementById('chatClientAvatar');
-  if(av)av.textContent=(client.name||'?').charAt(0);
+  if(av)av.textContent=client.name.charAt(0);
   const nm=document.getElementById('chatClientName');
-  if(nm)nm.innerHTML=esc(client.name)+(client.lineUserId?' <span style="font-size:.68rem;background:#06C755;color:#fff;padding:2px 8px;border-radius:20px;font-weight:800;margin-left:6px;vertical-align:middle">📱 LINE</span>':'');
-
-  // 這位客戶如果有連結 LINE，先顯示真正的 LINE 對話記錄（客戶實際傳來的訊息），
-  // AI 助理對話維持在下面，可以用來幫忙草擬回覆內容，草擬完再用「傳送到 LINE」送出去
-  const lineBox=document.getElementById('lineThreadBox');
-  if(client.lineUserId){
-    renderLineThread(client);
-    if(lineBox)lineBox.style.display='block';
-  }else if(lineBox){
-    lineBox.style.display='none';
-  }
-
+  if(nm)nm.textContent=client.name;
   // 初始化對話
   const chatEl=document.getElementById('cs-chat');if(!chatEl)return;
   const chatId='cs-'+id;
   chatEl.innerHTML='';
   chatEl.style.cssText='flex:1;min-height:0;display:flex;flex-direction:column';
   initChat(chatId,'cs',0,'您好！我是澤居的 AI 客服小澤 🏠\n很高興為您服務，'+client.name+'！\n有任何裝修問題或需要報價，請直接告訴我。',['裝修費用詢問','工期多長？','付款方式？']);
-}
-
-// ── LINE 真人對話記錄（跟上面的 AI 助理對話是兩件事：這裡是客戶實際在 LINE 傳的訊息）─────
-function renderLineThread(client){
-  const box=document.getElementById('lineThreadBox');if(!box)return;
-  const msgs=DB.get('omnichannel_messages')
-    .filter(m=>m.platform==='line'&&m.lineUserId===client.lineUserId)
-    .sort((a,b)=>(a._id>b._id?1:-1));
-  const list=document.getElementById('lineThreadList');
-  if(list){
-    list.innerHTML=msgs.length?msgs.map(m=>`
-      <div style="display:flex;${m.direction==='out'?'justify-content:flex-end':''};margin-bottom:8px">
-        <div style="max-width:75%;padding:8px 12px;border-radius:14px;font-size:.85rem;${m.direction==='out'?'background:#06C755;color:#fff;border-bottom-right-radius:4px':'background:var(--g100);color:var(--g800);border-bottom-left-radius:4px'}">
-          ${m.type==='text'?esc(m.text):'（'+esc(m.type||'訊息')+'，尚未支援預覽）'}
-          <div style="font-size:.62rem;opacity:.65;margin-top:3px">${esc((m._ts||'').split(' ')[1]||m._ts||'')}</div>
-        </div>
-      </div>`).join(''):'<div style="text-align:center;color:var(--g400);font-size:.82rem;padding:20px">這位客戶還沒有透過 LINE 傳過訊息</div>';
-    list.scrollTop=list.scrollHeight;
-  }
-}
-
-// 從客戶諮詢畫面直接回覆到客戶的 LINE
-async function sendLineReply(){
-  const client=DB.get('clients').find(c=>c._id===curClientId);
-  if(!client||!client.lineUserId){showToast('⚠️ 這位客戶沒有連結 LINE 帳號');return;}
-  const input=document.getElementById('lineReplyInput');
-  const text=(input?.value||'').trim();
-  if(!text){showToast('⚠️ 請輸入回覆內容');return;}
-  const btn=document.getElementById('lineReplyBtn');
-  if(btn){btn.disabled=true;btn.textContent='傳送中…';}
-  try{
-    const r=await fetch('/.netlify/functions/line-push',{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({lineUserId:client.lineUserId,text}),
-    });
-    if(!r.ok)throw new Error('傳送失敗');
-    if(input)input.value='';
-    showToast('✅ 已傳送到 LINE');
-    // 訊息記錄會由後端寫回資料庫，透過即時同步幾秒內會自動出現在對話記錄裡
-  }catch(e){
-    console.error(e);
-    showToast('⚠️ 傳送失敗，請檢查網路連線或稍後再試');
-  }finally{
-    if(btn){btn.disabled=false;btn.textContent='傳送到 LINE →';}
-  }
 }
 
 // ── checkPaymentTriggers ───────────────────────────────────
@@ -1043,7 +923,7 @@ const RPTS={
       const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
       const rows=vendors.map(v=>{
         const proj=v.projectId?projects.find(p=>p._id==v.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):esc(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('vendors',${v._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記付款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('vendors',${v._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記付款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
@@ -1057,7 +937,7 @@ const RPTS={
       const total=ledger.reduce((s,l)=>s+(l.amount||0),0);
       const rows=ledger.map(l=>{
         const proj=l.projectId?projects.find(p=>p._id==l.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):esc(l.caseN||'—')}</td><td style="padding:8px 12px">${esc(l.date||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('ledger',${l._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記收款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('ledger',${l._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記收款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--ok);font-weight:800;margin-bottom:12px">應收總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">說明</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:left">日期</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }

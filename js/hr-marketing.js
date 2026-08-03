@@ -210,7 +210,7 @@ function renderEmployees(){
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
       setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
-      document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
+      document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
     card.querySelector('[data-edel]')?.addEventListener('click',()=>{confirmAction('刪除員工「'+e.name+'」？歷史打卡和薪資記錄仍會保留。',()=>{DB.upd('employees',e._id,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW')});renderEmployees();updHRStats();showToast('✅ 員工已移除，歷史記錄保留');});});

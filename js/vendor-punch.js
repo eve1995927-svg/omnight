@@ -518,7 +518,7 @@ function renderVendors(filter){
           '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
         '</div>'+
         '<div style="text-align:right;flex-shrink:0">'+
-          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+          '<div id="vc-hd-amt-'+v._id+'" style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(v.amount||0).toLocaleString()+'</div>'+
           (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
         '</div>'+
         '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
@@ -602,10 +602,28 @@ function renderVendors(filter){
           row.appendChild(n);row.appendChild(q);row.appendChild(u);row.appendChild(up);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
         });
       }
+      let _lastCardTotal=v.amount||0; // 追蹤這張卡片上一次算出來的小計，用來跟案場合計做正確的增減，不是每次都拿最原始的金額去比
       function updVCardTotal(){
         const t=editItems.reduce((s,x)=>s+(x.amount||0),0);
         subTotEl.textContent='小計 NT$'+t.toLocaleString();
-        hd.querySelector('[style*="gold"]')?.textContent&&(hd.querySelectorAll('div')[2].textContent='NT$'+t.toLocaleString());
+        // 修正重點：這裡原本用 hd.querySelectorAll('div')[2] 去抓卡片標題上顯示的金額，
+        // 但 querySelectorAll 是照 HTML 裡巢狀的順序抓，不是只抓最外層——[2] 抓到的其實是「日期」那個 div，
+        // 不是金額那個 div，導致改細項金額時，卡片標題上顯示的金額一直沒有真的更新（看起來像沒加總對）。
+        // 現在改成直接用 id 抓正確的那個元素，不會再抓錯。
+        const hdAmtEl=document.getElementById('vc-hd-amt-'+v._id);
+        if(hdAmtEl)hdAmtEl.textContent='NT$'+t.toLocaleString();
+        // 案場分組標題（黃色那排「案場合計」）也順便即時更新，不用等按「儲存修改」、整頁重新整理才會對。
+        // 用「這次總額 - 上次總額」算增減量，不是「這次總額 - 最原始金額」，
+        // 不然使用者連續打字觸發好幾次計算時，同一筆變動會被重複疊加進去，越算越多。
+        const diff=t-_lastCardTotal;
+        _lastCardTotal=t;
+        if(diff!==0){
+          const grpTotalEl=grpHd?.querySelector('[style*="font-family:monospace"]');
+          if(grpTotalEl){
+            const cur=parseInt(grpTotalEl.textContent.replace(/[^\d]/g,''))||0;
+            grpTotalEl.textContent='NT$'+(cur+diff).toLocaleString();
+          }
+        }
       }
       const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:1,unit:'式',unitPrice:0,amount:0});renderVCardItems();});
       const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.textContent='小計 NT$'+(v.amount||0).toLocaleString();

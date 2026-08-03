@@ -309,7 +309,7 @@ function renderCtPhotos(){
       img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
       img.onclick=()=>openLB(url);wrap.appendChild(img);
     }else{
-      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+(p.name||'文件')+'</div></div>';
+      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
     }
     const pg=document.createElement('div');
     pg.style.cssText='position:absolute;top:4px;left:4px;background:rgba(0,0,0,.6);color:#fff;font-size:.65rem;font-weight:700;padding:2px 6px;border-radius:10px';
@@ -722,14 +722,10 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
   if(!name){showToast('⚠️ 請填入客戶姓名');return;}
   const phone=(document.getElementById('newClientPhone')?.value||'').trim();
   const addr=(document.getElementById('newClientAddr')?.value||'').trim();
-  const client={
-    _id:Date.now(),
-    name,phone,addr,
-    created:new Date().toLocaleString('zh-TW')
-  };
-  const clients=DB.get('clients');
-  clients.unshift(client);
-  DB.set('clients',clients);
+  // 修正重點：這裡原本是「整包客戶清單抓出來、手動加一筆、整包寫回去」，
+  // 這種整包覆蓋的寫法，如果剛好另一台裝置同時也在新增客戶，會互相蓋掉對方剛新增的資料。
+  // 改成用 DB.push 只新增這一筆，不會動到其他人剛好在異動的資料，id 也會由系統保證不重複。
+  const [client]=DB.push('clients',{name,phone,addr});
   closeModal('addClientModal');
   renderClientList();
   if(typeof switchClient==='function') switchClient(client._id);
