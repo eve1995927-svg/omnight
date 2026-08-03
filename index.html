@@ -1126,6 +1126,15 @@
   <input type="file" id="vFile" accept="image/*" multiple style="display:none">
   <div class="ipg" id="vPrev" style="margin-top:10px"></div>
   <div class="ocrp" id="vOcr"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中，請稍候…</div>
+  <div id="vOcrProgressWrap" style="display:none;margin-bottom:14px">
+   <div style="display:flex;justify-content:space-between;font-size:.76rem;color:var(--g500);font-weight:700;margin-bottom:5px">
+    <span id="vOcrProgressLabel">辨識中…</span>
+    <span id="vOcrProgressPct">0%</span>
+   </div>
+   <div style="height:8px;background:var(--g100);border-radius:20px;overflow:hidden">
+    <div id="vOcrProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold-l),var(--gold));border-radius:20px;transition:width .3s ease"></div>
+   </div>
+  </div>
 
   <!-- 辨識結果：報價單格式預覽 -->
   <div id="vResult" style="display:block">
@@ -1149,7 +1158,11 @@
     </div>
     <div id="vItemsTable"></div>
    </div>
-   <button class="btn bo bsm" id="vAddItem" style="margin-bottom:12px">＋ 新增細項</button>
+   <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="btn bo bsm" id="vAddItem">＋ 新增細項</button>
+    <button class="btn bo bsm" id="vSupplementUpload">📷 補充上傳（沒辨識到的頁面再拍一次）</button>
+    <input type="file" id="vSupplementFile" accept="image/*" multiple style="display:none">
+   </div>
    <!-- 合計 -->
    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:12px">
     <span style="font-size:.9rem;font-weight:800;color:var(--gold-d)">報價合計</span>
