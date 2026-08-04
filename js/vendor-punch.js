@@ -673,6 +673,7 @@ function renderVendors(filter){
         '</div>'+
         '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
           '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
+          '<button class="btn bo bxs" data-vcompare title="跟這家廠商其他案場的報價左右比較">🔍 比較</button>'+
           '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
           '<button class="btn brd bxs" data-vdel>🗑</button>'+
         '</div>';
@@ -799,6 +800,7 @@ function renderVendors(filter){
       renderVCardItems();
 
       hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
+      hd.querySelector('[data-vcompare]').addEventListener('click',e=>{e.stopPropagation();showVendorSeries(v.vendor);});
       hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
       hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
       card.appendChild(hd);card.appendChild(body);grpBody.appendChild(card);
