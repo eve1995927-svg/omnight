@@ -681,13 +681,17 @@ function renderAttendance(){
 
   emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'}]).forEach(emp=>{
     // 找這個帳號的打卡記錄
-    const roleId=emp._id==='punch'?'punch':'staff';
+    // 修正重點：這裡原本不管是哪個員工，一律拿「staff」去找打卡記錄，等於全部員工都在搶同一個帳號的紀錄。
+    // 但員工實際打卡時，如果有選自己的帳號登入，系統存的其實是「emp_員工編號」這種各自獨立的值
+    // （不是統一的 staff），導致這裡完全比對不到，看起來就像「員工打卡了，但老闆這邊看不到」。
+    // 改成比照存檔時的邏輯，個人帳號比對「emp_員工編號」，公務／共用帳號才用固定的角色名去比對。
+    const roleId=(emp._id==='punch')?'punch':('emp_'+emp._id);
     const myRecs=allRecs.filter(r=>{
       if(!r.date)return false;
       const [y,m]=r.date.includes('/')
         ?r.date.split('/').map(Number)
         :r.date.split('-').map(Number);
-      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&r.user===roleId;
+      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&(r.user===roleId||(emp._id!=='punch'&&r.user==='staff'&&r.userName===emp.name));
     });
 
     // 統計
