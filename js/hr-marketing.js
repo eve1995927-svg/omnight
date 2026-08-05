@@ -16,15 +16,22 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  const caseN=document.getElementById('progCase').value.trim();
+  // 修正重點：「案場名稱」這個欄位很早之前已經從自由輸入的文字框，改成用下拉選單選既有案場
+  // （避免同一個案場打字打法不一樣，變成好幾筆對不起來），但選單存的 value 其實是案場的「編號」，
+  // 不是案場名稱本身。這段程式碼還是照舊把 .value 直接當成名字存進去，
+  // 結果存進去的是一長串數字（案場編號），不是案場名稱——這就是「工程進度變成代碼」的原因。
+  // 改成用選到的編號去查真正的案場名稱，名稱、案場關聯都存正確的值。
+  const projectIdVal=document.getElementById('progCase').value;
+  const selectedProject=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
+  if(!projectIdVal||!selectedProject){showToast('⚠️ 請選擇案場');return;}
+  const caseN=selectedProject.name;
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
-  if(!caseN){showToast('⚠️ 請填入案場名稱');return;}
   if(progEditId){
-    DB.upd('progress',progEditId,{caseN,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+    DB.upd('progress',progEditId,{caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
     showToast('✅ 進度已更新！');
   }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,items:progItems.map(x=>({...x}))});
+    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x}))});
     showToast('✅ 案場進度已建立！');
   }
   closeModal('progressModal');renderProgress();progEditId=null;
@@ -46,11 +53,20 @@ function renderProgress(){
     const done=(p.items||[]).filter(x=>x.done).length;
     const total=(p.items||[]).length;
     const pct=total?Math.round(done/total*100):0;
+    // 修正重點：舊資料如果是在上面那個 bug 修好之前建立的，caseN 欄位存的可能是一長串案場編號、
+    // 不是名字。這裡加一層防呆：如果 caseN 看起來像純數字編號，改成用 projectId（如果有存）
+    // 或這串數字本身去查真正的案場名稱，畫面上不會再顯示一串看不懂的代碼。
+    let displayName=p.caseN;
+    if(!displayName||/^\d+$/.test(String(displayName).trim())){
+      const lookupId=p.projectId||displayName;
+      const matched=DB.get('projects').find(pr=>String(pr._id)===String(lookupId));
+      if(matched)displayName=matched.name;
+    }
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+p.caseN+'</div>'+
-          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+p.client+'</div>':'')+
+          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName||'（未命名案場）')+'</div>'+
+          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
