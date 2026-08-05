@@ -350,7 +350,7 @@ async function genPost(){
   const tp=document.getElementById('mkTp')?.value||'案例分享 — 日式風格';
   const sp=document.getElementById('mkSp');if(sp)sp.classList.add('show');
   const p=SYS.mk+'\n\n請幫我寫一篇'+pl+'的'+tp+'行銷貼文，要有吸引力、使用繁體中文、加上適當的emoji和hashtag，大約200字。';
-  try{const rep=await callAI('mk',p,3000);showPost(pl,tp,rep);}
+  try{const rep=await callAI('mk',p,3000,60,'行銷貼文生成');showPost(pl,tp,rep);}
   catch(err){
     console.log('genPost err',err);
     showToast(friendlyAIError(err)+'（已套用預設文案，可手動修改）');
@@ -358,6 +358,9 @@ async function genPost(){
   }
   if(sp)sp.classList.remove('show');
 }
+// 修正重點：主要的「生成貼文」按鈕原本完全沒有綁定任何點擊事件，
+// 整個行銷貼文功能等於是壞的（按鈕在畫面上，點了完全沒反應）。補上綁定。
+document.getElementById('genPst')?.addEventListener('click',genPost);
 
 // ══ 打卡月曆 ══════════════════════════════════════════════
 let _punchCalYear=new Date().getFullYear();
@@ -732,7 +735,187 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
   showToast('✅ 客戶「'+name+'」已建立！');
 });
 
+// 修正重點：整個丈量記錄視窗（房間名稱、長寬、拍照、儲存）原本完全沒有接上任何程式邏輯——
+// 換算坪數的即時計算、拍照上傳、儲存按鈕，全部都是「畫面看起來能用，實際點了沒反應」的狀態。
+// 這裡補齊完整功能。
+function updSurveyArea(){
+  const len=parseFloat(document.getElementById('svLen')?.value)||0;
+  const wid=parseFloat(document.getElementById('svWid')?.value)||0;
+  const sqm=len*wid;
+  const ping=sqm/3.305785;
+  const el=document.getElementById('svArea');
+  if(el)el.textContent=(ping?ping.toFixed(2):'0')+' 坪'+(sqm?'（'+sqm.toFixed(2)+' 平方公尺）':'');
+}
+
+function renderSvPhotos(){
+  const photos=Array.isArray(svImgUrl)?svImgUrl:[];
+  const fc=document.getElementById('svFileCard');
+  const grid=document.getElementById('svPhotoGrid');
+  const cnt=document.getElementById('svFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+    const img=document.createElement('img');
+    img.src=p.url||p;img.style.cssText='width:100%;height:100%;object-fit:cover';
+    img.onclick=()=>openLB(p.url||p);wrap.appendChild(img);
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:3px;right:3px;width:20px;height:20px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.65rem';
+    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(svImgUrl))svImgUrl.splice(i,1);renderSvPhotos();};
+    wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:1/1;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--g400);font-size:1.2rem';
+  addMore.textContent='＋';
+  addMore.onclick=()=>document.getElementById('svFile')?.click();
+  grid.appendChild(addMore);
+}
+
+document.getElementById('svZone')?.addEventListener('click',()=>document.getElementById('svFile')?.click());
+document.getElementById('svFile')?.addEventListener('change',async e=>{
+  const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+  if(!Array.isArray(svImgUrl))svImgUrl=[];
+  const rf=async f=>{
+    const compressed=await compressImage(f,1600,0.75);
+    return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+  };
+  svImgUrl.push(...await Promise.all(files.map(rf)));
+  renderSvPhotos();
+});
+document.getElementById('svSaveBtn')?.addEventListener('click',()=>{
+  const room=(document.getElementById('svRoom')?.value||'').trim();
+  if(!room){showToast('⚠️ 請填入房間或區域名稱');return;}
+  if(!curProjectId){showToast('⚠️ 請先從案場詳情頁進入丈量分頁再新增');return;}
+  const len=parseFloat(document.getElementById('svLen')?.value)||0;
+  const wid=parseFloat(document.getElementById('svWid')?.value)||0;
+  const area=len&&wid?+(len*wid/3.305785).toFixed(2):0;
+  DB.push('measurements',{
+    projectId:curProjectId, room, length:len, width:wid, area,
+    note:(document.getElementById('svNote')?.value||'').trim(),
+    fileUrls:(svImgUrl||[]).slice(),
+    summary:'丈量 '+room,
+  });
+  closeModal('surveyModal');
+  showToast('✅ 丈量記錄已儲存！');
+  if(typeof renderProjectDetail==='function')renderProjectDetail(curProjectId,'survey');
+});
+
+// 修正重點：報價單檔案上傳視窗（拍照/PDF上傳、儲存）原本也完全沒有接上任何程式邏輯，
+// 跟丈量記錄視窗是一樣的狀況——畫面在，點了沒反應。這裡補齊完整功能。
+function renderQfPhotos(){
+  const photos=Array.isArray(qfImgUrl)?qfImgUrl:[];
+  const fc=document.getElementById('qfFileCard');
+  const grid=document.getElementById('qfPhotoGrid');
+  const cnt=document.getElementById('qfFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已上傳 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:3/4;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+    const url=p.url||p;
+    if((p.type&&p.type.startsWith('image/'))||(typeof url==='string'&&url.startsWith('data:image'))){
+      const img=document.createElement('img');
+      img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+      img.onclick=()=>openLB(url);wrap.appendChild(img);
+    }else{
+      wrap.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:4px"><div style="font-size:1.6rem">📄</div><div style="font-size:.65rem;color:var(--g500);text-align:center;padding:0 4px">'+esc(p.name||'文件')+'</div></div>';
+    }
+    const del=document.createElement('button');
+    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem';
+    del.textContent='✕';del.onclick=e=>{e.stopPropagation();if(Array.isArray(qfImgUrl))qfImgUrl.splice(i,1);renderQfPhotos();};
+    wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:3/4;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;gap:4px;color:var(--g400);font-size:.75rem;font-weight:700';
+  addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
+  addMore.onclick=()=>document.getElementById('qfFile')?.click();
+  grid.appendChild(addMore);
+}
+
+document.getElementById('qfZone')?.addEventListener('click',()=>document.getElementById('qfFile')?.click());
+document.getElementById('qfFile')?.addEventListener('change',async e=>{
+  const files=Array.from(e.target.files);if(!files.length)return;e.target.value='';
+  if(!Array.isArray(qfImgUrl))qfImgUrl=[];
+  const rf=async f=>{
+    if(f.type.startsWith('image/')){
+      const compressed=await compressImage(f,1600,0.75);
+      return {name:f.name,type:'image/jpeg',url:compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);})};
+    }
+    return new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({name:f.name,type:f.type,url:ev.target.result});rd.readAsDataURL(f);});
+  };
+  qfImgUrl.push(...await Promise.all(files.map(rf)));
+  renderQfPhotos();
+});
+document.getElementById('qfDelFile')?.addEventListener('click',()=>{
+  qfImgUrl=[];
+  const fc=document.getElementById('qfFileCard');if(fc)fc.style.display='none';
+  const fi=document.getElementById('qfFile');if(fi)fi.value='';
+  const grid=document.getElementById('qfPhotoGrid');if(grid)grid.innerHTML='';
+});
+document.getElementById('qfSaveBtn')?.addEventListener('click',()=>{
+  const name=(document.getElementById('qfName')?.value||'').trim();
+  if(!name){showToast('⚠️ 請填入報價單名稱');return;}
+  if(!qfImgUrl.length){showToast('⚠️ 請至少上傳一張報價單照片或檔案');return;}
+  const p=curProjectId?getProject(curProjectId):null;
+  DB.push('quotes',{
+    name, caseN:p?.name||'', type:p?.type||'',
+    sections:[], fileUrls:qfImgUrl.slice(),
+    summary:'報價單 '+name+'（檔案上傳）', projectId:curProjectId||null
+  });
+  closeModal('qFileModal');
+  showToast('✅ 報價單已上傳！');
+  if(typeof renderProjectDetail==='function'&&curProjectId)renderProjectDetail(curProjectId,'quote');
+  if(typeof renderQTable==='function')renderQTable();
+});
+
 // Enter 鍵送出
 document.getElementById('newClientName')?.addEventListener('keydown',e=>{
   if(e.key==='Enter') document.getElementById('confirmAddClient')?.click();
 });
+
+// ══ 丈量：AI 讀取手寫尺寸照片 ══════════════════════════════
+document.getElementById('svOcrZone')?.addEventListener('click',()=>document.getElementById('svOcrFile')?.click());
+document.getElementById('svOcrFile')?.addEventListener('change',async e=>{
+  const files=Array.from(e.target.files).filter(f=>f.type.startsWith('image/'));
+  if(!files.length)return;e.target.value='';
+
+  const spin=document.getElementById('svOcrSpin');
+  const resultBox=document.getElementById('svOcrResult');
+  if(spin)spin.style.display='flex';
+  if(resultBox)resultBox.style.display='none';
+
+  try{
+    const readImg=f=>new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({b64:ev.target.result.split(',')[1],mime:f.type});rd.readAsDataURL(f);});
+    const imgs=await Promise.all(files.map(readImg));
+    const content=[];
+    imgs.forEach((img,i)=>{
+      content.push({type:'image',source:{type:'base64',media_type:img.mime,data:img.b64}});
+      content.push({type:'text',text:'（第'+(i+1)+'張）'});
+    });
+    content.push({type:'text',text:'這是現場手寫的丈量紀錄，紙上會寫房間或區域名稱，加上長寬尺寸（單位通常是公尺，可能寫成「4x3.5」「長4寬3.5」等格式）。'+
+      '請把每一筆讀出來，只回覆純JSON（不要加```），格式：{"rooms":[{"room":"房間名稱","length":數字,"width":數字}]}。'+
+      '長寬都要是「公尺」為單位的數字，如果紙上單位是台尺或其他單位，幫我換算成公尺。看不清楚或無法判斷的欄位就不要放進結果。'});
+    const rep=await callAI('ad',content,2000,80,'丈量手寫辨識');
+    const dat=JSON.parse(rep.replace(/```json|```/g,'').trim());
+    svOcrParsed=(dat.rooms||[]).filter(r=>r.room||r.length||r.width);
+    if(spin)spin.style.display='none';
+    if(!svOcrParsed.length){
+      showToast('⚠️ 沒有辨識到房間跟尺寸，請確認照片清楚，或手動輸入');
+      return;
+    }
+    renderSvOcrList();
+    if(resultBox)resultBox.style.display='block';
+  }catch(err){
+    console.log('丈量手寫辨識失敗：',err);
+    if(spin)spin.style.display='none';
+    showToast(friendlyAIError(err)+'（請改用「＋新增丈量」手動輸入）');
+  }
+});
+document.getElementById('svOcrSaveBtn')?.addEventListener('click',saveSvOcrResults);
