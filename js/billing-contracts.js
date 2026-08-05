@@ -708,6 +708,10 @@ function updVCaseFilter(){
 // ── initAdQuote ────────────────────────────────────────────
 function initAdQuote(){
   adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
+  curMgmtRate=8;
+  const rateInput=document.getElementById('adMgmtRate');if(rateInput)rateInput.value=8;
+  const waiveBtn=document.getElementById('adMgmtWaive');
+  if(waiveBtn){waiveBtn.textContent='🎁 贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
   const qbC=document.getElementById('adQbClient');if(qbC)qbC.textContent='—';
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
@@ -727,13 +731,14 @@ function initAdQuote(){
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
         projectId:curProjectId||null,
+        mgmtFeeRate:curMgmtRate,
         sections:JSON.parse(JSON.stringify(adSections)),total:sub});
       updStats();renderQTable();
       showToast('✅ 報價單已儲存！');
       // 下一步提示
       if(typeof showNextStep==='function'){
         showNextStep('報價單已儲存，接下來呢？',[
-          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client')},
+          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate)},
           {label:'📝 建立合約',action:()=>openModal('contractModal')},
           {label:'稍後再說',action:()=>{}},
         ]);
@@ -744,13 +749,13 @@ function initAdQuote(){
   const adXlsBtn=document.getElementById('adXls');
   if(adXlsBtn&&!adXlsBtn._bound){
     adXlsBtn._bound=true;
-    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal'));
+    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal',curMgmtRate));
   }
 
   const adXlsClientBtn=document.getElementById('adXlsClient');
   if(adXlsClientBtn&&!adXlsClientBtn._bound){
     adXlsClientBtn._bound=true;
-    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client'));
+    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate));
   }
 
   const adAddSecBtn=document.getElementById('adAddSec');

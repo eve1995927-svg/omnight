@@ -186,22 +186,54 @@ function refreshGlobalTotals(containerId){
 }
 
 // ── 報價金額計算（畫面顯示與Excel匯出共用同一套公式，避免兩邊算出不同總價）──
-function calcQuoteTotals(sections){
+// ── 報價金額計算（畫面顯示與Excel匯出共用同一套公式，避免兩邊算出不同總價）──
+// 管理費可以自訂百分比或整個贈送（免收），存在報價單自己的資料裡，跟這份報價一起存檔、一起匯出，
+// 不會影響其他報價單
+function calcQuoteTotals(sections, mgmtRate){
+  if(mgmtRate==null) mgmtRate=(typeof curMgmtRate!=='undefined'?curMgmtRate:8);
   const subtotal=calcAll(sections);
-  const mgmt=Math.round(subtotal*0.08);
+  const mgmt=Math.round(subtotal*(mgmtRate/100));
   const tax=Math.round((subtotal+mgmt)*0.05);
   const grand=subtotal+mgmt+tax;
-  return {subtotal,mgmt,tax,grand};
+  return {subtotal,mgmt,tax,grand,mgmtRate};
 }
 
+let curMgmtRate=8; // 目前報價編輯器裡使用的管理費％數，預設8%，可以在畫面上直接改或按「贈送」歸零
+
 function updProTotals(sections,ids){
-  const {subtotal,mgmt,tax,grand}=calcQuoteTotals(sections);
+  const rateInput=document.getElementById('adMgmtRate');
+  if(ids.mgmt&&rateInput) curMgmtRate=parseFloat(rateInput.value)||0;
+  const {subtotal,mgmt,tax,grand}=calcQuoteTotals(sections, ids.mgmt?curMgmtRate:8);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   if(ids.sub)set(ids.sub,fmt(subtotal));
   if(ids.mgmt)set(ids.mgmt,fmt(mgmt));
   if(ids.tax)set(ids.tax,fmt(tax));
   if(ids.total)set(ids.total,fmt(ids.mgmt?grand:subtotal));
 }
+
+// 管理費％數輸入框：改了就即時重算總價
+document.getElementById('adMgmtRate')?.addEventListener('input',()=>{
+  if(typeof adSections!=='undefined') updProTotals(adSections,{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'});
+});
+// 「贈送」按鈕：點一下歸零（免收管理費），再點一下復原成剛剛的％數，方便來回切換
+let _mgmtRateBeforeWaive=8;
+document.getElementById('adMgmtWaive')?.addEventListener('click',()=>{
+  const rateInput=document.getElementById('adMgmtRate');
+  const waiveBtn=document.getElementById('adMgmtWaive');
+  if(!rateInput)return;
+  const cur=parseFloat(rateInput.value)||0;
+  if(cur>0){
+    _mgmtRateBeforeWaive=cur;
+    rateInput.value=0;
+    waiveBtn.textContent='↩️ 取消贈送';
+    waiveBtn.style.background='var(--ok-bg)';waiveBtn.style.color='var(--ok)';waiveBtn.style.borderColor='var(--ok-bd)';
+  }else{
+    rateInput.value=_mgmtRateBeforeWaive||8;
+    waiveBtn.textContent='🎁 贈送';
+    waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';
+  }
+  if(typeof adSections!=='undefined') updProTotals(adSections,{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'});
+});
 
 function addPqsItem(secId,containerId,sections,opts){
   const sec=sections.find(s=>s.id===secId);if(!sec)return;
@@ -383,13 +415,14 @@ function renderQTable(){
     tbl.appendChild(tr);
   });
   tbl.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
-  tbl.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[]);});});
+  tbl.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[],undefined,(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8);});});
   tbl.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
 }
 
 // ── EXCEL DOWNLOAD ──
 let _xlsGenerating=false;
-function dlXls(name,type,sections,mode){
+function dlXls(name,type,sections,mode,mgmtRate){
+  if(mgmtRate==null) mgmtRate=8;
   const today=new Date().toLocaleDateString('zh-TW');
   const isInternal=(mode==='internal');
 
@@ -435,7 +468,7 @@ function dlXls(name,type,sections,mode){
       sts.push(Math.round(t)); grand+=Math.round(t);
     });
     // 管理費、稅金計算跟畫面上完全一致（calcQuoteTotals 同一套公式），避免匯出金額跟畫面對不起來
-    const mgmtFee=Math.round(grand*0.08);
+    const mgmtFee=Math.round(grand*(mgmtRate/100));
     const tax=Math.round((grand+mgmtFee)*0.05);
 
     // ══ 主表：完全按照模板格式 ══
@@ -515,11 +548,11 @@ function dlXls(name,type,sections,mode){
     ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((20+offset))).border=brd('thin'));
     const f20=ws.getCell('F'+(20+offset)); f20.value=grand; f20.numFmt='#,##0'; f20.alignment={horizontal:'right',vertical:'middle'};
 
-    // R21 工程管理費8%（先前版本漏掉這行，導致匯出金額比畫面上顯示的少8%，這次補上）
+    // R21 工程管理費（％數依這份報價實際設定的比例顯示，贈送時顯示為免收）
     ws.getRow((21+offset)).height=16;
     ws.mergeCells('A'+(21+offset)+':E'+(21+offset));
     ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((21+offset))).border=brd('thin'));
-    setCell('A'+(21+offset),'工程管理費8%',{sz:10,h:'center',v:'middle'});
+    setCell('A'+(21+offset),mgmtRate>0?('工程管理費'+mgmtRate+'%'):'工程管理費（本次免收）',{sz:10,h:'center',v:'middle'});
     const fMgmt=ws.getCell('F'+(21+offset)); fMgmt.value=mgmtFee; fMgmt.numFmt='#,##0'; fMgmt.alignment={horizontal:'right',vertical:'middle'};
 
     // R22 稅金（原R21，因為插入管理費行而往下移一行）
