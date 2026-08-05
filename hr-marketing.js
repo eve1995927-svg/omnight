@@ -16,15 +16,22 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  const caseN=document.getElementById('progCase').value.trim();
+  // 修正重點：「案場名稱」這個欄位很早之前已經從自由輸入的文字框，改成用下拉選單選既有案場
+  // （避免同一個案場打字打法不一樣，變成好幾筆對不起來），但選單存的 value 其實是案場的「編號」，
+  // 不是案場名稱本身。這段程式碼還是照舊把 .value 直接當成名字存進去，
+  // 結果存進去的是一長串數字（案場編號），不是案場名稱——這就是「工程進度變成代碼」的原因。
+  // 改成用選到的編號去查真正的案場名稱，名稱、案場關聯都存正確的值。
+  const projectIdVal=document.getElementById('progCase').value;
+  const selectedProject=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
+  if(!projectIdVal||!selectedProject){showToast('⚠️ 請選擇案場');return;}
+  const caseN=selectedProject.name;
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
-  if(!caseN){showToast('⚠️ 請填入案場名稱');return;}
   if(progEditId){
-    DB.upd('progress',progEditId,{caseN,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+    DB.upd('progress',progEditId,{caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
     showToast('✅ 進度已更新！');
   }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,items:progItems.map(x=>({...x}))});
+    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x}))});
     showToast('✅ 案場進度已建立！');
   }
   closeModal('progressModal');renderProgress();progEditId=null;
@@ -46,10 +53,19 @@ function renderProgress(){
     const done=(p.items||[]).filter(x=>x.done).length;
     const total=(p.items||[]).length;
     const pct=total?Math.round(done/total*100):0;
+    // 修正重點：舊資料如果是在上面那個 bug 修好之前建立的，caseN 欄位存的可能是一長串案場編號、
+    // 不是名字。這裡加一層防呆：如果 caseN 看起來像純數字編號，改成用 projectId（如果有存）
+    // 或這串數字本身去查真正的案場名稱，畫面上不會再顯示一串看不懂的代碼。
+    let displayName=p.caseN;
+    if(!displayName||/^\d+$/.test(String(displayName).trim())){
+      const lookupId=p.projectId||displayName;
+      const matched=DB.get('projects').find(pr=>String(pr._id)===String(lookupId));
+      if(matched)displayName=matched.name;
+    }
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+esc(p.caseN)+'</div>'+
+          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName||'（未命名案場）')+'</div>'+
           (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
@@ -67,8 +83,8 @@ function renderProgress(){
         (p.items||[]).map(it=>
           '<div class="prog-item">'+
             '<div class="prog-dot '+(it.done?'done':it.date?'ing':'todo')+'"></div>'+
-            '<div style="flex:1;font-size:.85rem;font-weight:'+(it.done?'700':'500')+';color:'+(it.done?'var(--ok)':'var(--g700)')+'">'+esc(it.text)+'</div>'+
-            (it.date?'<div style="font-size:.72rem;color:var(--g400);font-family:\'DM Mono\',monospace">'+esc(it.date)+'</div>':'')+
+            '<div style="flex:1;font-size:.85rem;font-weight:'+(it.done?'700':'500')+';color:'+(it.done?'var(--ok)':'var(--g700)')+'">'+it.text+'</div>'+
+            (it.date?'<div style="font-size:.72rem;color:var(--g400);font-family:\'DM Mono\',monospace">'+it.date+'</div>':'')+
           '</div>'
         ).join('')+
       '</div>';
@@ -183,8 +199,8 @@ function renderEmployees(){
     const card=document.createElement('div');card.className='emp-card';
     card.innerHTML=
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'+
-        '<div class="emp-avatar">'+esc((e.name||'?').charAt(0))+'</div>'+
-        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+esc(e.name||'未命名')+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+esc(e.title||'員工')+' ｜ 到職：'+esc(e.startDate||'—')+'</div></div>'+
+        '<div class="emp-avatar">'+e.name.charAt(0)+'</div>'+
+        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+e.name+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+( e.title||'員工')+' ｜ 到職：'+e.startDate+'</div></div>'+
         '<div style="display:flex;gap:5px">'+
           '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️ 編輯</button>'+
           '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
@@ -198,7 +214,7 @@ function renderEmployees(){
         '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+( e.retire||0).toLocaleString()+'</span></div>'+
         '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+( e.net||0).toLocaleString()+'</span></div>'+
       '</div>'+
-      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+esc(e.bank)+'</div>':'')+
+      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'')+
       (e.account?'<div style="font-size:.75rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'');
     card.querySelector('[data-eedit]')?.addEventListener('click',()=>{
       empEditId=e._id;
@@ -322,15 +338,10 @@ function savePayDate(v){localStorage.setItem('zeju_pay_date',v);showToast('✅ �
 // ══ 每月薪資記錄（含獎金、代墊費，存在雲端不再用 localStorage）══════
 // 取得（或建立預設值）某位員工某個月的薪資記錄
 function getSalaryRecord(empId, monthKey){
-  // 修正重點：按鈕的 onclick="openSalaryEditBox('123',...)" 傳進來的 empId 一定是字串，
-  // 但員工 _id 是用 Date.now() 產生的數字，字串 '123' === 數字 123 永遠是 false，
-  // 導致「調整獎金」「標記匯款」這些按鈕點了完全沒反應（這就是薪資管理不能用的真正原因）。
-  // 這裡統一轉成字串比對，兩種型別都吃得下去。
-  empId=String(empId);
-  const existing=DB.get('salary_records').find(r=>String(r.empId)===empId&&r.monthKey===monthKey);
+  const existing=DB.get('salary_records').find(r=>r.empId===empId&&r.monthKey===monthKey);
   if(existing)return existing;
   // 找不到就用員工當前的固定資料建立一筆預設記錄（獎金、代墊費預設為0，之後可個別調整）
-  const e=DB.get('employees').find(x=>String(x._id)===empId);
+  const e=DB.get('employees').find(x=>x._id===empId);
   if(!e)return null;
   const rec={
     empId, monthKey,
@@ -347,7 +358,7 @@ function getSalaryRecord(empId, monthKey){
 // 計算薪資記錄的實際數字（勞健保照員工當時設定的固定扣除額計算，獎金代墊費不計入勞健保級距，符合一般實務）
 function calcSalaryRecord(rec){
   const gross=(rec.baseSalary||0)+(rec.meal||0)+(rec.transport||0)+(rec.other||0)+(rec.bonus||0);
-  const e=DB.get('employees').find(x=>String(x._id)===String(rec.empId))||{};
+  const e=DB.get('employees').find(x=>x._id===rec.empId)||{};
   const laborDeduct=e.labor||0;
   const healthDeduct=e.health||0;
   const net=gross-laborDeduct-healthDeduct+(rec.reimbursement||0);
@@ -383,7 +394,7 @@ function renderMonthSalary(monthKey){
     card.style.cssText='background:var(--w);border:1.5px solid '+(rec.paid?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--rs);padding:14px 16px;margin-bottom:8px;transition:all var(--ease)';
     card.innerHTML=`
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
-        <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${esc((e.name||'?').charAt(0))}</div>
+        <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
         <div style="flex:1">
           <div style="font-size:.9rem;font-weight:900">${esc(e.name)}</div>
           <div style="font-size:.75rem;color:var(--g400)">${e.title||'員工'} ${workDays?'· 出勤 '+workDays+' 天':''}</div>
@@ -442,7 +453,7 @@ function renderMonthSalary(monthKey){
 // 調整獎金/代墊費/備註的輕量彈窗
 function openSalaryEditBox(empId,monthKey){
   const rec=getSalaryRecord(empId,monthKey);if(!rec)return;
-  const e=DB.get('employees').find(x=>String(x._id)===String(empId));
+  const e=DB.get('employees').find(x=>x._id===empId);
 
   const old=document.getElementById('_salBox');if(old)old.remove();
   const box=document.createElement('div');
@@ -572,21 +583,21 @@ async function exportSalaryReport(monthKey){
 
 // ══ 澤居自有工程快速新增 ══════════════════════════════════
 const ZEJU_DEFAULT_ITEMS = {
-  '拆除工程': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
-  '泥作工程': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
-  '木作工程': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
-  '水電工程': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
+  '拆除': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
+  '泥作': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
+  '木作': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
+  '水電': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
   '系統傢俱': [{name:'系統衣櫃',unit:'尺',qty:0,price:0},{name:'系統廚具',unit:'式',qty:1,price:0}],
-  '油漆工程': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
-  '衛浴工程': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
-  '燈具工程': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
-  '其他工程': [{name:'工程項目',unit:'式',qty:1,price:0}],
+  '油漆': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
+  '衛浴': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
+  '燈具': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
+  '其他': [{name:'工程項目',unit:'式',qty:1,price:0}],
 };
 
 function addZejuSection(icon, name){
   const defaults = ZEJU_DEFAULT_ITEMS[name] || [{name:'工程項目',unit:'式',qty:1,price:0}];
   adSections.push({
-    id:'s'+Date.now(),
+    id:mkSecId(),
     icon, name,
     items: defaults.map(it=>({...it}))
   });
@@ -686,13 +697,17 @@ function renderAttendance(){
 
   emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'}]).forEach(emp=>{
     // 找這個帳號的打卡記錄
-    const roleId=emp._id==='punch'?'punch':'staff';
+    // 修正重點：這裡原本不管是哪個員工，一律拿「staff」去找打卡記錄，等於全部員工都在搶同一個帳號的紀錄。
+    // 但員工實際打卡時，如果有選自己的帳號登入，系統存的其實是「emp_員工編號」這種各自獨立的值
+    // （不是統一的 staff），導致這裡完全比對不到，看起來就像「員工打卡了，但老闆這邊看不到」。
+    // 改成比照存檔時的邏輯，個人帳號比對「emp_員工編號」，公務／共用帳號才用固定的角色名去比對。
+    const roleId=(emp._id==='punch')?'punch':('emp_'+emp._id);
     const myRecs=allRecs.filter(r=>{
       if(!r.date)return false;
       const [y,m]=r.date.includes('/')
         ?r.date.split('/').map(Number)
         :r.date.split('-').map(Number);
-      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&r.user===roleId;
+      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&(r.user===roleId||(emp._id!=='punch'&&r.user==='staff'&&r.userName===emp.name));
     });
 
     // 統計
@@ -705,8 +720,8 @@ function renderAttendance(){
     card.style.cssText='background:var(--w);border:1px solid var(--g200);border-radius:var(--r);padding:16px 20px;margin-bottom:10px;box-shadow:var(--sh1)';
     card.innerHTML=
       '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'+
-        '<div class="emp-avatar" style="width:40px;height:40px;font-size:.9rem">'+esc((emp.name||'?').charAt(0))+'</div>'+
-        '<div style="flex:1"><div style="font-size:.9rem;font-weight:900">'+esc(emp.name||'未命名')+'</div><div style="font-size:.75rem;color:var(--g400)">'+esc(emp.title||'員工')+'</div></div>'+
+        '<div class="emp-avatar" style="width:40px;height:40px;font-size:.9rem">'+emp.name.charAt(0)+'</div>'+
+        '<div style="flex:1"><div style="font-size:.9rem;font-weight:900">'+emp.name+'</div><div style="font-size:.75rem;color:var(--g400)">'+(emp.title||'員工')+'</div></div>'+
         '<div style="font-family:monospace;font-size:1.1rem;font-weight:900;color:'+(pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--bad)')+'">'+pct+'%</div>'+
       '</div>'+
       '<div style="background:var(--g200);border-radius:4px;height:8px;margin-bottom:12px;overflow:hidden">'+
@@ -753,15 +768,40 @@ function switchHRTab(tab){
 function compareVendorsByCat(cat){
   const vendors=DB.get('vendors').filter(v=>v.cat===cat);
   if(vendors.length<2){showToast('同類別廠商不足 2 家，無法比較');return;}
-  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+v.vendor+'</td><td style="padding:10px 14px;color:var(--g400)">'+( v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+( v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+( v._ts||'').split(' ')[0]+'</td></tr>').join('');
   const min=Math.min(...vendors.map(v=>v.amount||0));
+
+  // 修正重點：原本用「列是工項、欄是廠商」的表格硬對齊比較，但像鋁窗、隔音窗這類東西
+  // 都是照現場尺寸客製化訂做，每一戶、每一個窗戶大小都不一樣，工項名稱幾乎不會完全相同，
+  // 對齊成同一列比較意義不大，畫面上大部分格子都會是空的。
+  // 改成跟「同一家廠商比較」同一套呈現方式：一家廠商一欄，各自完整列出自己的工項，
+  // 不強行對齊，總價（唯一真正能公平比較的數字）維持最顯眼。
+  const cols=vendors.map(v=>{
+    const isMin=(v.amount||0)===min;
+    const items=v.items||[];
+    const itemRows=items.length
+      ? items.map(it=>'<div style="display:flex;justify-content:space-between;gap:6px;padding:5px 0;font-size:.74rem;border-top:1px dashed var(--g100)">'+
+          '<span style="color:var(--g600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name||'（未命名）')+'</span>'+
+          '<span style="font-family:monospace;color:var(--g600);flex-shrink:0">'+(it.amount||0).toLocaleString()+'</span>'+
+        '</div>').join('')
+      : '<div style="padding:6px 0;font-size:.74rem;color:var(--g400)">沒有拆細項，只有總價</div>';
+    return '<div style="min-width:210px;max-width:230px;flex-shrink:0;border:1.5px solid '+(isMin?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--r);overflow:hidden'+(isMin?';background:var(--ok-bg)':'')+'">'+
+      '<div style="padding:10px 12px;background:'+(isMin?'transparent':'var(--g50)')+';border-bottom:1.5px solid '+(isMin?'var(--ok-bd)':'var(--g200)')+'">'+
+        '<div style="font-weight:900;font-size:.86rem">'+esc(v.vendor)+(isMin?' <span style="font-size:.64rem;background:var(--ok);color:#fff;padding:2px 7px;border-radius:20px;font-weight:800;margin-left:2px">💡最低</span>':'')+'</div>'+
+        '<div style="font-size:.7rem;color:var(--g400);margin-top:2px">'+esc(v.caseN||'—')+' · '+esc((v._ts||'').split(' ')[0])+'</div>'+
+        '<div style="font-family:monospace;font-weight:900;color:'+(isMin?'var(--ok)':'var(--gold-d)')+';font-size:1rem;margin-top:6px">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+      '</div>'+
+      '<div style="padding:6px 12px;max-height:280px;overflow-y:auto">'+itemRows+'</div>'+
+    '</div>';
+  }).join('');
+
   const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+cat+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
-    '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>廠商</th><th>案場</th><th>報價</th><th>日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+vendors.find(v=>v.amount===min)?.vendor+'）</div>'+
+  modal.innerHTML='<div class="modal" style="max-width:'+Math.min(960,260+vendors.length*230)+'px">'+
+    '<div class="mtit">'+esc(cat)+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.76rem;color:var(--g400);margin-bottom:12px;line-height:1.5">💡 這類工項通常是照現場尺寸客製訂做，每家報的細項不會完全一樣，所以用「總價」比較整體行情，細項清單讓你看各家報了些什麼、組成內容有沒有差異，不強行逐項對齊。</div>'+
+    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px">'+cols+'</div>'+
+    '<div style="margin-top:14px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+esc(vendors.find(v=>v.amount===min)?.vendor||'')+'）</div>'+
     '</div>';
   document.body.appendChild(modal);
-  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
 }
 
 // ══ 進度連結付款提醒 ══════════════════════════════════════
@@ -884,12 +924,9 @@ document.getElementById('vZone')?.addEventListener('click',()=>{
   document.getElementById('vFile')?.click();
 });
 
-// ══ Modal 點外面關閉（覆寫確保正確）══════════════════════
-document.querySelectorAll('.mov').forEach(mov=>{
-  mov.addEventListener('click',e=>{
-    if(e.target===mov) mov.classList.remove('show');
-  });
-});
+// 修正重點：這裡原本又重複寫了一次「點背景關閉彈窗」的邏輯，
+// 跟 misc.js 那邊的設定互相矛盾（misc.js 已經改成只能按 ✕ 關閉，這裡卻還留著點背景關閉），
+// 拿掉這段重複、互相打架的邏輯，統一以 misc.js 的規則為準：只能按 ✕ 或明確的關閉按鈕。
 
 // 確保 data-close 也正常運作
 document.querySelectorAll('[data-close]').forEach(btn=>{
@@ -926,12 +963,12 @@ document.getElementById('svRpl')?.addEventListener('click',()=>{
 });
 
 document.getElementById('qAddSec')?.addEventListener('click',()=>{
-  qSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  qSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('qSections',qSections,{allowDelSec:true,totIds:{sub:'pqSub',total:'pqTotal'}});
 });
 
 document.getElementById('adAddSec')?.addEventListener('click',()=>{
-  adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 });
 
@@ -1177,7 +1214,6 @@ function openLeaveRequestBox(){
       <button id="_lvSubmit" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">送出申請</button>
     </div>
   </div>`;
-  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 
   const updHint=()=>{
@@ -1266,7 +1302,7 @@ function renderLeaveManagement(){
       const row=document.createElement('div');
       row.style.cssText='display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--g100)';
       row.innerHTML=`
-        <div class="emp-avatar" style="width:32px;height:32px;font-size:.8rem">${esc((e.name||'?').charAt(0))}</div>
+        <div class="emp-avatar" style="width:32px;height:32px;font-size:.8rem">${e.name.charAt(0)}</div>
         <div style="flex:1;font-size:.85rem;font-weight:700">${esc(e.name)}</div>
         <div style="font-size:.78rem;color:var(--g500)">特休 ${quota} 天 · 已用 ${used} 天 · 剩 ${Math.max(0,quota-used)} 天</div>`;
       overviewEl.appendChild(row);
