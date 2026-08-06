@@ -617,7 +617,9 @@ function setVType(type){
 // ══ 澤居報價庫 Modal ══════════════════════════════════
 function openZejuQuoteModal(){
   const n=document.getElementById('adN')?.value||'';
-  const c=document.getElementById('adCase')?.value||document.getElementById('adAd')?.value||'';
+  const caseSelVal=document.getElementById('adCase')?.value||'';
+  const selectedProject=caseSelVal?DB.get('projects').find(p=>String(p._id)===String(caseSelVal)):null;
+  const c=selectedProject?.name||document.getElementById('adAd')?.value||'';
   const nEl=document.getElementById('zqName');if(nEl)nEl.value=n?n+' 報價':'';
   const cEl=document.getElementById('zqCase');if(cEl)cEl.value=c;
   const noEl=document.getElementById('zqNote');if(noEl)noEl.value='';

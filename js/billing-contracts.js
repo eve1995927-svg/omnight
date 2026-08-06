@@ -472,7 +472,10 @@ function setLedgerDir(dir){
 function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['ldAmt','ldDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  // 修正重點：「案場」這格是下拉選單，但從來沒有真的塞資料進去，選單一直是空的，
+  // 導致快速記帳存檔時案場永遠是空白、也沒有跟案場建立關聯。補上。
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),curProjectId,true);
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
@@ -716,6 +719,9 @@ function initAdQuote(){
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+  // 修正重點：「案場名稱」這格早該是下拉選單，卻從來沒有真的塞資料進去，等於一片空白選不了任何東西。
+  // 補上，開報價單編輯器的時候就把目前所有案場列出來。
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),curProjectId);
 
   // ── 按鈕綁定（每次初始化都重綁，避免遺失）──
   const getN=()=>document.getElementById('adN')?.value||'業主';
@@ -725,24 +731,31 @@ function initAdQuote(){
   if(adSaveBtn&&!adSaveBtn._bound){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
-      const sub=calcAll(adSections);
-      const caseNv=document.getElementById('adCase')?.value||'';
-      DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
-        name:getN(),type:getTp(),caseN:caseNv,
-        addr:document.getElementById('adAd')?.value||'',
-        projectId:curProjectId||null,
-        mgmtFeeRate:curMgmtRate,
-        sections:JSON.parse(JSON.stringify(adSections)),total:sub});
-      updStats();renderQTable();
-      showToast('✅ 報價單已儲存！');
-      // 下一步提示
-      if(typeof showNextStep==='function'){
-        showNextStep('報價單已儲存，接下來呢？',[
-          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate)},
-          {label:'📝 建立合約',action:()=>openModal('contractModal')},
-          {label:'稍後再說',action:()=>{}},
-        ]);
-      }
+      // 修正重點：原本沒選案場也能直接存檔（存進去的案場名稱是空的），事後很難補救、也不知道這份報價單到底是哪個案場的。
+      // 改成存檔前先檢查有沒有選案場，沒選的話跳出清楚的提示，可以直接選既有案場、或當場新增一個，
+      // 不用先取消、跑去案場總覽新增、再回來重新填一次報價單。
+      ensureProjectSelected(document.getElementById('adCase'),(projectIdVal)=>{
+        const selectedProject=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
+        const caseNv=selectedProject?.name||'';
+        const sub=calcAll(adSections);
+        curProjectId=selectedProject?._id||curProjectId;
+        DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
+          name:getN(),type:getTp(),caseN:caseNv,
+          addr:document.getElementById('adAd')?.value||'',
+          projectId:curProjectId||null,
+          mgmtFeeRate:curMgmtRate,
+          sections:JSON.parse(JSON.stringify(adSections)),total:sub});
+        updStats();renderQTable();
+        showToast('✅ 報價單已儲存！');
+        // 下一步提示
+        if(typeof showNextStep==='function'){
+          showNextStep('報價單已儲存，接下來呢？',[
+            {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate)},
+            {label:'📝 建立合約',action:()=>openModal('contractModal')},
+            {label:'稍後再說',action:()=>{}},
+          ]);
+        }
+      });
     });
   }
 

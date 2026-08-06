@@ -726,17 +726,31 @@ function saveProject(){
     const newId=arr[0]._id;
     showToast('✅ 案場已建立！');
     if(data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(newId,data.address);
+    closeModal('projModal');
+    renderProjects();
+
+    // 修正重點：如果這次新增案場，是從別的地方（例如建報價單時發現還沒選案場）跳過來的，
+    // 存完不要再跳「接下來要做什麼」的提示，而是直接帶著新案場的編號回去，
+    // 繼續完成原本卡住的那件事——選好案場、直接接著儲存，不用使用者自己再選一次。
+    if(_pendingProjectCallback){
+      const {selectEl,onReady}=_pendingProjectCallback;
+      _pendingProjectCallback=null;
+      if(typeof buildProjectSelect==='function')buildProjectSelect(selectEl,newId);
+      else if(selectEl)selectEl.value=newId;
+      showToast('✅ 已自動選好剛新增的案場，繼續儲存');
+      onReady(newId);
+      return;
+    }
+
     // 建立後提示下一步
     setTimeout(()=>{
       showNextStep('案場已建立！接下來可以：', [
-        {label:'📋 建立報價單', action:()=>{closeModal('projModal');openProject(newId,'quote');}},
-        {label:'📝 上傳合約',  action:()=>{closeModal('projModal');openProject(newId,'contract');}},
-        {label:'稍後再說',     action:()=>closeModal('projModal')},
+        {label:'📋 建立報價單', action:()=>{openProject(newId,'quote');}},
+        {label:'📝 上傳合約',  action:()=>{openProject(newId,'contract');}},
+        {label:'稍後再說',     action:()=>{}},
       ]);
       return;
     }, 300);
-    closeModal('projModal');
-    renderProjects();
     return;
   }
   closeModal('projModal');
@@ -931,13 +945,18 @@ function openQuoteFileUpload(projectId){
 function renderProjSurvey(id,p,c){
   const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
   const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
+  const withDims=items.filter(m=>m.length&&m.width);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
         <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
         ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
       </div>
-      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn bo bsm" onclick="openSurveyOcrModal(${id})">📷 AI 讀取手寫尺寸</button>
+        ${withDims.length>=1?`<button class="btn bo bsm" onclick="openSurveySchematic(${id})">📐 產生示意圖</button>`:''}
+        <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
+      </div>
     </div>
     ${items.length?items.map(m=>`
       <div class="card" style="margin-bottom:10px">
@@ -969,6 +988,160 @@ function openSurveyModal(projectId){
   const fi=document.getElementById('svFile');if(fi)fi.value='';
   openModal('surveyModal');
 }
+
+// ── AI 讀手寫丈量尺寸 ──────────────────────────────────────────
+let svOcrProjectId=null;
+let svOcrParsed=[];
+
+function openSurveyOcrModal(projectId){
+  svOcrProjectId=projectId;
+  svOcrParsed=[];
+  const spin=document.getElementById('svOcrSpin');if(spin)spin.style.display='none';
+  const resultBox=document.getElementById('svOcrResult');if(resultBox)resultBox.style.display='none';
+  const fi=document.getElementById('svOcrFile');if(fi)fi.value='';
+  openModal('surveyOcrModal');
+}
+
+function renderSvOcrList(){
+  const listEl=document.getElementById('svOcrList');if(!listEl)return;
+  listEl.innerHTML=svOcrParsed.map((r,i)=>`
+    <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">
+      <input class="fi" style="padding:7px 10px;font-size:.82rem" value="${esc(r.room||'')}" oninput="svOcrParsed[${i}].room=this.value" placeholder="房間名稱">
+      <input class="fi" type="number" step="0.01" style="padding:7px 10px;font-size:.82rem" value="${r.length||''}" oninput="svOcrParsed[${i}].length=parseFloat(this.value)||0" placeholder="長(m)">
+      <input class="fi" type="number" step="0.01" style="padding:7px 10px;font-size:.82rem" value="${r.width||''}" oninput="svOcrParsed[${i}].width=parseFloat(this.value)||0" placeholder="寬(m)">
+      <button onclick="svOcrParsed.splice(${i},1);renderSvOcrList()" style="background:none;border:none;color:var(--g300);cursor:pointer">🗑</button>
+    </div>`).join('');
+}
+
+async function saveSvOcrResults(){
+  const valid=svOcrParsed.filter(r=>r.room&&r.length&&r.width);
+  if(!valid.length){showToast('⚠️ 沒有可以存的資料，請確認房間名稱跟長寬都有填');return;}
+  valid.forEach(r=>{
+    const area=+(r.length*r.width/3.305785).toFixed(2);
+    DB.push('measurements',{projectId:svOcrProjectId,room:r.room,length:r.length,width:r.width,area,note:'',fileUrls:[],summary:'丈量 '+r.room});
+  });
+  closeModal('surveyOcrModal');
+  showToast('✅ 已新增 '+valid.length+' 筆丈量記錄');
+  if(typeof renderProjectDetail==='function')renderProjectDetail(svOcrProjectId,'survey');
+}
+
+// ── 丈量示意圖／DXF 匯出 ──────────────────────────────────────────
+function openSurveySchematic(projectId){
+  const items=DB.get('measurements').filter(m=>m.projectId===projectId&&!m.deleted&&m.length&&m.width);
+  if(!items.length){showToast('⚠️ 沒有已填長寬的丈量記錄，無法產生示意圖');return;}
+  window._svSchematicItems=items;
+  window._svSchematicProjectId=projectId;
+
+  // 簡單排版：一排最多放 4 個房間，每公尺換算成固定像素，純粹照比例畫，不代表真實相對位置
+  const SCALE=28; // 每公尺幾個像素
+  const GAP=16;
+  const PER_ROW=4;
+  let svgW=0,svgH=0;
+  const boxes=items.map((m,i)=>({m,w:m.length*SCALE,h:m.width*SCALE}));
+  const rows=[];
+  for(let i=0;i<boxes.length;i+=PER_ROW)rows.push(boxes.slice(i,i+PER_ROW));
+  let y=GAP;
+  const positioned=[];
+  rows.forEach(row=>{
+    let x=GAP;
+    const rowH=Math.max(...row.map(b=>b.h));
+    row.forEach(b=>{
+      positioned.push({...b,x,y});
+      x+=b.w+GAP;
+      svgW=Math.max(svgW,x);
+    });
+    y+=rowH+GAP+24;
+  });
+  svgH=y;
+
+  const svg=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" style="max-width:100%">
+    ${positioned.map(b=>`
+      <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="#FFFBEE" stroke="#C8A44A" stroke-width="1.5" rx="3"/>
+      <text x="${b.x+b.w/2}" y="${b.y+b.h/2-6}" text-anchor="middle" font-size="11" font-weight="700" fill="#28241C">${esc(b.m.room||'')}</text>
+      <text x="${b.x+b.w/2}" y="${b.y+b.h/2+9}" text-anchor="middle" font-size="9" fill="#9A7830">${b.m.length}×${b.m.width}m</text>
+    `).join('')}
+  </svg>`;
+  document.getElementById('svSchematicCanvas').innerHTML=svg;
+  openModal('surveySchematicModal');
+}
+
+// 修正重點：DXF 這種舊格式的文字欄位，對中文這種非英文字元的編碼支援很不穩定，
+// 直接塞中文字進去，開起來常常變亂碼。DXF 官方有定義一種「\U+四位數字」的萬國碼逃脫格式，
+// 不管檔案本身編碼是什麼、也不管是哪一版 AutoCAD，都能正確顯示，這裡統一用這個方式處理中文字。
+function dxfUnicodeEscape(s){
+  return String(s||'').split('').map(ch=>{
+    const code=ch.codePointAt(0);
+    if(code>127) return '\\U+'+code.toString(16).toUpperCase().padStart(4,'0');
+    return ch;
+  }).join('');
+}
+
+// 產生一個真正符合規格、能被 AutoCAD 等軟體正確開啟的 DXF 檔案，
+// 每個房間畫成一個矩形（LWPOLYLINE）加上文字標籤，跟示意圖同一套排版邏輯，
+// 這樣示意圖上看到的跟 DXF 檔案裡的會一致
+function generateSurveyDxf(items){
+  const SCALE=1; // DXF 直接用公尺為單位，讓 AutoCAD 開起來尺寸是對的
+  const GAP=0.5;
+  const PER_ROW=4;
+  const boxes=items.map(m=>({m,w:m.length*SCALE,h:m.width*SCALE}));
+  const rows=[];
+  for(let i=0;i<boxes.length;i+=PER_ROW)rows.push(boxes.slice(i,i+PER_ROW));
+  let y=0;
+  const positioned=[];
+  rows.forEach(row=>{
+    let x=0;
+    const rowH=Math.max(...row.map(b=>b.h));
+    row.forEach(b=>{
+      positioned.push({...b,x,y});
+      x+=b.w+GAP;
+    });
+    y+=rowH+GAP+0.8;
+  });
+
+  let handle=0x100;
+  const nextHandle=()=>(handle++).toString(16).toUpperCase();
+
+  let ents='';
+  positioned.forEach(b=>{
+    // 矩形（LWPOLYLINE，DXF 座標系 Y 軸方向跟畫面相反，所以用負的 y）
+    const x0=b.x,y0=-b.y,x1=b.x+b.w,y1=-(b.y+b.h);
+    ents+=`0\nLWPOLYLINE\n5\n${nextHandle()}\n330\n1F\n100\nAcDbEntity\n8\nROOMS\n100\nAcDbPolyline\n90\n4\n70\n1\n43\n0.0\n`+
+      `10\n${x0}\n20\n${y0}\n`+
+      `10\n${x1}\n20\n${y0}\n`+
+      `10\n${x1}\n20\n${y1}\n`+
+      `10\n${x0}\n20\n${y1}\n`;
+    // 房間名稱文字（中文字轉成 DXF 通用的萬國碼逃脫格式，不會變亂碼）
+    const roomName=dxfUnicodeEscape((b.m.room||'').replace(/\n/g,' '));
+    ents+=`0\nTEXT\n5\n${nextHandle()}\n330\n1F\n100\nAcDbEntity\n8\nLABELS\n100\nAcDbText\n`+
+      `10\n${x0+0.1}\n20\n${y0-0.35}\n30\n0.0\n40\n0.25\n1\n${roomName}\n`;
+    // 尺寸文字
+    ents+=`0\nTEXT\n5\n${nextHandle()}\n330\n1F\n100\nAcDbEntity\n8\nLABELS\n100\nAcDbText\n`+
+      `10\n${x0+0.1}\n20\n${y0-0.65}\n30\n0.0\n40\n0.18\n1\n${b.m.length}x${b.m.width}m\n`;
+  });
+
+  // 加上最基本的 HEADER（單位設成公尺）跟 TABLES（圖層），沒有這兩段的話，
+  // 有些 CAD 軟體會打不開或警告檔案不完整；ENTITIES 才是實際圖形內容
+  const header=`0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n9\n$INSUNITS\n70\n6\n0\nENDSEC\n`;
+  const tables=`0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n2\n`+
+    `0\nLAYER\n2\nROOMS\n70\n0\n62\n2\n6\nCONTINUOUS\n`+
+    `0\nLAYER\n2\nLABELS\n70\n0\n62\n7\n6\nCONTINUOUS\n`+
+    `0\nENDTAB\n0\nENDSEC\n`;
+  const entitiesSection=`0\nSECTION\n2\nENTITIES\n${ents}0\nENDSEC\n`;
+
+  return header+tables+entitiesSection+`0\nEOF\n`;
+}
+
+document.getElementById('svExportDxfBtn')?.addEventListener('click',()=>{
+  const items=window._svSchematicItems;
+  if(!items||!items.length){showToast('⚠️ 沒有可匯出的資料');return;}
+  const dxf=generateSurveyDxf(items);
+  const blob=new Blob([dxf],{type:'application/dxf'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);
+  a.download='丈量示意圖_'+new Date().toISOString().split('T')[0]+'.dxf';
+  document.body.appendChild(a);a.click();a.remove();
+  showToast('✅ 已下載 DXF 檔案，可以用 AutoCAD 開啟');
+});
 
 function deleteSurvey(measureId,projectId){
   confirmAction('確定刪除這筆丈量記錄？',()=>{
