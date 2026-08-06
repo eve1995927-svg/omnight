@@ -401,22 +401,62 @@ document.getElementById('importVendorBtn').addEventListener('click',()=>{
 // ── QUOTE TABLE ──
 
 function renderQTable(){
-  const tbl=document.getElementById('qTbl');if(!tbl)return;
+  const list=document.getElementById('qList');if(!list)return;
   const qs=DB.get('quotes');
-  if(!qs.length){tbl.innerHTML='<tr><td colspan="5"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></td></tr>';return;}
-  tbl.innerHTML='';
+  if(!qs.length){list.innerHTML='<div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div>';return;}
+
+  // 修正重點：原本是不分案場的一長串平面列表，案場一多，同一個案場的報價單散落在列表各處，
+  // 很難一眼看出「這個案場總共報過幾次價、加起來多少」。改成跟廠商報價同一套「依案場分組」的方式，
+  // 每個案場一個區塊、自己的合計，同一個案場的報價單自然就排在一起。
+  const byCase={};
   qs.forEach(q=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML='<td>'+esc(q.name||'')+'</td><td>'+esc(q.caseN||'—')+'</td><td>'+esc(q.type||'—')+'</td><td class="mono">'+fmt(q.total||0)+'</td><td class="mono">'+esc((q._ts||'').split(' ')[0])+'</td>'+
-      '<td><div style="display:flex;gap:5px;flex-wrap:wrap">'+
-      '<button class="btn bo bxs" data-qid="'+q._id+'">✏️ 編輯</button>'+
-      '<button class="btn bgn bxs" data-qxls="'+q._id+'">📥 Excel</button>'+
-      '<button class="btn brd bxs" data-qdel="'+q._id+'">🗑</button></div></td>';
-    tbl.appendChild(tr);
+    const key=q.caseN||'（未指定案場）';
+    if(!byCase[key])byCase[key]=[];
+    byCase[key].push(q);
   });
-  tbl.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
-  tbl.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[],undefined,(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8);});});
-  tbl.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
+  const sortedGroups=Object.entries(byCase).sort((a,b)=>{
+    const aLatest=Math.max(...a[1].map(q=>q._id||0));
+    const bLatest=Math.max(...b[1].map(q=>q._id||0));
+    return bLatest-aLatest;
+  });
+
+  list.innerHTML=sortedGroups.map(([caseName,quotes])=>{
+    const caseTotal=quotes.reduce((s,q)=>s+(q.total||0),0);
+    const rows=quotes.map(q=>`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--g100)">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:800;font-size:.86rem">${esc(q.name||'未命名')}</div>
+          <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(q.type||'—')} · ${esc((q._ts||'').split(' ')[0])}</div>
+        </div>
+        <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button class="btn bo bxs" data-qid="${q._id}">✏️ 編輯</button>
+          <button class="btn bgn bxs" data-qxls="${q._id}">📥 Excel</button>
+          <button class="btn brd bxs" data-qdel="${q._id}">🗑</button>
+        </div>
+      </div>`).join('');
+    return `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,var(--gold-pale),#FFF0C0);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:1.1rem">📍</span>
+            <div>
+              <div style="font-size:.95rem;font-weight:900;color:var(--gold-d)">${esc(caseName)}</div>
+              <div style="font-size:.75rem;color:var(--g400);margin-top:1px">共 ${quotes.length} 筆報價單</div>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:monospace;font-size:1rem;font-weight:900;color:var(--gold-d)">${fmt(caseTotal)}</div>
+            <div style="font-size:.68rem;color:var(--g400)">案場合計</div>
+          </div>
+        </div>
+        <div style="border:1px solid var(--g100);border-radius:var(--rs);overflow:hidden">${rows}</div>
+      </div>`;
+  }).join('');
+
+  list.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
+  list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[],undefined,(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8);});});
+  list.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
 }
 
 // ── EXCEL DOWNLOAD ──
