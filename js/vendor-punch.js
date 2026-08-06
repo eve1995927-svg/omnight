@@ -1119,8 +1119,15 @@ function renderHRPanel(){
       recs.forEach(r=>{
         const row=document.createElement('div');
         row.style.cssText='display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rxs);margin-bottom:3px;background:var(--g50)';
-        const nameLabel=r.userName||r.user||'員工';
+        const nameLabel=esc(r.userName||r.user||'員工');
         const roleLabel=r.user&&r.user.startsWith('emp_')?'個人帳號':({owner:'老闆',staff:'員工',punch:'公務'}[r.user]||r.user);
+        // 修正重點：這裡原本一律顯示座標（幾點幾度那種數字），不管地址反查有沒有成功查到，
+        // 老闆這邊完全看不出打卡地點實際在哪條路——反查地址其實已經有在背景查了、也存進資料裡了，
+        // 只是這裡的畫面沒有拿來用。改成優先顯示查到的地址，真的查不到（例如離線、服務暫時連不上）才退回顯示座標。
+        const locationHtml=r.addr
+          ? '<div style="font-size:.68rem;color:var(--g400);margin-top:2px;max-width:140px;text-align:right">📍 '+esc(r.addr)+'</div>'
+          : (r.lat?'<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+esc(String(r.lat))+', '+esc(String(r.lng))+'</div>':
+             '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>');
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+
@@ -1130,9 +1137,8 @@ function renderHRPanel(){
             '<div style="font-size:.75rem;color:var(--g500);margin-top:1px">'+(r.type==='in'?'上班打卡':'下班打卡')+'</div>'+
           '</div>'+
           '<div style="text-align:right">'+
-            '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+r.time+'</div>'+
-            (r.lat?'<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+r.lat+', '+r.lng+'</div>':
-             '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>')+
+            '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+esc(r.time)+'</div>'+
+            locationHtml+
           '</div>';
         list.appendChild(row);
       });
