@@ -427,15 +427,8 @@ const VICO={系統櫃:'🪵',廚具:'🍳',玻璃:'🪟',鋁窗:'🪟',水電:'�
 // 新增分類之後，這裡的篩選頁籤會馬上多一個，「全部」右邊也補了一個「＋」可以直接在這裡新增分類。
 function renderVendorCatFilters(){
   const tags=(typeof getSettingTags==='function')?getSettingTags('vendorCat'):['系統櫃','廚具','玻璃','鋁窗','水電','泥作','油漆','鐵件','其他'];
-
-  const compareRow=document.getElementById('vCompareRow');
-  if(compareRow){
-    compareRow.innerHTML='<span style="font-size:.78rem;font-weight:700;color:var(--g400)">⚖️ 廠商比價：</span>'+
-      tags.map(t=>'<button class="btn bo bsm" data-cmpcat="'+esc(t)+'">'+(VICO[t]||'📦')+' '+esc(t)+'</button>').join('');
-    compareRow.querySelectorAll('[data-cmpcat]').forEach(b=>{
-      b.addEventListener('click',()=>compareVendorsByCat(b.dataset.cmpcat));
-    });
-  }
+  // 修正重點：「廠商比價」這個功能拿掉了——多數工項是照現場尺寸客製訂做，
+  // 每一戶、每一個窗戶大小都不一樣，比較意義不大，容易誤導。
 
   const filt=document.getElementById('vFilt');
   if(filt){
@@ -545,32 +538,33 @@ function showVendorSeries(vendorName){
   const total=all.reduce((s,v)=>s+(v.amount||0),0);
   const paidTotal=all.reduce((s,v)=>s+getVendorPaid(v),0);
 
-  // 修正重點：原本每一筆報價是上下疊著顯示，要比較「這家廠商在不同案場報得怎麼樣」得一直往下捲動、
-  // 上面看完忘了下面寫什麼。改成左右並排，一個案場一欄，總價、每個工項都在同一排高度，
-  // 用橫向掃視的方式比較，不用再上下捲動硬記。工項名稱通常每個案場都是量身訂做的尺寸（不會一樣），
-  // 所以這裡不強行對齊成同一列，各欄各自列出自己的工項，方便你直接看「這一欄總共列了哪些、多少錢」。
-  const cols=all.map(v=>{
+  // 簡單直列：一筆一筆往下列，不做左右並排、不強調比較
+  const rows=all.map(v=>{
     const ps=getVendorPayStatus(v);
     const items=v.items||[];
     const itemRows=items.length
-      ? items.map(it=>'<div style="display:flex;justify-content:space-between;gap:6px;padding:5px 0;font-size:.74rem;border-top:1px dashed var(--g100)">'+
-          '<span style="color:var(--g600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name||'（未命名）')+'</span>'+
-          '<span style="font-family:monospace;color:var(--g600);flex-shrink:0">'+(it.amount||0).toLocaleString()+'</span>'+
+      ? items.map(it=>'<div style="display:flex;justify-content:space-between;padding:5px 14px 5px 24px;font-size:.78rem;border-top:1px dashed var(--g100)">'+
+          '<span style="color:var(--g600)">'+esc(it.name||'（未命名）')+'</span>'+
+          '<span style="font-family:monospace;color:var(--g600)">NT$'+(it.amount||0).toLocaleString()+'</span>'+
         '</div>').join('')
-      : '<div style="padding:6px 0;font-size:.74rem;color:var(--g400)">沒有拆細項，只有總價</div>';
-    return '<div style="min-width:210px;max-width:230px;flex-shrink:0;border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden">'+
-      '<div style="padding:10px 12px;background:var(--g50);border-bottom:1.5px solid var(--g200)">'+
-        '<div style="font-weight:800;font-size:.84rem">'+esc(v.cat||'')+'</div>'+
-        '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+esc(v.caseN||'—')+' · '+esc((v._ts||'').split(' ')[0])+'</div>'+
-        '<div style="font-family:monospace;font-weight:900;color:var(--gold-d);font-size:.95rem;margin-top:6px">NT$'+(v.amount||0).toLocaleString()+'</div>'+
-        '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:4px;display:inline-block">'+ps.label+'</div>'+
+      : '<div style="padding:5px 14px 5px 24px;font-size:.76rem;color:var(--g400);border-top:1px dashed var(--g100)">此筆沒有拆細項，只有總價</div>';
+    return '<div style="border-bottom:1px solid var(--g100)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px">'+
+        '<div>'+
+          '<div style="font-weight:800;font-size:.86rem">'+esc(v.cat||'')+' <span style="font-size:.7rem;color:var(--g400);font-weight:400">'+esc(v.caseN||'—')+'</span></div>'+
+          '<div style="font-size:.7rem;color:var(--g400);margin-top:2px">'+esc((v._ts||'').split(' ')[0])+'</div>'+
+        '</div>'+
+        '<div style="text-align:right">'+
+          '<div style="font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+          '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+'</div>'+
+        '</div>'+
       '</div>'+
-      '<div style="padding:6px 12px;max-height:260px;overflow-y:auto">'+itemRows+'</div>'+
+      itemRows+
     '</div>';
   }).join('');
 
   const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:'+Math.min(960,260+all.length*230)+'px">'+
+  modal.innerHTML='<div class="modal" style="max-width:520px">'+
     '<div class="mtit">🏗️ '+esc(vendorName)+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
     '<div style="display:flex;gap:10px;margin-bottom:14px">'+
       '<div style="flex:1;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--rs);padding:10px 12px;text-align:center">'+
@@ -582,8 +576,8 @@ function showVendorSeries(vendorName){
         '<div style="font-family:monospace;font-weight:900;font-size:1.05rem;color:var(--ok)">NT$'+paidTotal.toLocaleString()+'</div>'+
       '</div>'+
     '</div>'+
-    '<div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:8px">共 '+all.length+' 筆報價（所有案場，左右滑動比較）</div>'+
-    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px">'+cols+'</div>'+
+    '<div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:8px">共 '+all.length+' 筆報價（所有案場）</div>'+
+    '<div style="max-height:55vh;overflow-y:auto;border:1px solid var(--g100);border-radius:var(--rs)">'+rows+'</div>'+
     '</div>';
   document.body.appendChild(modal);
 }
@@ -673,7 +667,6 @@ function renderVendors(filter){
         '</div>'+
         '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
           '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
-          '<button class="btn bo bxs" data-vcompare title="跟這家廠商其他案場的報價左右比較">🔍 比較</button>'+
           '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
           '<button class="btn brd bxs" data-vdel>🗑</button>'+
         '</div>';
@@ -779,6 +772,35 @@ function renderVendors(filter){
       const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:1,unit:'式',unitPrice:0,amount:0});renderVCardItems();});
       const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.textContent='小計 NT$'+(v.amount||0).toLocaleString();
 
+      // 付款紀錄：之前系統只有加總顯示「已付多少」，看不到每一筆是哪天付的、付了多少，
+      // 也沒辦法刪掉打錯或標記錯的那一筆——這裡補上完整清單，每一筆都可以刪除
+      const payWrap=document.createElement('div');
+      payWrap.style.cssText='padding:10px 16px;border-top:1px solid var(--g100)';
+      function renderPayHistory(){
+        const payments=v.payments||[];
+        payWrap.innerHTML='<div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:6px">付款紀錄'+(payments.length?'（共'+payments.length+'筆，可刪除打錯的紀錄）':'（尚無付款紀錄）')+'</div>';
+        payments.forEach((p,pi)=>{
+          const row=document.createElement('div');
+          row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:6px 0;font-size:.8rem;border-bottom:1px dashed var(--g100)';
+          row.innerHTML='<span style="color:var(--g600)">'+esc(p.date||'')+(p.note?'　'+esc(p.note):'')+'</span>'+
+            '<span style="display:flex;align-items:center;gap:8px"><span style="font-family:monospace;font-weight:700;color:var(--ok)">NT$'+(p.amount||0).toLocaleString()+'</span></span>';
+          const delBtn=document.createElement('button');
+          delBtn.textContent='🗑';delBtn.style.cssText='background:none;border:none;color:var(--g300);cursor:pointer;font-size:.78rem;margin-left:6px';
+          delBtn.addEventListener('click',()=>{
+            confirmAction('確定刪除這筆付款紀錄（'+(p.date||'')+'　NT$'+(p.amount||0).toLocaleString()+'）？刪除後金額會退回未付款狀態，這個動作不能復原。',()=>{
+              const newPayments=(v.payments||[]).filter((_,i)=>i!==pi);
+              v.payments=newPayments; // 同步更新記憶體中的物件，讓畫面立刻反映
+              DB.upd('vendors',v._id,{payments:newPayments});
+              renderVendors(vCurrentFilter);updStats();
+              showToast('✅ 已刪除這筆付款紀錄');
+            });
+          });
+          row.querySelector('span:last-child').appendChild(delBtn);
+          payWrap.appendChild(row);
+        });
+      }
+      renderPayHistory();
+
       // 儲存列
       const saveBar=document.createElement('div');saveBar.style.cssText='padding:10px 16px;border-top:1px solid var(--g100);display:flex;gap:7px;background:var(--g50)';
       const saveBtn=document.createElement('button');saveBtn.className='btn bg bsm';saveBtn.textContent='💾 儲存修改';
@@ -796,11 +818,10 @@ function renderVendors(filter){
       if(v.imgDataUrl){const iw=document.createElement('div');iw.style.cssText='padding:8px 16px;border-top:1px solid var(--g100);display:flex;gap:8px';const img=document.createElement('img');img.className='ith';img.src=v.imgDataUrl;img.style.cssText='width:80px;height:80px';img.addEventListener('click',()=>openLB(v.imgDataUrl));iw.appendChild(img);body.appendChild(iw);}
 
       itemWrap.appendChild(itmHd);itemWrap.appendChild(itmBody);itemWrap.appendChild(addItmBtn);
-      body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(saveBar);
+      body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(payWrap);body.appendChild(saveBar);
       renderVCardItems();
 
       hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
-      hd.querySelector('[data-vcompare]').addEventListener('click',e=>{e.stopPropagation();showVendorSeries(v.vendor);});
       hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
       hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
       card.appendChild(hd);card.appendChild(body);grpBody.appendChild(card);
