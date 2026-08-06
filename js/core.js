@@ -39,8 +39,8 @@ const GROUPS={
   owner:[
     {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
     {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
-    {l:'報價與合約', items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
-    {l:'廠商與進度', items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'報價與合約', items:[{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'廠商與進度', items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
     {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
     {l:'人資',       items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
     {l:'系統',       items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
@@ -50,8 +50,8 @@ const GROUPS={
   staff:[
     {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
     {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
-    {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
-    {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
     {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
     {l:'系統',       _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
@@ -87,6 +87,45 @@ function buildProjectSelect(selectEl, selectedId, allowEmpty){
   if(selectedId!=null && selectedId!=='') selectEl.value=String(selectedId);
 }
 
+// ══ 通用防呆：儲存前檢查有沒有選案場，沒選就跳出清楚的提示，不要讓人猜錯在哪裡卡住 ══════
+// 用法：ensureProjectSelected(document.getElementById('adCase'), (projectId) => { ...實際儲存的程式碼... })
+// 如果已經選好案場，onReady 會立刻執行；如果還沒選，會跳出提示視窗，
+// 選好既有案場、或新增一個案場之後，onReady 才會執行——呼叫的地方不用自己處理這些分支。
+let _pendingProjectCallback=null;
+function ensureProjectSelected(selectEl,onReady){
+  const val=selectEl?.value;
+  if(val){onReady(val);return;}
+  const projects=DB.get('projects');
+  const box=document.createElement('div');
+  box.className='mov show';
+  box.innerHTML='<div class="modal" style="max-width:420px">'+
+    '<div class="mtit">📍 這筆還沒選案場 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.85rem;color:var(--g500);margin-bottom:16px;line-height:1.6">要先告訴系統這筆資料屬於哪個案場，才能正確歸類、之後才找得到。</div>'+
+    (projects.length?'<div class="field"><label class="fl">選擇既有案場</label><select class="fi" id="_epsSelect"><option value="">請選擇…</option>'+
+      projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.client?'（'+esc(p.client)+'）':'')+'</option>').join('')+'</select></div>':
+      '<div style="font-size:.82rem;color:var(--g400);margin-bottom:12px">目前還沒有任何案場。</div>')+
+    '<button class="btn bg bfull" id="_epsConfirm" style="padding:12px;margin-top:6px">✅ 使用這個案場</button>'+
+    '<button class="btn bo bfull" id="_epsNew" style="padding:12px;margin-top:8px">➕ 新增一個案場</button>'+
+    '</div>';
+  document.body.appendChild(box);
+
+  document.getElementById('_epsConfirm')?.addEventListener('click',()=>{
+    const picked=document.getElementById('_epsSelect')?.value;
+    if(!picked){showToast('⚠️ 請選擇一個案場');return;}
+    selectEl.value=picked;
+    box.remove();
+    onReady(picked);
+  });
+  document.getElementById('_epsNew')?.addEventListener('click',()=>{
+    box.remove();
+    // 記下「新增完案場之後要接著做什麼」，saveProject() 存完會自動呼叫回來，
+    // 選好剛新增的案場、繼續原本要做的事（不用使用者自己再選一次、再點一次儲存）
+    _pendingProjectCallback={selectEl,onReady};
+    if(typeof openAddProject==='function')openAddProject();
+  });
+}
+
+
 function getEmployeePermissions(){
   // 用共用「員工」帳號登入（沒有指定個人身份）：維持過去的預設行為，開放常用模組，會計/系統設定不開放
   if(!_punchEmployee) return DEFAULT_STAFF_PERMISSIONS;
@@ -97,12 +136,18 @@ function getEmployeePermissions(){
 // 依權限過濾 GROUPS.staff，只回傳老闆有開放的分組
 function getFilteredStaffGroups(){
   const perms=getEmployeePermissions();
-  return GROUPS.staff.filter(g=>!g._perm||perms[g._perm]);
+  // 修正重點：原本沒開放的模組是直接從清單裡濾掉，員工那邊看起來就像「這個系統本來就沒有這個功能」，
+  // 不知道是被權限關掉、還是要去哪裡問。改成不濾掉、但標記成「鎖住」，
+  // 讓最上層的分頁還是看得到（灰階＋鎖頭圖示），點下去會清楚告訴他要找誰開權限，而不是一片空白。
+  return GROUPS.staff.map(g=>({...g,_locked:!!(g._perm&&!perms[g._perm])}));
+}
+function getUnlockedStaffGroups(){
+  return getFilteredStaffGroups().filter(g=>!g._locked);
 }
 
-// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾）
+// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾，只回傳有開放的）
 function groupsFor(role){
-  return role==='staff' ? getFilteredStaffGroups() : (GROUPS[role]||[]);
+  return role==='staff' ? getUnlockedStaffGroups() : (GROUPS[role]||[]);
 }
 // ══ 公司資料設定（多租戶核心：換公司只要改這裡）═══════════════
 // 賣給新客戶時，這是唯一需要調整品牌/業務資料的地方（Firebase 專案設定另見文件說明）
@@ -947,6 +992,17 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       empSelEl.value='';
     }
   }
+  // 修正重點：新人第一次登入常常搞不清楚「員工」跟「公務」差在哪，兩個字面看起來很像。
+  // 選了哪個角色，底下就直接用白話文說明這個角色可以做什麼，不用猜。
+  const roleHintEl=document.getElementById('lRoleHint');
+  if(roleHintEl){
+    const hints={
+      owner:'最高權限，可使用系統所有功能',
+      staff:'日常操作用——開報價單、記錄廠商報價、上傳進度照片等等',
+      punch:'只用來打卡上下班，不會看到報價、帳款這些內部資料',
+    };
+    roleHintEl.textContent=hints[curRole]||'';
+  }
 });
 document.getElementById('lBtn').addEventListener('click',doLogin);
 document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
@@ -1210,9 +1266,20 @@ function buildTabs(role){
   }
 
   // 電腦版：維持原本「每個分組一個 Tab，點了展開到第一個功能」的邏輯
-  grps.forEach(grp=>{
+  // 修正重點：員工被關掉的模組，這裡改成還是顯示這個分頁（灰階＋鎖頭），點下去清楚告訴他要找老闆開權限，
+  // 不會讓人以為系統根本沒有這個功能
+  const tabGrps=role==='staff'?getFilteredStaffGroups():grps;
+  tabGrps.forEach(grp=>{
     const b=document.createElement('button');
     b.className='rtab';b.dataset.grp=grp.l;
+    if(grp._locked){
+      b.style.cssText='opacity:.45;cursor:not-allowed';
+      b.textContent='🔒 '+grp.l;
+      b.title='此功能尚未開放，請洽老闆開通權限';
+      b.addEventListener('click',()=>showToast('🔒 「'+grp.l+'」尚未開放給你，請洽老闆開通權限'));
+      tabs.appendChild(b);
+      return;
+    }
     b.textContent=grp.l;
     b.addEventListener('click',()=>{
       showPanel(grp.items[0].id);
@@ -1223,8 +1290,9 @@ function buildTabs(role){
     });
     tabs.appendChild(b);
   });
-  // 預設選第一個
-  if(tabs.firstChild)tabs.firstChild.classList.add('on');
+  // 預設選第一個（跳過鎖住的，避免一登入就卡在鎖住的分頁上）
+  const firstUnlocked=Array.from(tabs.children).find(el=>!el.title);
+  if(firstUnlocked)firstUnlocked.classList.add('on');
 }
 function syncTabActive(panelId){
   if(isMobileView()){

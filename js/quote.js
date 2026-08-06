@@ -400,6 +400,24 @@ document.getElementById('importVendorBtn').addEventListener('click',()=>{
 
 // ── QUOTE TABLE ──
 
+// 報價單直接轉成合約：把報價單的客戶名稱、金額先帶進合約視窗，不用再打一次字，
+// 業主簽名的合約照片還是要手動拍照上傳（這個沒辦法用報價單資料自動生成）
+function convertQuoteToContract(quoteId){
+  const q=DB.get('quotes').find(r=>r._id===quoteId);if(!q)return;
+  curProjectId=q.projectId||curProjectId;
+  ctEditId=null;ctImgUrl=[];
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  set('ctName',q.name?q.name+' 裝修合約':'');
+  set('ctClient',q.name||'');
+  set('ctAmt2',q.total||'');
+  set('ctNote','');
+  const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
+  const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
+  const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
+  openModal('contractModal');
+  showToast('📝 已帶入報價單資料，拍照上傳簽好的合約即可');
+}
+
 function renderQTable(){
   const list=document.getElementById('qList');if(!list)return;
   const qs=DB.get('quotes');
@@ -431,6 +449,7 @@ function renderQTable(){
         <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
         <div style="display:flex;gap:5px;flex-shrink:0">
           <button class="btn bo bxs" data-qid="${q._id}">✏️ 編輯</button>
+          <button class="btn bo bxs" data-qct="${q._id}" title="把這份報價單的客戶、金額帶進合約，不用重打">📝 轉合約</button>
           <button class="btn bgn bxs" data-qxls="${q._id}">📥 Excel</button>
           <button class="btn brd bxs" data-qdel="${q._id}">🗑</button>
         </div>
@@ -455,6 +474,7 @@ function renderQTable(){
   }).join('');
 
   list.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
+  list.querySelectorAll('[data-qct]').forEach(btn=>{btn.addEventListener('click',()=>convertQuoteToContract(parseInt(btn.dataset.qct)));});
   list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[],undefined,(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8);});});
   list.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
 }
