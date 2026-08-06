@@ -412,15 +412,14 @@
 
 <!-- ══ AD QUOTE LIST ══ -->
 <div class="panel" id="p-ad-quote">
- <div class="ph"><div><div class="ptit">📋 報價管理</div><div class="psub">所有報價記錄，可查詢、編輯與下載</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
+ <div class="ph"><div><div class="ptit">📋 跨案場報價</div><div class="psub">看所有案場的報價記錄，可查詢、編輯與下載；單一案場的報價請到「案場總覽」點進該案場</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="qCnt">0</div><div class="sl">本月報價件數</div></div>
   <div class="stat"><div class="sn" id="qSum">—</div><div class="sl">本月報價總額</div></div>
   <div class="stat"><div class="sn">—</div><div class="sl">成交轉化率</div></div>
  </div>
  <div class="card"><div class="ct">📄 報價記錄</div>
-  <div class="tw"><table class="tbl"><thead><tr><th>客戶</th><th>類型</th><th>金額</th><th>日期</th><th>操作</th></tr></thead>
-  <tbody id="qTbl"><tr><td colspan="5"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></td></tr></tbody></table></div>
+  <div id="qList"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></div>
  </div>
 </div>
 
@@ -552,7 +551,7 @@
 
 <!-- ══ AD VENDOR ══ -->
 <div class="panel" id="p-ad-vendor">
- <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">🔀 合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
+ <div class="ph"><div><div class="ptit">🏗️ 跨案場廠商</div><div class="psub">看所有案場的廠商報價，AI 自動辨識成固定格式；單一案場的廠商報價請到「案場總覽」點進該案場</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">🔀 合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="vCnt">0</div><div class="sl">廠商報價件數</div></div>
   <div class="stat"><div class="sn" id="vCatCnt">0</div><div class="sl">工程分類</div></div>
@@ -577,7 +576,7 @@
 <!-- ══ AD PROGRESS ══ -->
 <div class="panel" id="p-ad-progress">
  <div class="ph">
-  <div><div class="ptit">🔧 工程進度</div><div class="psub">每個案場的進度一目了然，可自行新增與修改</div></div>
+  <div><div class="ptit">🔧 跨案場進度</div><div class="psub">所有案場的進度一目了然；單一案場的進度請到「案場總覽」點進該案場</div></div>
   <button class="btn bg bsm" id="addProgressBtn">＋ 新增案場</button>
  </div>
 
@@ -606,7 +605,7 @@
 <!-- ══ CONTRACT MANAGEMENT ══ -->
 <div class="panel" id="p-contract">
  <div class="ph">
-  <div><div class="ptit">📝 合約管理</div><div class="psub">上傳任何格式，自動儲存為 PDF，業主隨時可查看</div></div>
+  <div><div class="ptit">📝 跨案場合約</div><div class="psub">所有案場的合約，自動儲存為 PDF；單一案場的合約請到「案場總覽」點進該案場</div></div>
   <button class="btn bg bsm" id="openContract">＋ 上傳合約</button>
  </div>
 
@@ -1408,6 +1407,39 @@
    <select class="fi" id="mergeVGroupTarget"></select>
   </div>
   <button class="btn bg bfull" id="mergeVGroupBtn" style="padding:13px;font-size:.92rem" disabled>選至少 2 個分組才能合併</button>
+ </div>
+</div>
+
+<!-- ══ SURVEY OCR MODAL（拍手寫丈量紙，AI 讀出房間名稱跟尺寸）══ -->
+<div class="mov" id="surveyOcrModal">
+ <div class="modal" style="max-width:480px">
+  <div class="mtit">📷 AI 讀取手寫尺寸 <button class="mcl" data-close="surveyOcrModal">✕</button></div>
+  <div style="font-size:.8rem;color:var(--g500);margin-bottom:14px;line-height:1.6">拍下紙上寫的房間名稱跟長寬（例如「主臥 4x3.5」），AI 會自動整理成丈量記錄，可以一次拍好幾張。<br><span style="color:var(--gold-d);font-weight:700">⚠️ 這只是幫你把手寫數字整理成電子記錄，不會知道房間怎麼相接、門窗開在哪，不是正式圖面。</span></div>
+  <div class="upz" id="svOcrZone" style="border-style:solid;border-width:2px">
+   <span class="upz-ic">✍️</span>
+   <div class="upz-title">拍手寫丈量照片（可多張）</div>
+  </div>
+  <input type="file" id="svOcrFile" accept="image/*" multiple style="display:none">
+  <div class="ocrp" id="svOcrSpin" style="display:none"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中，請稍候…</div>
+  <div id="svOcrResult" style="display:none;margin-top:14px">
+   <div style="font-size:.78rem;font-weight:800;color:var(--g400);margin-bottom:8px">辨識結果（可以再修改）</div>
+   <div id="svOcrList"></div>
+   <button class="btn bg bfull" id="svOcrSaveBtn" style="padding:12px;margin-top:10px">💾 全部存成丈量記錄</button>
+  </div>
+ </div>
+</div>
+
+<!-- ══ SURVEY SCHEMATIC MODAL（把丈量數字畫成比例示意圖，可匯出 DXF 給 AutoCAD 開）══ -->
+<div class="mov" id="surveySchematicModal">
+ <div class="modal" style="max-width:640px">
+  <div class="mtit">📐 丈量示意圖 <button class="mcl" data-close="surveySchematicModal">✕</button></div>
+  <div style="padding:10px 14px;background:var(--warn-bg,#FFF3E0);border:1.5px solid var(--warn-bd,#F5C77E);border-radius:var(--rs);font-size:.78rem;color:var(--warn,#B86820);margin-bottom:14px;line-height:1.6">
+   ⚠️ 這是「照比例畫出來的示意圖」，只是把每個房間的坪數做成色塊、方便你有個大概概念——<strong>不知道房間之間怎麼相接、門窗開在哪、方位是什麼</strong>，不是正式平面圖，正式圖還是要人工繪製或請設計師確認。
+  </div>
+  <div id="svSchematicCanvas" style="background:var(--g50);border:1px solid var(--g200);border-radius:var(--rs);padding:16px;overflow-x:auto;margin-bottom:14px"></div>
+  <div style="display:flex;gap:8px">
+   <button class="btn bo bsm" id="svExportDxfBtn" style="flex:1">📥 匯出 DXF（可用 AutoCAD 開啟）</button>
+  </div>
  </div>
 </div>
 
