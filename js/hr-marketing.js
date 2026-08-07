@@ -788,6 +788,11 @@ function switchHRTab(tab){
   const body=document.getElementById('hrb-'+tab);
   if(body)body.classList.add('on');
   // 各 tab 初始化
+  // 修正重點：這裡原本漏掉「員工資料」這個 tab——切換到 salary/leave/attend/punch/request 都會
+  // 正確重新整理資料，唯獨切到「員工資料」完全沒有呼叫 renderEmployees()，導致畫面停在空白狀態，
+  // 即使資料庫裡明明就有員工資料（上面統計數字才會正確顯示「3 在職員工」），
+  // 名單那塊卻永遠是「尚無員工資料」，兩邊資訊互相矛盾。
+  if(tab==='emp')renderEmployees();
   if(tab==='salary')renderSalaryList();
   if(tab==='leave')renderLeaveManagement();
   if(tab==='attend')renderAttendance();

@@ -109,7 +109,7 @@ const DEFAULT_CATS={
   quoteCat:['拆除','泥作','木作','水電','系統傢俱','油漆','燈具','衛浴'],
   vendorCat:['系統櫃','廚具','玻璃','水電','泥作','油漆','鐵件','其他'],
   incomeCat:['合約收款','訂金','工程款','尾款','設計費','其他收入'],
-  expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','其他支出'],
+  expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','行銷支出','其他支出'],
 };
 // 帳本內：依「收入/支出」決定分類選項（內帳/外帳皆可記收入或支出）
 function getLedgerCats(type){
@@ -894,23 +894,53 @@ const RPTS={
   monthly:{
     t:'月度損益報表',
     b:()=>{
+      // 修正重點：原本這份報表只是把「帳款」裡所有進出款項加總，看起來像是公司整體損益，
+      // 但實際上「人事支出」（薪資）根本是存在另一個獨立的地方（薪資管理），
+      // 從來沒被算進這份報表——等於公司一大筆固定成本完全不會反映在損益表上，很不直覺。
+      // 「行銷支出」則是混在一般記帳的「其他支出」裡，看不出實際花了多少在行銷上。
+      // 改成把損益拆成三塊：①案場相關收支（帳款裡有連到案場的），②人事支出（從薪資管理抓），
+      // ③公司營運支出（帳款裡沒連案場的，依分類列出，行銷支出會是清楚的一行，不是混在一起的數字）。
       const all=DB.get('ledger');
+      const salaryRecs=DB.get('salary_records');
       const months=new Set();
       all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
+      salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
       const sm=[...months].sort().reverse().slice(0,12);
       if(!sm.length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
-      let tIn=0,tOut=0;
+
+      let grandProjectProfit=0,grandPersonnel=0,grandOpex=0;
       const rows=sm.map(month=>{
         const it=all.filter(r=>(r.date||'').startsWith(month));
-        const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
-        const outOut=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-        const profit=inIn-outOut;const rate=inIn>0?Math.round(profit/inIn*100):0;
-        tIn+=inIn;tOut+=outOut;
+        // ① 案場相關收支：帳款裡有連到 projectId 的
+        const projIt=it.filter(r=>r.projectId);
+        const projIn=projIt.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+        const projOut=projIt.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+        const projProfit=projIn-projOut;
+        // ② 人事支出：從薪資管理抓這個月的記錄（底薪+伙食+交通+其他+獎金+代墊費，公司實際付出的金額）
+        const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
+        const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
+        // ③ 公司營運支出：帳款裡沒連到案場的支出（行銷、房租、雜支這類），依分類列出
+        const opexIt=it.filter(r=>!r.projectId&&getLedgerBook(r)==='out'&&r.type==='out');
+        const opexByCat={};
+        opexIt.forEach(r=>{const c=r.cat||'其他支出';opexByCat[c]=(opexByCat[c]||0)+(r.amount||0);});
+        const opexTotal=opexIt.reduce((s,r)=>s+(r.amount||0),0);
+        const opexDetail=Object.entries(opexByCat).sort((a,b)=>b[1]-a[1]).map(([c,amt])=>c+' NT$'+amt.toLocaleString()).join('、')||'—';
+
+        const netProfit=projProfit-personnel-opexTotal;
+        grandProjectProfit+=projProfit;grandPersonnel+=personnel;grandOpex+=opexTotal;
         const [y,m]=month.split('-');
-        return `<tr><td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${inIn?'NT$'+inIn.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${outOut?'NT$'+outOut.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${inIn?rate+'%':'—'}</td></tr>`;
+        return `<tr>
+          <td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td>
+          <td style="padding:8px 12px;text-align:right;color:${projProfit>=0?'var(--ok)':'var(--bad)'}">NT$${projProfit.toLocaleString()}</td>
+          <td style="padding:8px 12px;text-align:right;color:var(--bad)">${personnel?'NT$'+personnel.toLocaleString():'—'}</td>
+          <td style="padding:8px 12px;text-align:right;color:var(--bad)" title="${esc(opexDetail)}">${opexTotal?'NT$'+opexTotal.toLocaleString():'—'}</td>
+          <td style="padding:8px 12px;text-align:right;font-weight:800;color:${netProfit>=0?'var(--ok)':'var(--bad)'}">NT$${netProfit.toLocaleString()}</td>
+        </tr>
+        <tr><td colspan="5" style="padding:0 12px 8px;font-size:.72rem;color:var(--g400)">${opexTotal?'營運支出明細：'+esc(opexDetail):''}</td></tr>`;
       }).join('');
-      const tp=tIn-tOut;
-      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">外帳收入</th><th style="padding:8px 12px;text-align:right">內帳支出</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:var(--ok)">NT$${tIn.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${tOut.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${tp>=0?'var(--ok)':'var(--bad)'}">NT$${tp.toLocaleString()}</td><td style="padding:10px 12px;text-align:right">${tIn?Math.round(tp/tIn*100)+'%':'—'}</td></tr></tfoot></table>`;
+      const grandNet=grandProjectProfit-grandPersonnel-grandOpex;
+      return `<div style="font-size:.76rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 案場淨利＝有連到案場的收入減支出；人事支出抓自「薪資管理」；營運支出＝沒連案場的一般記帳（行銷、房租等），滑鼠移到金額上可看分類明細。</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">案場淨利</th><th style="padding:8px 12px;text-align:right">人事支出</th><th style="padding:8px 12px;text-align:right">營運支出</th><th style="padding:8px 12px;text-align:right">公司淨利</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:${grandProjectProfit>=0?'var(--ok)':'var(--bad)'}">NT$${grandProjectProfit.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandPersonnel.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandOpex.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${grandNet>=0?'var(--ok)':'var(--bad)'}">NT$${grandNet.toLocaleString()}</td></tr></tfoot></table>`;
     }
   },
   profit:{
