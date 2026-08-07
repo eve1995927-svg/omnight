@@ -896,8 +896,26 @@ function updatePunchGeoCard(){
   if(!proj||proj.lat==null||proj.lng==null){
     card.style.display='block';
     document.getElementById('punchDistVal').textContent='尚無座標';
-    document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場還沒有地址座標，請請老闆到案場總覽補上地址</span>';
-    document.getElementById('punchAccuracyVal').textContent='';
+    // 修正重點：這裡原本只會顯示「請老闆到案場總覽補上地址」，但很多時候案場其實已經有地址文字了，
+    // 只是查詢座標那次失敗、或這個案場是很早以前建的（當時還沒有這個功能）——
+    // 光看這句話會讓人誤以為地址根本沒填，實際上只是查詢沒有成功。
+    // 如果案場已經有地址文字，這裡改成直接給一個「立即查詢座標」按鈕，不用特地跑去案場總覽重新編輯存檔。
+    if(proj&&proj.address){
+      document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場有地址，但座標查詢還沒成功</span>';
+      const accEl=document.getElementById('punchAccuracyVal');
+      if(accEl){
+        accEl.innerHTML='<button class="btn bo bxs" id="punchRetryGeo" style="margin-top:6px">📍 立即查詢座標</button>';
+        document.getElementById('punchRetryGeo')?.addEventListener('click',async(ev)=>{
+          ev.target.textContent='查詢中…';ev.target.disabled=true;
+          await geocodeProjectAddress(proj._id,proj.address);
+          updatePunchGeoCard();
+          showToast('✅ 已重新查詢，若還是沒有座標，可能是地址格式問題，麻煩到案場總覽確認地址');
+        });
+      }
+    }else{
+      document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場還沒有地址，請老闆到案場總覽補上地址</span>';
+      const accEl=document.getElementById('punchAccuracyVal');if(accEl)accEl.textContent='';
+    }
     return;
   }
   const dist=haversineDist(punchCurPos.lat,punchCurPos.lng,proj.lat,proj.lng);

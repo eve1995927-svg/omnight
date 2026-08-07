@@ -716,11 +716,17 @@ function saveProject(){
     token:existing?.token||('zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)),
     summary:'案場 '+name,
   };
+  // 修正重點：原本只有「地址文字有改過」才會重新查座標——但如果案場一開始建立的時候查詢失敗
+  // （網路不穩、查詢服務忙線），或這個案場是很久以前建立、當時系統還沒有這個功能，
+  // 之後每次編輯案場只要沒有動到地址欄位文字，系統都會以為「地址沒變不用查」，
+  // 結果永遠補不回座標，打卡那邊就一直顯示「尚無座標」。
+  // 改成只要「地址文字有改」或「這個案場根本還沒有座標」，就會嘗試查一次。
   const addressChanged=!existing||existing.address!==data.address;
+  const missingCoords=existing&&data.address&&(existing.lat==null||existing.lng==null);
   if(projEditId){
     DB.upd('projects',projEditId,data);
     showToast('✅ 案場資料已更新');
-    if(addressChanged&&data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(projEditId,data.address);
+    if((addressChanged||missingCoords)&&data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(projEditId,data.address);
   } else {
     const arr=DB.push('projects',data);
     const newId=arr[0]._id;
