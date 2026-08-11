@@ -40,7 +40,6 @@
    <div class="lrb" data-role="staff"><span class="ri">👤</span>員工</div>
    <div class="lrb" data-role="punch"><span class="ri">🕐</span>公務</div>
   </div>
-  <div id="lRoleHint" style="font-size:.72rem;color:var(--gray-400);text-align:center;margin:8px 0 0;line-height:1.5">最高權限，可使用系統所有功能</div>
 
   <input class="linp" type="text" id="lAccount" placeholder="帳號" autocomplete="username" style="display:none">
   <input type="hidden" id="lUser" value="omnight">
@@ -53,7 +52,6 @@
   </label>
   <button class="lbtn" id="lBtn">登　入</button>
   <div class="lerr" id="lErr">帳號或密碼不正確，請再試一次</div>
-  <a href="employee-guide.pdf" target="_blank" style="display:block;text-align:center;margin-top:14px;font-size:.82rem;color:var(--gray-400);text-decoration:none;font-weight:700">📋 第一次使用？看員工速查表 →</a>
 
  </div>
 </div>
@@ -78,7 +76,6 @@
    </div>
    <div class="udot" id="uDot">老</div>
    <span class="uname" id="uName">老闆</span>
-   <a href="employee-guide.pdf" target="_blank" title="員工速查表" style="width:32px;height:32px;border-radius:50%;background:var(--g100);color:var(--g500);display:flex;align-items:center;justify-content:center;text-decoration:none;font-size:1rem;flex-shrink:0">❓</a>
    <button class="obtn" id="outBtn">登出</button>
   </div>
  </div>
@@ -415,14 +412,15 @@
 
 <!-- ══ AD QUOTE LIST ══ -->
 <div class="panel" id="p-ad-quote">
- <div class="ph"><div><div class="ptit">📋 跨案場報價</div><div class="psub">看所有案場的報價記錄，可查詢、編輯與下載；單一案場的報價請到「案場總覽」點進該案場</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
+ <div class="ph"><div><div class="ptit">📋 報價管理</div><div class="psub">所有報價記錄，可查詢、編輯與下載</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="qCnt">0</div><div class="sl">本月報價件數</div></div>
   <div class="stat"><div class="sn" id="qSum">—</div><div class="sl">本月報價總額</div></div>
   <div class="stat"><div class="sn">—</div><div class="sl">成交轉化率</div></div>
  </div>
  <div class="card"><div class="ct">📄 報價記錄</div>
-  <div id="qList"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></div>
+  <div class="tw"><table class="tbl"><thead><tr><th>客戶</th><th>類型</th><th>金額</th><th>日期</th><th>操作</th></tr></thead>
+  <tbody id="qTbl"><tr><td colspan="5"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></td></tr></tbody></table></div>
  </div>
 </div>
 
@@ -435,7 +433,7 @@
     <div class="ct">👤 業主資料</div>
     <div class="g2">
      <div class="field"><label class="fl">業主姓名</label><input class="fi" id="adN" placeholder="王先生"></div>
-     <div class="field"><label class="fl">案場名稱 <span style="color:var(--bad,#D9534F);font-weight:900">*必填</span></label><select class="fi" id="adCase"></select></div>
+     <div class="field"><label class="fl">案場名稱</label><select class="fi" id="adCase"></select></div>
     </div>
     <div class="field"><label class="fl">施工地址</label><input class="fi" id="adAd" placeholder="台北市大安區某路"></div>
     <div class="g2">
@@ -554,7 +552,7 @@
 
 <!-- ══ AD VENDOR ══ -->
 <div class="panel" id="p-ad-vendor">
- <div class="ph"><div><div class="ptit">🏗️ 跨案場廠商</div><div class="psub">看所有案場的廠商報價，AI 自動辨識成固定格式；單一案場的廠商報價請到「案場總覽」點進該案場</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">🔀 合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
+ <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">🔀 合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="vCnt">0</div><div class="sl">廠商報價件數</div></div>
   <div class="stat"><div class="sn" id="vCatCnt">0</div><div class="sl">工程分類</div></div>
@@ -568,6 +566,10 @@
   </select>
  </div>
  <!-- 類別篩選 -->
+ <!-- 比價工具（內容由 JS 動態產生，見 renderVendorCatFilters，跟目前實際的分類清單同步，新增分類會立刻反映在這裡） -->
+ <div style="display:flex;gap:7px;margin-bottom:10px;flex-wrap:wrap;align-items:center" id="vCompareRow">
+  <span style="font-size:.78rem;font-weight:700;color:var(--g400)">⚖️ 廠商比價：</span>
+ </div>
  <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap" id="vFilt"></div>
  <div id="vList"></div>
 </div>
@@ -575,7 +577,7 @@
 <!-- ══ AD PROGRESS ══ -->
 <div class="panel" id="p-ad-progress">
  <div class="ph">
-  <div><div class="ptit">🔧 跨案場進度</div><div class="psub">所有案場的進度一目了然；單一案場的進度請到「案場總覽」點進該案場</div></div>
+  <div><div class="ptit">🔧 工程進度</div><div class="psub">每個案場的進度一目了然，可自行新增與修改</div></div>
   <button class="btn bg bsm" id="addProgressBtn">＋ 新增案場</button>
  </div>
 
@@ -604,7 +606,7 @@
 <!-- ══ CONTRACT MANAGEMENT ══ -->
 <div class="panel" id="p-contract">
  <div class="ph">
-  <div><div class="ptit">📝 跨案場合約</div><div class="psub">所有案場的合約，自動儲存為 PDF；單一案場的合約請到「案場總覽」點進該案場</div></div>
+  <div><div class="ptit">📝 合約管理</div><div class="psub">上傳任何格式，自動儲存為 PDF，業主隨時可查看</div></div>
   <button class="btn bg bsm" id="openContract">＋ 上傳合約</button>
  </div>
 
@@ -1124,15 +1126,6 @@
   <input type="file" id="vFile" accept="image/*" multiple style="display:none">
   <div class="ipg" id="vPrev" style="margin-top:10px"></div>
   <div class="ocrp" id="vOcr"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中，請稍候…</div>
-  <div id="vOcrProgressWrap" style="display:none;margin-bottom:14px">
-   <div style="display:flex;justify-content:space-between;font-size:.76rem;color:var(--g500);font-weight:700;margin-bottom:5px">
-    <span id="vOcrProgressLabel">辨識中…</span>
-    <span id="vOcrProgressPct">0%</span>
-   </div>
-   <div style="height:8px;background:var(--g100);border-radius:20px;overflow:hidden">
-    <div id="vOcrProgressBar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--gold-l),var(--gold));border-radius:20px;transition:width .3s ease"></div>
-   </div>
-  </div>
 
   <!-- 辨識結果：報價單格式預覽 -->
   <div id="vResult" style="display:block">
@@ -1156,11 +1149,7 @@
     </div>
     <div id="vItemsTable"></div>
    </div>
-   <div style="display:flex;gap:8px;margin-bottom:12px">
-    <button class="btn bo bsm" id="vAddItem">＋ 新增細項</button>
-    <button class="btn bo bsm" id="vSupplementUpload">📷 補充上傳（沒辨識到的頁面再拍一次）</button>
-    <input type="file" id="vSupplementFile" accept="image/*" multiple style="display:none">
-   </div>
+   <button class="btn bo bsm" id="vAddItem" style="margin-bottom:12px">＋ 新增細項</button>
    <!-- 合計 -->
    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:12px">
     <span style="font-size:.9rem;font-weight:800;color:var(--gold-d)">報價合計</span>
@@ -1409,39 +1398,6 @@
  </div>
 </div>
 
-<!-- ══ SURVEY OCR MODAL（拍手寫丈量紙，AI 讀出房間名稱跟尺寸）══ -->
-<div class="mov" id="surveyOcrModal">
- <div class="modal" style="max-width:480px">
-  <div class="mtit">📷 AI 讀取手寫尺寸 <button class="mcl" data-close="surveyOcrModal">✕</button></div>
-  <div style="font-size:.8rem;color:var(--g500);margin-bottom:14px;line-height:1.6">拍下紙上寫的房間名稱跟長寬（例如「主臥 4x3.5」），AI 會自動整理成丈量記錄，可以一次拍好幾張。<br><span style="color:var(--gold-d);font-weight:700">⚠️ 這只是幫你把手寫數字整理成電子記錄，不會知道房間怎麼相接、門窗開在哪，不是正式圖面。</span></div>
-  <div class="upz" id="svOcrZone" style="border-style:solid;border-width:2px">
-   <span class="upz-ic">✍️</span>
-   <div class="upz-title">拍手寫丈量照片（可多張）</div>
-  </div>
-  <input type="file" id="svOcrFile" accept="image/*" multiple style="display:none">
-  <div class="ocrp" id="svOcrSpin" style="display:none"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中，請稍候…</div>
-  <div id="svOcrResult" style="display:none;margin-top:14px">
-   <div style="font-size:.78rem;font-weight:800;color:var(--g400);margin-bottom:8px">辨識結果（可以再修改）</div>
-   <div id="svOcrList"></div>
-   <button class="btn bg bfull" id="svOcrSaveBtn" style="padding:12px;margin-top:10px">💾 全部存成丈量記錄</button>
-  </div>
- </div>
-</div>
-
-<!-- ══ SURVEY SCHEMATIC MODAL（把丈量數字畫成比例示意圖，可匯出 DXF 給 AutoCAD 開）══ -->
-<div class="mov" id="surveySchematicModal">
- <div class="modal" style="max-width:640px">
-  <div class="mtit">📐 丈量示意圖 <button class="mcl" data-close="surveySchematicModal">✕</button></div>
-  <div style="padding:10px 14px;background:var(--warn-bg,#FFF3E0);border:1.5px solid var(--warn-bd,#F5C77E);border-radius:var(--rs);font-size:.78rem;color:var(--warn,#B86820);margin-bottom:14px;line-height:1.6">
-   ⚠️ 這是「照比例畫出來的示意圖」，只是把每個房間的坪數做成色塊、方便你有個大概概念——<strong>不知道房間之間怎麼相接、門窗開在哪、方位是什麼</strong>，不是正式平面圖，正式圖還是要人工繪製或請設計師確認。
-  </div>
-  <div id="svSchematicCanvas" style="background:var(--g50);border:1px solid var(--g200);border-radius:var(--rs);padding:16px;overflow-x:auto;margin-bottom:14px"></div>
-  <div style="display:flex;gap:8px">
-   <button class="btn bo bsm" id="svExportDxfBtn" style="flex:1">📥 匯出 DXF（可用 AutoCAD 開啟）</button>
-  </div>
- </div>
-</div>
-
 <!-- ══ SURVEY MODAL（現場丈量記錄，一個房間一筆，可拍照存現況）══ -->
 <div class="mov" id="surveyModal">
  <div class="modal" style="max-width:520px">
@@ -1560,7 +1516,7 @@
   <div class="field" style="margin-bottom:12px"><label class="fl">說明</label><input class="fi" id="ldDesc" placeholder="例：景平路案 系統櫃材料費"></div>
   <div class="g2" style="margin-bottom:14px">
    <div class="field" style="margin:0"><label class="fl">分類</label><select class="fi" id="ldCat"><option>材料費</option><option>工資</option><option>廠商費用</option><option>管理費</option><option>設備費</option><option>合約收款</option><option>其他</option></select></div>
-   <div class="field" style="margin:0"><label class="fl">案場 <span style="color:var(--g400);font-weight:400">（選填，公司雜支可留空）</span></label><select class="fi" id="ldCase"></select></div>
+   <div class="field" style="margin:0"><label class="fl">案場</label><select class="fi" id="ldCase"></select></div>
   </div>
 
   <!-- 費用細項（可新增刪除） -->
@@ -1581,7 +1537,7 @@
  <div class="modal" style="max-width:540px">
   <div class="mtit" id="progModalTitle">新增案場進度 <button class="mcl" data-close="progressModal">✕</button></div>
   <div class="g2" style="margin-bottom:12px">
-   <div class="field" style="margin:0"><label class="fl">案場名稱 <span style="color:var(--bad,#D9534F);font-weight:900">*必填</span></label><select class="fi" id="progCase"></select></div>
+   <div class="field" style="margin:0"><label class="fl">案場名稱</label><select class="fi" id="progCase"></select></div>
    <div class="field" style="margin:0"><label class="fl">業主姓名</label><input class="fi" id="progClient" placeholder="王先生"></div>
   </div>
   <div class="field" style="margin-bottom:14px"><label class="fl">目前狀態</label>
@@ -1631,11 +1587,10 @@
    <p style="font-size:.78rem;color:var(--g500);margin:0 0 12px">只有設定了上面「打卡帳號」的員工才會套用這裡的權限；用共用員工帳號登入的人維持原本預設權限</p>
    <div id="empPermList" style="display:flex;flex-direction:column;gap:9px">
     <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permProjects" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 案場總覽</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permMarketing" checked style="width:16px;height:16px;cursor:pointer"> 💬 客服行銷（諮詢、快速報價、貼文）</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permQuote" checked style="width:16px;height:16px;cursor:pointer"> 📋 報價合約</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permVendor" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 廠商工程</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permBusiness" checked style="width:16px;height:16px;cursor:pointer"> 💬 業務（客服諮詢、快速報價、貼文、跨案場報價與合約）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permVendor" checked style="width:16px;height:16px;cursor:pointer"> 🔧 工程（廠商報價、進度）</label>
     <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permAccounting" style="width:16px;height:16px;cursor:pointer"> 💰 會計（帳款、發票）</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permSettings" style="width:16px;height:16px;cursor:pointer"> ⚙️ 系統設定</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permSettings" style="width:16px;height:16px;cursor:pointer"> ⚙️ 管理（系統設定）</label>
    </div>
   </div>
   <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
@@ -1679,7 +1634,7 @@
  <div class="modal" style="max-width:480px">
   <div class="mtit">儲存到澤居報價庫 <button class="mcl" data-close="zejuQuoteModal">✕</button></div>
   <div class="field"><label class="fl">報價名稱</label><input class="fi" id="zqName" placeholder="例：景平路案 全室翻新報價"></div>
-  <div class="field"><label class="fl">參考案場（選填，純文字備注用）</label><input class="fi" type="text" id="zqCase" placeholder="例：全室翻新A"></div>
+  <div class="field"><label class="fl">案場名稱</label><select class="fi" id="zqCase"></select></div>
   <div class="field"><label class="fl">備注</label><input class="fi" id="zqNote" placeholder="例：含系統廚具，不含燈具"></div>
   <button class="btn bg bfull" id="saveZejuQuoteBtn" style="padding:14px;font-size:.95rem">💾 儲存到報價庫</button>
  </div>
