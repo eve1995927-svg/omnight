@@ -35,25 +35,28 @@ const ACCTS={
   ad:{user:'member',pass:'zeju',name:'員工',abbr:'員',role:'Member',label:'員工'},
   ac:{user:'member',pass:'zeju',name:'員工',abbr:'員',role:'Member',label:'員工'},
 };
+// 修正重點：原本選單是「功能做出來的順序」在排（主頁/客服行銷/報價與合約/廠商與進度/會計/人資/系統，共7組），
+// 不是「業務邏輯」在排，例如客服行銷（接觸客戶）跟報價與合約（成交客戶）明明是同一條業務線，卻拆成兩個入口。
+// 改成照公司實際運作的角色分：業務端（客戶接觸＋報價合約）、工程端（廠商＋進度）、會計、後台管理，
+// 從 7 組減到 6 組，同一件事只在一個地方找，不用猜「這個功能在哪一個分類底下」。
 const GROUPS={
   owner:[
-    {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
-    {l:'報價與合約', items:[{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
-    {l:'廠商與進度', items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
-    {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
-    {l:'人資',       items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
-    {l:'系統',       items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
+    {l:'儀表板',   items:[{id:'owner-dash',l:'今日總覽',ic:'📊'}]},
+    {l:'案場',     items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'業務',     items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'工程',     items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
+    {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
+    {l:'管理',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'},{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   // 員工可用的模組全集：實際登入時會依照 getEmployeePermissions() 過濾，只顯示老闆開放的部分
-  // 每個分組標記 _perm，對應人資管理裡的權限開關 key
+  // 每個分組標記 _perm，對應人資管理裡的權限開關 key。人資管理本身不開放給員工（薪資、個資太敏感），
+  // 「管理」這組對員工來說只有系統設定。
   staff:[
-    {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
-    {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
-    {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
-    {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
-    {l:'系統',       _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
+    {l:'案場',   _perm:'projects',   items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'業務',   _perm:'business',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'工程',   _perm:'vendor',     items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
+    {l:'會計',   _perm:'accounting', items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
+    {l:'管理',   _perm:'settings',   items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
   punch:[
     {l:'打卡',    items:[{id:'punch-clock',l:'上下班打卡',ic:'🕐'}]},
@@ -66,7 +69,17 @@ const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
-const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
+// 修正重點：原本「客服行銷」「報價與合約」是各自獨立的權限開關，合併成「業務」一組之後，
+// 這裡也跟著合併成一個 business 開關；已經幫舊員工設定過 marketing 或 quote 任一權限的，
+// 這裡做相容判斷，合併後預設沿用原本比較寬鬆的那個設定，不會讓已經開放的員工突然被鎖住看不到東西。
+const DEFAULT_STAFF_PERMISSIONS={projects:true,business:true,vendor:true,accounting:false,settings:false};
+function migrateEmployeePermissions(perms){
+  if(!perms)return perms;
+  if(perms.business===undefined&&(perms.marketing!==undefined||perms.quote!==undefined)){
+    return {...perms,business:!!(perms.marketing||perms.quote)};
+  }
+  return perms;
+}
 
 // ── 案場選擇器：把「案場名稱」欄位從自由輸入改成從既有案場挑選 ──────────
 // 目的：自由輸入常常打法不一致（「民有十三街」跟「民有13街」變成兩個不同案場），
@@ -87,58 +100,19 @@ function buildProjectSelect(selectEl, selectedId, allowEmpty){
   if(selectedId!=null && selectedId!=='') selectEl.value=String(selectedId);
 }
 
-// ══ 通用防呆：儲存前檢查有沒有選案場，沒選就跳出清楚的提示，不要讓人猜錯在哪裡卡住 ══════
-// 用法：ensureProjectSelected(document.getElementById('adCase'), (projectId) => { ...實際儲存的程式碼... })
-// 如果已經選好案場，onReady 會立刻執行；如果還沒選，會跳出提示視窗，
-// 選好既有案場、或新增一個案場之後，onReady 才會執行——呼叫的地方不用自己處理這些分支。
-let _pendingProjectCallback=null;
-function ensureProjectSelected(selectEl,onReady){
-  const val=selectEl?.value;
-  if(val){onReady(val);return;}
-  const projects=DB.get('projects');
-  const box=document.createElement('div');
-  box.className='mov show';
-  box.innerHTML='<div class="modal" style="max-width:420px">'+
-    '<div class="mtit">📍 這筆還沒選案場 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
-    '<div style="font-size:.85rem;color:var(--g500);margin-bottom:16px;line-height:1.6">要先告訴系統這筆資料屬於哪個案場，才能正確歸類、之後才找得到。</div>'+
-    (projects.length?'<div class="field"><label class="fl">選擇既有案場</label><select class="fi" id="_epsSelect"><option value="">請選擇…</option>'+
-      projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.client?'（'+esc(p.client)+'）':'')+'</option>').join('')+'</select></div>':
-      '<div style="font-size:.82rem;color:var(--g400);margin-bottom:12px">目前還沒有任何案場。</div>')+
-    '<button class="btn bg bfull" id="_epsConfirm" style="padding:12px;margin-top:6px">✅ 使用這個案場</button>'+
-    '<button class="btn bo bfull" id="_epsNew" style="padding:12px;margin-top:8px">➕ 新增一個案場</button>'+
-    '</div>';
-  document.body.appendChild(box);
-
-  document.getElementById('_epsConfirm')?.addEventListener('click',()=>{
-    const picked=document.getElementById('_epsSelect')?.value;
-    if(!picked){showToast('⚠️ 請選擇一個案場');return;}
-    selectEl.value=picked;
-    box.remove();
-    onReady(picked);
-  });
-  document.getElementById('_epsNew')?.addEventListener('click',()=>{
-    box.remove();
-    // 記下「新增完案場之後要接著做什麼」，saveProject() 存完會自動呼叫回來，
-    // 選好剛新增的案場、繼續原本要做的事（不用使用者自己再選一次、再點一次儲存）
-    _pendingProjectCallback={selectEl,onReady};
-    if(typeof openAddProject==='function')openAddProject();
-  });
-}
-
-
 function getEmployeePermissions(){
   // 用共用「員工」帳號登入（沒有指定個人身份）：維持過去的預設行為，開放常用模組，會計/系統設定不開放
   if(!_punchEmployee) return DEFAULT_STAFF_PERMISSIONS;
   // 個人帳號登入：套用老闆在人資管理設定的權限，沒設定過的員工使用預設值
-  return {...DEFAULT_STAFF_PERMISSIONS, ...(_punchEmployee.permissions||{})};
+  // migrateEmployeePermissions：把舊版「客服行銷」「報價與合約」分開的權限設定，轉換成合併後的 business 權限，
+  // 已經設定過的員工不會因為這次選單合併就突然被鎖住
+  return {...DEFAULT_STAFF_PERMISSIONS, ...migrateEmployeePermissions(_punchEmployee.permissions||{})};
 }
 
-// 依權限過濾 GROUPS.staff，只回傳老闆有開放的分組
+// 依權限過濾 GROUPS.staff：沒開放的分組不是直接濾掉不見，而是標記成鎖住（灰階＋鎖頭顯示），
+// 員工看得到「有這個功能，只是還沒開放」，不會誤以為系統根本沒有這個功能
 function getFilteredStaffGroups(){
   const perms=getEmployeePermissions();
-  // 修正重點：原本沒開放的模組是直接從清單裡濾掉，員工那邊看起來就像「這個系統本來就沒有這個功能」，
-  // 不知道是被權限關掉、還是要去哪裡問。改成不濾掉、但標記成「鎖住」，
-  // 讓最上層的分頁還是看得到（灰階＋鎖頭圖示），點下去會清楚告訴他要找誰開權限，而不是一片空白。
   return GROUPS.staff.map(g=>({...g,_locked:!!(g._perm&&!perms[g._perm])}));
 }
 function getUnlockedStaffGroups(){
@@ -350,23 +324,13 @@ function initFirebase(){
 function _ensureFirebaseAuth(){
   return new Promise((resolve)=>{
     if(typeof firebase==='undefined'||!firebase.auth){resolve(false);return;}
-    // 修正重點：跟下面 initCloudDB 同一種問題——網路很差的時候，這個登入動作可能永遠不會
-    // 成功也不會失敗，一直卡著。這裡也加上等待上限，逾時就當作失敗處理，讓後面的流程可以繼續走，
-    // 不會卡在這一步就出不去。
-    let settled=false;
-    const finish=(ok)=>{if(settled)return;settled=true;resolve(ok);};
-    const timeoutId=setTimeout(()=>{
-      console.warn('Firebase Auth 逾時，視為登入失敗，改走離線模式');
-      finish(false);
-    },6000);
     try{
       firebase.auth().signInAnonymously()
-        .then(()=>{clearTimeout(timeoutId);finish(true);})
-        .catch((e)=>{clearTimeout(timeoutId);console.warn('Firebase Auth 匿名登入失敗：',e.message);finish(false);});
+        .then(()=>resolve(true))
+        .catch((e)=>{console.warn('Firebase Auth 匿名登入失敗：',e.message);resolve(false);});
     }catch(e){
-      clearTimeout(timeoutId);
       console.warn('Firebase Auth 初始化失敗：',e.message);
-      finish(false);
+      resolve(false);
     }
   });
 }
@@ -420,23 +384,7 @@ async function initCloudDB(){
     // 沒有這一步，規則設好之後資料反而會讀不到（不是資安漏洞了，但變成功能壞掉）
     await _ensureFirebaseAuth();
     return new Promise(res=>{
-      // 修正重點：Firebase 的 once('value', 成功, 失敗) 這個「失敗」callback，
-      // 只有在真的收到明確錯誤（例如權限被拒）時才會觸發——如果是網路很差、完全連不上、
-      // 訊號斷斷續續這種狀況，Firebase SDK 會自己一直在背景重試，兩個 callback 都不會被呼叫，
-      // 這個 Promise 就永遠不會有結果，登入頁的按鈕會卡在「同步資料中…」動不了，
-      // 這就是「有時候登入頁面卡在同步中」的原因。現在加上一個等待上限（8秒），
-      // 等太久還沒回應，就直接切換成離線模式（用手機本機之前存過的資料），
-      // 讓使用者至少能先登進去用，不會被卡死在等待畫面。
-      let settled=false;
-      const finish=(ok)=>{if(settled)return;settled=true;res(ok);};
-      const timeoutId=setTimeout(()=>{
-        console.log('⚠️ Firebase 連線逾時，改用本機離線資料');
-        _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
-        setSyncStatus('offline');
-        finish(false);
-      },8000);
       _fbDB.ref('zeju_data').once('value', snap=>{
-        clearTimeout(timeoutId);
         const data=snap.val()||{};
         _KEYS.forEach(k=>{
           if(data[k]){
@@ -447,12 +395,11 @@ async function initCloudDB(){
         console.log('✅ Firebase data loaded');
         setSyncStatus('ok');
         loadCompanyProfileFromCloud();
-        finish(true);
+        res(true);
       }, ()=>{
-        clearTimeout(timeoutId);
         _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
         setSyncStatus('offline');
-        finish(false);
+        res(false);
       });
     });
   }
@@ -785,8 +732,15 @@ async function apiTestConn(){
 function openModal(id){const el=document.getElementById(id);if(el)el.classList.add('show');}
 function closeModal(id){const el=document.getElementById(id);if(el)el.classList.remove('show');}
 
-// 修正重點：原本按 ESC 鍵也會把彈窗關掉，這次一起拿掉——
-// 現在彈窗只能透過右上角的 ✕ 或明確的關閉/取消按鈕關閉，避免填資料填到一半不小心按到 ESC 整份不見。
+// ESC 鍵關閉目前開啟的彈窗（官方 .mov 點外部關閉的機制已存在於 misc.js，這裡只補上 ESC 鍵支援，
+// 同時涵蓋自訂輕量彈窗，如快速新增分類、進度照片等等）
+document.addEventListener('keydown',(e)=>{
+  if(e.key!=='Escape')return;
+  const openMov=document.querySelector('.mov.show');
+  if(openMov){openMov.classList.remove('show');return;}
+  const liteBox=document.querySelector('[id^="_"][id$="Box"]');
+  if(liteBox)liteBox.remove();
+});
 
 // ── 確認對話（替代 confirm()，不阻斷 UI）───────────────────
 function confirmAction(msg,onConfirm,danger=true){
@@ -991,17 +945,6 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       empSelEl.style.display='none';
       empSelEl.value='';
     }
-  }
-  // 修正重點：新人第一次登入常常搞不清楚「員工」跟「公務」差在哪，兩個字面看起來很像。
-  // 選了哪個角色，底下就直接用白話文說明這個角色可以做什麼，不用猜。
-  const roleHintEl=document.getElementById('lRoleHint');
-  if(roleHintEl){
-    const hints={
-      owner:'最高權限，可使用系統所有功能',
-      staff:'日常操作用——開報價單、記錄廠商報價、上傳進度照片等等',
-      punch:'只用來打卡上下班，不會看到報價、帳款這些內部資料',
-    };
-    roleHintEl.textContent=hints[curRole]||'';
   }
 });
 document.getElementById('lBtn').addEventListener('click',doLogin);
@@ -1559,13 +1502,7 @@ const DEF_SECTIONS=[
   {id:'s6',icon:'🎨',name:'油漆',items:[{name:'全室油漆',unit:'坪',qty:0,price:0}]},
 ];
 
-// 修正重點：原本只用 Date.now() 當分類 id，同一毫秒內連續呼叫好幾次（例如一次勾選多個廠商報價、
-// 一次全部置入報價單）會產生一模一樣的 id。畫面上每個分類底下的細項容器是用這個 id 去對應
-// （id="pi-那個id"），id 重複的話，瀏覽器抓到的永遠是「第一個」符合的容器，導致後面幾個分類
-// 的細項全部被誤塞進第一個分類裡、或者根本抓不到自己的容器而顯示空白——這就是「廠商報價一次
-// 置入好幾筆，後面的都變成空的」的真正原因。改成加上一個遞增計數器，保證同一毫秒內呼叫幾次都不會重複。
-let _mkSecIdCounter=0;
-function mkSecId(){return 's'+Date.now()+'_'+(_mkSecIdCounter++);}
+function mkSecId(){return 's'+Date.now();}
 function calcSec(items){return items.reduce((s,it)=>s+it.qty*it.price,0);}
 function calcAll(sections){return sections.reduce((s,sec)=>s+calcSec(sec.items),0);}
 function fmt(n){return'NT$'+Math.round(n).toLocaleString();}

@@ -16,22 +16,15 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  // 修正重點：「案場名稱」這個欄位很早之前已經從自由輸入的文字框，改成用下拉選單選既有案場
-  // （避免同一個案場打字打法不一樣，變成好幾筆對不起來），但選單存的 value 其實是案場的「編號」，
-  // 不是案場名稱本身。這段程式碼還是照舊把 .value 直接當成名字存進去，
-  // 結果存進去的是一長串數字（案場編號），不是案場名稱——這就是「工程進度變成代碼」的原因。
-  // 改成用選到的編號去查真正的案場名稱，名稱、案場關聯都存正確的值。
-  const projectIdVal=document.getElementById('progCase').value;
-  const selectedProject=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
-  if(!projectIdVal||!selectedProject){showToast('⚠️ 請選擇案場');return;}
-  const caseN=selectedProject.name;
+  const caseN=document.getElementById('progCase').value.trim();
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
+  if(!caseN){showToast('⚠️ 請填入案場名稱');return;}
   if(progEditId){
-    DB.upd('progress',progEditId,{caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+    DB.upd('progress',progEditId,{caseN,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
     showToast('✅ 進度已更新！');
   }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x}))});
+    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,items:progItems.map(x=>({...x}))});
     showToast('✅ 案場進度已建立！');
   }
   closeModal('progressModal');renderProgress();progEditId=null;
@@ -53,20 +46,11 @@ function renderProgress(){
     const done=(p.items||[]).filter(x=>x.done).length;
     const total=(p.items||[]).length;
     const pct=total?Math.round(done/total*100):0;
-    // 修正重點：舊資料如果是在上面那個 bug 修好之前建立的，caseN 欄位存的可能是一長串案場編號、
-    // 不是名字。這裡加一層防呆：如果 caseN 看起來像純數字編號，改成用 projectId（如果有存）
-    // 或這串數字本身去查真正的案場名稱，畫面上不會再顯示一串看不懂的代碼。
-    let displayName=p.caseN;
-    if(!displayName||/^\d+$/.test(String(displayName).trim())){
-      const lookupId=p.projectId||displayName;
-      const matched=DB.get('projects').find(pr=>String(pr._id)===String(lookupId));
-      if(matched)displayName=matched.name;
-    }
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName||'（未命名案場）')+'</div>'+
-          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
+          '<div style="font-size:.95rem;font-weight:900">'+p.caseN+'</div>'+
+          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+p.client+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
@@ -93,7 +77,7 @@ function renderProgress(){
       document.getElementById('progCase').value=p.caseN||'';
       document.getElementById('progClient').value=p.client||'';
       document.getElementById('progStatus').value=p.status||'pending';
-      document.getElementById('progModalTitle').innerHTML='編輯進度：'+esc(p.caseN)+' <button class="mcl" data-close="progressModal">✕</button>';
+      document.getElementById('progModalTitle').innerHTML='編輯進度：'+p.caseN+' <button class="mcl" data-close="progressModal">✕</button>';
       renderProgItems();openModal('progressModal');
     });
     card.querySelector('[data-pdel]')?.addEventListener('click',()=>{confirmAction('刪除「'+p.caseN+'」進度？',()=>{DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});});
@@ -139,7 +123,7 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
 });
 
 // ── 權限checkbox 讀寫小工具 ──────────────────────────────
-const PERM_CHECKBOX_MAP={projects:'permProjects',marketing:'permMarketing',quote:'permQuote',vendor:'permVendor',accounting:'permAccounting',settings:'permSettings'};
+const PERM_CHECKBOX_MAP={projects:'permProjects',business:'permBusiness',vendor:'permVendor',accounting:'permAccounting',settings:'permSettings'};
 function setEmpPermCheckboxes(perms){
   Object.entries(PERM_CHECKBOX_MAP).forEach(([key,id])=>{
     const el=document.getElementById(id);if(el)el.checked=!!(perms&&perms[key]);
@@ -194,49 +178,28 @@ function renderEmployees(){
   const list=document.getElementById('empList');if(!list)return;
   const emps=DB.get('employees');
   if(!emps.length){list.innerHTML='<div class="empty-state"><div class="es-ic">👤</div><div class="es-t">尚無員工資料</div><div class="es-s">點右上方「新增員工」</div></div>';return;}
-  // 修正重點：原本每張卡片把完整薪資明細（底薪/伙食/勞保/健保/勞退/實領六行）都攤開顯示，
-  // 人一多畫面拉得很長，光找一個人就要一直往下捲。改成小卡片＋格狀排列，
-  // 一眼看到姓名、職稱、本月實領，薪資明細收起來，要看再點開，人少的時候也不會佔一大片空間。
-  list.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px';
   list.innerHTML='';
   emps.forEach(e=>{
-    const card=document.createElement('div');
-    card.style.cssText='background:var(--w);border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden';
-    const detailId='emp-detail-'+e._id;
+    const card=document.createElement('div');card.className='emp-card';
     card.innerHTML=
-      '<div style="display:flex;align-items:center;gap:10px;padding:14px">'+
-        '<div class="emp-avatar" style="flex-shrink:0">'+esc(e.name.charAt(0))+'</div>'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.9rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(e.name)+'</div>'+
-          '<div style="font-size:.74rem;color:var(--g400);margin-top:1px">'+esc(e.title||'員工')+'</div>'+
-        '</div>'+
-        '<div style="text-align:right;flex-shrink:0">'+
-          '<div style="font-size:.68rem;color:var(--g400)">本月實領</div>'+
-          '<div style="font-size:.88rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(e.net||0).toLocaleString()+'</div>'+
+      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'+
+        '<div class="emp-avatar">'+e.name.charAt(0)+'</div>'+
+        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+e.name+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+( e.title||'員工')+' ｜ 到職：'+e.startDate+'</div></div>'+
+        '<div style="display:flex;gap:5px">'+
+          '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️ 編輯</button>'+
+          '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
         '</div>'+
       '</div>'+
-      '<div style="display:flex;gap:6px;padding:0 14px 12px">'+
-        '<button class="btn bo bxs" data-etgl style="flex:1">▾ 詳細資料</button>'+
-        '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️</button>'+
-        '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
+      '<div style="background:var(--g50);border-radius:var(--rs);padding:12px 14px">'+
+        '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+( e.salary||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+( (e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+( e.labor||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+( e.health||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+( e.retire||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+( e.net||0).toLocaleString()+'</span></div>'+
       '</div>'+
-      '<div id="'+detailId+'" style="display:none;padding:12px 14px;border-top:1px solid var(--g100);background:var(--g50)">'+
-        '<div style="font-size:.74rem;color:var(--g400);margin-bottom:8px">到職：'+esc(e.startDate||'—')+'</div>'+
-        '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+(e.salary||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+((e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+(e.labor||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+(e.health||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+(e.retire||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+(e.net||0).toLocaleString()+'</span></div>'+
-        (e.bank?'<div style="font-size:.72rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+esc(e.bank)+'</div>':'')+
-        (e.account?'<div style="font-size:.72rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'')+
-      '</div>';
-    card.querySelector('[data-etgl]').addEventListener('click',(ev)=>{
-      const detail=document.getElementById(detailId);
-      const open=detail.style.display==='none';
-      detail.style.display=open?'block':'none';
-      ev.target.textContent=open?'▴ 收起':'▾ 詳細資料';
-    });
+      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'')+
+      (e.account?'<div style="font-size:.75rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'');
     card.querySelector('[data-eedit]')?.addEventListener('click',()=>{
       empEditId=e._id;
       document.getElementById('empName').value=e.name||'';document.getElementById('empTitle').value=e.title||'';
@@ -246,7 +209,7 @@ function renderEmployees(){
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
-      setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
+      setEmpPermCheckboxes(migrateEmployeePermissions(e.permissions)||DEFAULT_STAFF_PERMISSIONS);
       document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
@@ -287,6 +250,21 @@ function renderSalaryList(){
     return;
   }
 
+  // ── 建立6個月 + 額外月份 ──
+  const recentMonths=[];
+  for(let i=0;i<6;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    recentMonths.push(fmtMonth(d.getFullYear(),d.getMonth()));
+  }
+  // 也加未來2個月
+  for(let i=1;i<=2;i++){
+    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
+    recentMonths.unshift(fmtMonth(d.getFullYear(),d.getMonth()));
+  }
+
+  const allStoredMonths=JSON.parse(localStorage.getItem('zeju_salary_months')||'[]');
+  const extraMonths=allStoredMonths.filter(m=>!recentMonths.includes(m)).sort().reverse();
+
   const curMonthKey=localStorage.getItem('zeju_salary_cur_month')||fmtMonth(now.getFullYear(),now.getMonth());
 
   list.innerHTML='';
@@ -302,27 +280,29 @@ function renderSalaryList(){
     <span style="font-size:.78rem;color:var(--g400)">下次發薪：${now.getMonth()+1}月${payDate}日</span>`;
   list.appendChild(settingDiv);
 
-  // 修正重點：原本是把最近 6 個月＋未來 2 個月排成一整排按鈕，用久了（例如用滿兩年）
-  // 舊的月份會被擠出這排按鈕、只能從旁邊一個不太顯眼的「其他月份」下拉選單裡找，
-  // 越用越久要找的月份越不容易找到，而且按鈕排一長排也不好看。
-  // 改成一個標準的月份選擇器（點了直接跳出年/月選單），不管用多久、要往回找哪個月都一樣快，
-  // 左右箭頭可以快速切上一個月/下一個月，不用重新選一次。
-  const navDiv=document.createElement('div');
-  navDiv.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:14px';
-  const [curY,curM]=curMonthKey.split('-').map(Number);
-  navDiv.innerHTML=`
-    <button class="btn bo bxs" id="salMonthPrev" style="padding:8px 12px">◀</button>
-    <input type="month" id="salMonthPicker" value="${curMonthKey}" style="padding:8px 14px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.88rem;font-family:inherit;font-weight:800;color:var(--g700);outline:none;background:var(--w)">
-    <button class="btn bo bxs" id="salMonthNext" style="padding:8px 12px">▶</button>
-    <button class="btn bo bxs" id="salMonthToday" style="padding:8px 12px;margin-left:4px">回到本月</button>
-    ${curMonthKey===fmtMonth(now.getFullYear(),now.getMonth())?'<span style="font-size:.76rem;color:var(--gold-d);font-weight:800;margin-left:4px">● 本月</span>':''}
-  `;
-  list.appendChild(navDiv);
-  const setMonth=(key)=>{localStorage.setItem('zeju_salary_cur_month',key);renderSalaryList();};
-  navDiv.querySelector('#salMonthPicker').addEventListener('change',e=>{if(e.target.value)setMonth(e.target.value);});
-  navDiv.querySelector('#salMonthPrev').addEventListener('click',()=>{const d=new Date(curY,curM-2,1);setMonth(fmtMonth(d.getFullYear(),d.getMonth()));});
-  navDiv.querySelector('#salMonthNext').addEventListener('click',()=>{const d=new Date(curY,curM,1);setMonth(fmtMonth(d.getFullYear(),d.getMonth()));});
-  navDiv.querySelector('#salMonthToday').addEventListener('click',()=>setMonth(fmtMonth(now.getFullYear(),now.getMonth())));
+  // 月份選擇區：最近6個月 + 未來2個月（顯示為Tab列）
+  const tabDiv=document.createElement('div');
+  tabDiv.style.cssText='display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;align-items:center';
+
+  recentMonths.forEach(m=>{
+    const b=document.createElement('button');
+    b.className='btn '+(m===curMonthKey?'bg':'bo')+' bsm';
+    b.style.padding='6px 12px';b.style.fontSize='.78rem';
+    b.textContent=m.replace('-','年')+'月'+(m===fmtMonth(now.getFullYear(),now.getMonth())?' (本月)':m>fmtMonth(now.getFullYear(),now.getMonth())?' ▶':'');
+    b.addEventListener('click',()=>{localStorage.setItem('zeju_salary_cur_month',m);renderSalaryList();});
+    tabDiv.appendChild(b);
+  });
+
+  // 「其他月份」下拉
+  if(extraMonths.length){
+    const sep=document.createElement('span');sep.style.cssText='font-size:.75rem;color:var(--g400);margin:0 4px';sep.textContent='｜';tabDiv.appendChild(sep);
+    const sel=document.createElement('select');
+    sel.style.cssText='padding:6px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.78rem;font-family:inherit;outline:none;background:var(--w)';
+    sel.innerHTML='<option value="">📅 其他月份…</option>'+extraMonths.map(m=>`<option value="${m}" ${m===curMonthKey?'selected':''}>${m.replace('-','年')}月</option>`).join('');
+    sel.addEventListener('change',()=>{if(sel.value){localStorage.setItem('zeju_salary_cur_month',sel.value);renderSalaryList();}});
+    tabDiv.appendChild(sel);
+  }
+  list.appendChild(tabDiv);
 
   // 月份薪資表
   const tableDiv=document.createElement('div');tableDiv.id='monthSalaryTable';list.appendChild(tableDiv);
@@ -587,21 +567,21 @@ async function exportSalaryReport(monthKey){
 
 // ══ 澤居自有工程快速新增 ══════════════════════════════════
 const ZEJU_DEFAULT_ITEMS = {
-  '拆除': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
-  '泥作': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
-  '木作': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
-  '水電': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
+  '拆除工程': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
+  '泥作工程': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
+  '木作工程': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
+  '水電工程': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
   '系統傢俱': [{name:'系統衣櫃',unit:'尺',qty:0,price:0},{name:'系統廚具',unit:'式',qty:1,price:0}],
-  '油漆': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
-  '衛浴': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
-  '燈具': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
-  '其他': [{name:'工程項目',unit:'式',qty:1,price:0}],
+  '油漆工程': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
+  '衛浴工程': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
+  '燈具工程': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
+  '其他工程': [{name:'工程項目',unit:'式',qty:1,price:0}],
 };
 
 function addZejuSection(icon, name){
   const defaults = ZEJU_DEFAULT_ITEMS[name] || [{name:'工程項目',unit:'式',qty:1,price:0}];
   adSections.push({
-    id:mkSecId(),
+    id:'s'+Date.now(),
     icon, name,
     items: defaults.map(it=>({...it}))
   });
@@ -701,17 +681,13 @@ function renderAttendance(){
 
   emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'}]).forEach(emp=>{
     // 找這個帳號的打卡記錄
-    // 修正重點：這裡原本不管是哪個員工，一律拿「staff」去找打卡記錄，等於全部員工都在搶同一個帳號的紀錄。
-    // 但員工實際打卡時，如果有選自己的帳號登入，系統存的其實是「emp_員工編號」這種各自獨立的值
-    // （不是統一的 staff），導致這裡完全比對不到，看起來就像「員工打卡了，但老闆這邊看不到」。
-    // 改成比照存檔時的邏輯，個人帳號比對「emp_員工編號」，公務／共用帳號才用固定的角色名去比對。
-    const roleId=(emp._id==='punch')?'punch':('emp_'+emp._id);
+    const roleId=emp._id==='punch'?'punch':'staff';
     const myRecs=allRecs.filter(r=>{
       if(!r.date)return false;
       const [y,m]=r.date.includes('/')
         ?r.date.split('/').map(Number)
         :r.date.split('-').map(Number);
-      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&(r.user===roleId||(emp._id!=='punch'&&r.user==='staff'&&r.userName===emp.name));
+      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&r.user===roleId;
     });
 
     // 統計
@@ -743,37 +719,10 @@ function renderAttendance(){
   });
 }
 
-// 台灣國定假日（依行政院人事行政總處公布之政府行政機關辦公日曆表，週六日本來就不算工作天，
-// 這裡只列「原本是平日、但因為國定假日不用上班」的日期，含補假）
-// ⚠️ 每年政府會重新公告日曆表，這份清單需要每年更新一次，目前只有 2026 年
-const TW_HOLIDAYS_2026=[
-  '2026-01-01', // 元旦
-  '2026-02-16', // 除夕
-  '2026-02-17','2026-02-18','2026-02-19', // 春節初一~初三
-  '2026-02-20', // 小年夜補假
-  '2026-02-27', // 和平紀念日補假
-  '2026-04-03', // 兒童節/清明節補假
-  '2026-05-01', // 勞動節
-  '2026-06-19', // 端午節
-  '2026-09-25', // 中秋節
-  '2026-09-28', // 教師節
-  '2026-10-09', // 國慶日補假
-  '2026-10-26', // 台灣光復節補假
-  '2026-12-25', // 行憲紀念日
-];
-const TW_HOLIDAYS=new Set([...TW_HOLIDAYS_2026]);
-function isTwHoliday(date){
-  const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0');
-  return TW_HOLIDAYS.has(y+'-'+m+'-'+d);
-}
-
 function getWorkDaysInMonth(year,month){
-  // 修正重點：原本只排除週六日，國定假日（元旦、春節、中秋這些）沒有排除，
-  // 導致這幾天員工本來就不用上班，卻被系統算成「沒打卡=缺勤」，出勤率因此被拉低、算錯。
   let count=0;const date=new Date(year,month,1);
   while(date.getMonth()===month&&date<=new Date()){
-    const day=date.getDay();
-    if(day!==0&&day!==6&&!isTwHoliday(date))count++;
+    const day=date.getDay();if(day!==0&&day!==6)count++;
     date.setDate(date.getDate()+1);
   }
   return count;
@@ -788,17 +737,27 @@ function switchHRTab(tab){
   const body=document.getElementById('hrb-'+tab);
   if(body)body.classList.add('on');
   // 各 tab 初始化
-  // 修正重點：這裡原本漏掉「員工資料」這個 tab——切換到 salary/leave/attend/punch/request 都會
-  // 正確重新整理資料，唯獨切到「員工資料」完全沒有呼叫 renderEmployees()，導致畫面停在空白狀態，
-  // 即使資料庫裡明明就有員工資料（上面統計數字才會正確顯示「3 在職員工」），
-  // 名單那塊卻永遠是「尚無員工資料」，兩邊資訊互相矛盾。
-  if(tab==='emp')renderEmployees();
   if(tab==='salary')renderSalaryList();
   if(tab==='leave')renderLeaveManagement();
   if(tab==='attend')renderAttendance();
   if(tab==='punch')renderHRPanel();
   if(tab==='request')renderHRPanel();
 };
+
+// ══ 廠商比價 ══════════════════════════════════════════════
+function compareVendorsByCat(cat){
+  const vendors=DB.get('vendors').filter(v=>v.cat===cat);
+  if(vendors.length<2){showToast('同類別廠商不足 2 家，無法比較');return;}
+  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+v.vendor+'</td><td style="padding:10px 14px;color:var(--g400)">'+( v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+( v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+( v._ts||'').split(' ')[0]+'</td></tr>').join('');
+  const min=Math.min(...vendors.map(v=>v.amount||0));
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+cat+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>廠商</th><th>案場</th><th>報價</th><th>日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+vendors.find(v=>v.amount===min)?.vendor+'）</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+}
 
 // ══ 進度連結付款提醒 ══════════════════════════════════════
 
@@ -920,9 +879,12 @@ document.getElementById('vZone')?.addEventListener('click',()=>{
   document.getElementById('vFile')?.click();
 });
 
-// 修正重點：這裡原本又重複寫了一次「點背景關閉彈窗」的邏輯，
-// 跟 misc.js 那邊的設定互相矛盾（misc.js 已經改成只能按 ✕ 關閉，這裡卻還留著點背景關閉），
-// 拿掉這段重複、互相打架的邏輯，統一以 misc.js 的規則為準：只能按 ✕ 或明確的關閉按鈕。
+// ══ Modal 點外面關閉（覆寫確保正確）══════════════════════
+document.querySelectorAll('.mov').forEach(mov=>{
+  mov.addEventListener('click',e=>{
+    if(e.target===mov) mov.classList.remove('show');
+  });
+});
 
 // 確保 data-close 也正常運作
 document.querySelectorAll('[data-close]').forEach(btn=>{
@@ -959,12 +921,12 @@ document.getElementById('svRpl')?.addEventListener('click',()=>{
 });
 
 document.getElementById('qAddSec')?.addEventListener('click',()=>{
-  qSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  qSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('qSections',qSections,{allowDelSec:true,totIds:{sub:'pqSub',total:'pqTotal'}});
 });
 
 document.getElementById('adAddSec')?.addEventListener('click',()=>{
-  adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 });
 
@@ -1210,6 +1172,7 @@ function openLeaveRequestBox(){
       <button id="_lvSubmit" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">送出申請</button>
     </div>
   </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 
   const updHint=()=>{
