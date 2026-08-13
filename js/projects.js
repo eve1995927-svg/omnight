@@ -507,12 +507,10 @@ function showDayProjectsPopover(dateStr,projects){
     '</div>';
   }).join('');
   box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:18px 20px;max-width:360px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
-      '<div style="font-weight:900;font-size:.92rem">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
-      '<button onclick="document.getElementById(\'_dayPopover\').remove()" style="background:none;border:none;color:var(--g400);font-size:1.1rem;cursor:pointer;line-height:1;padding:2px 4px">✕</button>'+
-    '</div>'+
+    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
     rows+
     '</div>';
+  box.addEventListener('click',()=>box.remove());
   box.querySelectorAll('.pc-pop-row').forEach(row=>{
     row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
     row.addEventListener('mouseleave',()=>row.style.background='');
@@ -716,47 +714,27 @@ function saveProject(){
     token:existing?.token||('zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)),
     summary:'案場 '+name,
   };
-  // 修正重點：原本只有「地址文字有改過」才會重新查座標——但如果案場一開始建立的時候查詢失敗
-  // （網路不穩、查詢服務忙線），或這個案場是很久以前建立、當時系統還沒有這個功能，
-  // 之後每次編輯案場只要沒有動到地址欄位文字，系統都會以為「地址沒變不用查」，
-  // 結果永遠補不回座標，打卡那邊就一直顯示「尚無座標」。
-  // 改成只要「地址文字有改」或「這個案場根本還沒有座標」，就會嘗試查一次。
   const addressChanged=!existing||existing.address!==data.address;
-  const missingCoords=existing&&data.address&&(existing.lat==null||existing.lng==null);
   if(projEditId){
     DB.upd('projects',projEditId,data);
     showToast('✅ 案場資料已更新');
-    if((addressChanged||missingCoords)&&data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(projEditId,data.address);
+    if(addressChanged&&data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(projEditId,data.address);
   } else {
     const arr=DB.push('projects',data);
     const newId=arr[0]._id;
     showToast('✅ 案場已建立！');
     if(data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(newId,data.address);
-    closeModal('projModal');
-    renderProjects();
-
-    // 修正重點：如果這次新增案場，是從別的地方（例如建報價單時發現還沒選案場）跳過來的，
-    // 存完不要再跳「接下來要做什麼」的提示，而是直接帶著新案場的編號回去，
-    // 繼續完成原本卡住的那件事——選好案場、直接接著儲存，不用使用者自己再選一次。
-    if(_pendingProjectCallback){
-      const {selectEl,onReady}=_pendingProjectCallback;
-      _pendingProjectCallback=null;
-      if(typeof buildProjectSelect==='function')buildProjectSelect(selectEl,newId);
-      else if(selectEl)selectEl.value=newId;
-      showToast('✅ 已自動選好剛新增的案場，繼續儲存');
-      onReady(newId);
-      return;
-    }
-
     // 建立後提示下一步
     setTimeout(()=>{
       showNextStep('案場已建立！接下來可以：', [
-        {label:'📋 建立報價單', action:()=>{openProject(newId,'quote');}},
-        {label:'📝 上傳合約',  action:()=>{openProject(newId,'contract');}},
-        {label:'稍後再說',     action:()=>{}},
+        {label:'📋 建立報價單', action:()=>{closeModal('projModal');openProject(newId,'quote');}},
+        {label:'📝 上傳合約',  action:()=>{closeModal('projModal');openProject(newId,'contract');}},
+        {label:'稍後再說',     action:()=>closeModal('projModal')},
       ]);
       return;
     }, 300);
+    closeModal('projModal');
+    renderProjects();
     return;
   }
   closeModal('projModal');
@@ -855,7 +833,7 @@ function renderProjOverview(id,p,c){
   // 一筆錢被算了兩次：一次是「廠商報價本身」，一次是「付款時自動產生的內帳支出」。
   // 這裡改成內帳支出只算「跟廠商付款無關」的那些（沒有 vendorId 標記的），廠商的錢統一只透過 vendorCost 算一次。
   const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
-  const vendorCost=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  const vendorCost=vendors.reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
   const st=PROJECT_STATUS[p.status||'inquiry'];
 
@@ -951,18 +929,13 @@ function openQuoteFileUpload(projectId){
 function renderProjSurvey(id,p,c){
   const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
   const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
-  const withDims=items.filter(m=>m.length&&m.width);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div>
         <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
         ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn bo bsm" onclick="openSurveyOcrModal(${id})">📷 AI 讀取手寫尺寸</button>
-        ${withDims.length>=1?`<button class="btn bo bsm" onclick="openSurveySchematic(${id})">📐 產生示意圖</button>`:''}
-        <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
-      </div>
+      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
     </div>
     ${items.length?items.map(m=>`
       <div class="card" style="margin-bottom:10px">
@@ -994,160 +967,6 @@ function openSurveyModal(projectId){
   const fi=document.getElementById('svFile');if(fi)fi.value='';
   openModal('surveyModal');
 }
-
-// ── AI 讀手寫丈量尺寸 ──────────────────────────────────────────
-let svOcrProjectId=null;
-let svOcrParsed=[];
-
-function openSurveyOcrModal(projectId){
-  svOcrProjectId=projectId;
-  svOcrParsed=[];
-  const spin=document.getElementById('svOcrSpin');if(spin)spin.style.display='none';
-  const resultBox=document.getElementById('svOcrResult');if(resultBox)resultBox.style.display='none';
-  const fi=document.getElementById('svOcrFile');if(fi)fi.value='';
-  openModal('surveyOcrModal');
-}
-
-function renderSvOcrList(){
-  const listEl=document.getElementById('svOcrList');if(!listEl)return;
-  listEl.innerHTML=svOcrParsed.map((r,i)=>`
-    <div style="display:grid;grid-template-columns:1.5fr 1fr 1fr auto;gap:6px;margin-bottom:6px;align-items:center">
-      <input class="fi" style="padding:7px 10px;font-size:.82rem" value="${esc(r.room||'')}" oninput="svOcrParsed[${i}].room=this.value" placeholder="房間名稱">
-      <input class="fi" type="number" step="0.01" style="padding:7px 10px;font-size:.82rem" value="${r.length||''}" oninput="svOcrParsed[${i}].length=parseFloat(this.value)||0" placeholder="長(m)">
-      <input class="fi" type="number" step="0.01" style="padding:7px 10px;font-size:.82rem" value="${r.width||''}" oninput="svOcrParsed[${i}].width=parseFloat(this.value)||0" placeholder="寬(m)">
-      <button onclick="svOcrParsed.splice(${i},1);renderSvOcrList()" style="background:none;border:none;color:var(--g300);cursor:pointer">🗑</button>
-    </div>`).join('');
-}
-
-async function saveSvOcrResults(){
-  const valid=svOcrParsed.filter(r=>r.room&&r.length&&r.width);
-  if(!valid.length){showToast('⚠️ 沒有可以存的資料，請確認房間名稱跟長寬都有填');return;}
-  valid.forEach(r=>{
-    const area=+(r.length*r.width/3.305785).toFixed(2);
-    DB.push('measurements',{projectId:svOcrProjectId,room:r.room,length:r.length,width:r.width,area,note:'',fileUrls:[],summary:'丈量 '+r.room});
-  });
-  closeModal('surveyOcrModal');
-  showToast('✅ 已新增 '+valid.length+' 筆丈量記錄');
-  if(typeof renderProjectDetail==='function')renderProjectDetail(svOcrProjectId,'survey');
-}
-
-// ── 丈量示意圖／DXF 匯出 ──────────────────────────────────────────
-function openSurveySchematic(projectId){
-  const items=DB.get('measurements').filter(m=>m.projectId===projectId&&!m.deleted&&m.length&&m.width);
-  if(!items.length){showToast('⚠️ 沒有已填長寬的丈量記錄，無法產生示意圖');return;}
-  window._svSchematicItems=items;
-  window._svSchematicProjectId=projectId;
-
-  // 簡單排版：一排最多放 4 個房間，每公尺換算成固定像素，純粹照比例畫，不代表真實相對位置
-  const SCALE=28; // 每公尺幾個像素
-  const GAP=16;
-  const PER_ROW=4;
-  let svgW=0,svgH=0;
-  const boxes=items.map((m,i)=>({m,w:m.length*SCALE,h:m.width*SCALE}));
-  const rows=[];
-  for(let i=0;i<boxes.length;i+=PER_ROW)rows.push(boxes.slice(i,i+PER_ROW));
-  let y=GAP;
-  const positioned=[];
-  rows.forEach(row=>{
-    let x=GAP;
-    const rowH=Math.max(...row.map(b=>b.h));
-    row.forEach(b=>{
-      positioned.push({...b,x,y});
-      x+=b.w+GAP;
-      svgW=Math.max(svgW,x);
-    });
-    y+=rowH+GAP+24;
-  });
-  svgH=y;
-
-  const svg=`<svg viewBox="0 0 ${svgW} ${svgH}" width="100%" style="max-width:100%">
-    ${positioned.map(b=>`
-      <rect x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" fill="#FFFBEE" stroke="#C8A44A" stroke-width="1.5" rx="3"/>
-      <text x="${b.x+b.w/2}" y="${b.y+b.h/2-6}" text-anchor="middle" font-size="11" font-weight="700" fill="#28241C">${esc(b.m.room||'')}</text>
-      <text x="${b.x+b.w/2}" y="${b.y+b.h/2+9}" text-anchor="middle" font-size="9" fill="#9A7830">${b.m.length}×${b.m.width}m</text>
-    `).join('')}
-  </svg>`;
-  document.getElementById('svSchematicCanvas').innerHTML=svg;
-  openModal('surveySchematicModal');
-}
-
-// 修正重點：DXF 這種舊格式的文字欄位，對中文這種非英文字元的編碼支援很不穩定，
-// 直接塞中文字進去，開起來常常變亂碼。DXF 官方有定義一種「\U+四位數字」的萬國碼逃脫格式，
-// 不管檔案本身編碼是什麼、也不管是哪一版 AutoCAD，都能正確顯示，這裡統一用這個方式處理中文字。
-function dxfUnicodeEscape(s){
-  return String(s||'').split('').map(ch=>{
-    const code=ch.codePointAt(0);
-    if(code>127) return '\\U+'+code.toString(16).toUpperCase().padStart(4,'0');
-    return ch;
-  }).join('');
-}
-
-// 產生一個真正符合規格、能被 AutoCAD 等軟體正確開啟的 DXF 檔案，
-// 每個房間畫成一個矩形（LWPOLYLINE）加上文字標籤，跟示意圖同一套排版邏輯，
-// 這樣示意圖上看到的跟 DXF 檔案裡的會一致
-function generateSurveyDxf(items){
-  const SCALE=1; // DXF 直接用公尺為單位，讓 AutoCAD 開起來尺寸是對的
-  const GAP=0.5;
-  const PER_ROW=4;
-  const boxes=items.map(m=>({m,w:m.length*SCALE,h:m.width*SCALE}));
-  const rows=[];
-  for(let i=0;i<boxes.length;i+=PER_ROW)rows.push(boxes.slice(i,i+PER_ROW));
-  let y=0;
-  const positioned=[];
-  rows.forEach(row=>{
-    let x=0;
-    const rowH=Math.max(...row.map(b=>b.h));
-    row.forEach(b=>{
-      positioned.push({...b,x,y});
-      x+=b.w+GAP;
-    });
-    y+=rowH+GAP+0.8;
-  });
-
-  let handle=0x100;
-  const nextHandle=()=>(handle++).toString(16).toUpperCase();
-
-  let ents='';
-  positioned.forEach(b=>{
-    // 矩形（LWPOLYLINE，DXF 座標系 Y 軸方向跟畫面相反，所以用負的 y）
-    const x0=b.x,y0=-b.y,x1=b.x+b.w,y1=-(b.y+b.h);
-    ents+=`0\nLWPOLYLINE\n5\n${nextHandle()}\n330\n1F\n100\nAcDbEntity\n8\nROOMS\n100\nAcDbPolyline\n90\n4\n70\n1\n43\n0.0\n`+
-      `10\n${x0}\n20\n${y0}\n`+
-      `10\n${x1}\n20\n${y0}\n`+
-      `10\n${x1}\n20\n${y1}\n`+
-      `10\n${x0}\n20\n${y1}\n`;
-    // 房間名稱文字（中文字轉成 DXF 通用的萬國碼逃脫格式，不會變亂碼）
-    const roomName=dxfUnicodeEscape((b.m.room||'').replace(/\n/g,' '));
-    ents+=`0\nTEXT\n5\n${nextHandle()}\n330\n1F\n100\nAcDbEntity\n8\nLABELS\n100\nAcDbText\n`+
-      `10\n${x0+0.1}\n20\n${y0-0.35}\n30\n0.0\n40\n0.25\n1\n${roomName}\n`;
-    // 尺寸文字
-    ents+=`0\nTEXT\n5\n${nextHandle()}\n330\n1F\n100\nAcDbEntity\n8\nLABELS\n100\nAcDbText\n`+
-      `10\n${x0+0.1}\n20\n${y0-0.65}\n30\n0.0\n40\n0.18\n1\n${b.m.length}x${b.m.width}m\n`;
-  });
-
-  // 加上最基本的 HEADER（單位設成公尺）跟 TABLES（圖層），沒有這兩段的話，
-  // 有些 CAD 軟體會打不開或警告檔案不完整；ENTITIES 才是實際圖形內容
-  const header=`0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1015\n9\n$INSUNITS\n70\n6\n0\nENDSEC\n`;
-  const tables=`0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n70\n2\n`+
-    `0\nLAYER\n2\nROOMS\n70\n0\n62\n2\n6\nCONTINUOUS\n`+
-    `0\nLAYER\n2\nLABELS\n70\n0\n62\n7\n6\nCONTINUOUS\n`+
-    `0\nENDTAB\n0\nENDSEC\n`;
-  const entitiesSection=`0\nSECTION\n2\nENTITIES\n${ents}0\nENDSEC\n`;
-
-  return header+tables+entitiesSection+`0\nEOF\n`;
-}
-
-document.getElementById('svExportDxfBtn')?.addEventListener('click',()=>{
-  const items=window._svSchematicItems;
-  if(!items||!items.length){showToast('⚠️ 沒有可匯出的資料');return;}
-  const dxf=generateSurveyDxf(items);
-  const blob=new Blob([dxf],{type:'application/dxf'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob);
-  a.download='丈量示意圖_'+new Date().toISOString().split('T')[0]+'.dxf';
-  document.body.appendChild(a);a.click();a.remove();
-  showToast('✅ 已下載 DXF 檔案，可以用 AutoCAD 開啟');
-});
 
 function deleteSurvey(measureId,projectId){
   confirmAction('確定刪除這筆丈量記錄？',()=>{
@@ -1248,21 +1067,47 @@ function renderProjVendors(id,p,c){
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
     ${vendors.length?vendors.map(v=>`
-      <div class="card" style="margin-bottom:8px">
+      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="showProjVendorDetail(${v._id})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:700">${esc(v.vendor||'廠商')}</div>
-            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')} ${v.caseN?' · '+esc(v.caseN):''}</div>
+            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')}</div>
           </div>
           <div style="font-weight:900;color:var(--bad)">NT$${(v.amount||0).toLocaleString()}</div>
         </div>
       </div>`).join(''):'<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>'}`;
 }
 
+// 修正重點：在案場裡點某一筆廠商報價，只需要看「這個案場、這家廠商」的報價內容就好，
+// 不需要看這家廠商在其他案場的報價、也不需要比較功能——這些是「跨案場廠商」那個總覽頁面才該做的事，
+// 案場detail 裡點進去只單純顯示這一筆的細項，畫面乾淨、不會混進不相關的資訊。
+function showProjVendorDetail(vendorId){
+  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const items=v.items||[];
+  const itemRows=items.length
+    ? items.map(it=>'<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:.85rem;border-top:1px dashed var(--g100)">'+
+        '<span style="color:var(--g600)">'+esc(it.name||'（未命名）')+'</span>'+
+        '<span style="font-family:monospace;color:var(--g600)">NT$'+(it.amount||0).toLocaleString()+'</span>'+
+      '</div>').join('')
+    : '<div style="padding:8px 0;font-size:.82rem;color:var(--g400)">這筆沒有拆細項，只有總價</div>';
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:420px">'+
+    '<div class="mtit">'+esc(v.vendor||'廠商')+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin-bottom:10px">'+esc(v.cat||'')+'</div>'+
+    '<div style="background:var(--gold-pale);border-radius:var(--rs);padding:10px 14px;margin-bottom:12px;text-align:center">'+
+      '<div style="font-size:.7rem;color:var(--gold-d);font-weight:800">報價總額</div>'+
+      '<div style="font-family:monospace;font-weight:900;font-size:1.15rem;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+    '</div>'+
+    '<div style="max-height:40vh;overflow-y:auto">'+itemRows+'</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+}
+
 function openVendorForProject(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   vItems=[];
+  if(typeof resetVTaxType==='function')resetVTaxType();
   // 修正重點：這裡原本把「廠商名稱」「備注」兩個欄位也一起設成案場名稱（跟合約表單同一種殘留/欄位對錯的問題），
   // 廠商名稱應該是空的讓使用者自己填，不是案場名稱；同時原本也沒清照片預覽跟 AI 辨識狀態，
   // 上一次上傳的照片、辨識結果會殘留在畫面上。這裡改成比照「行政 → 廠商報價」通用的重置邏輯，確保每次都是乾淨的表單。
@@ -1347,7 +1192,7 @@ function renderProjLedger(id,p,c){
   // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
   // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
   // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
-  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+(v.amount||0),0);
+  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
 
   c.innerHTML=`
@@ -1462,6 +1307,7 @@ function openAddProgressEntry(projectId, editId){
       <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
     </div>
   </div>`;
+  box.addEventListener('click',()=>box.remove());
   document.body.appendChild(box);
 
   let photoUrl=existing?.photoUrl||null;
@@ -1509,6 +1355,15 @@ function deleteProgressEntry(id,projectId){
 function getVendorPaid(v){
   return (v.payments||[]).reduce((s,p)=>s+(p.amount||0),0);
 }
+// 這筆廠商報價「實際會花公司多少錢」——含稅／無發票的話報價金額就是實際成本，
+// 未稅的話公司還要多付5%營業稅給廠商，工程成本／毛利要用這個「真正的成本」去算才準確，
+// 不能直接拿廠商填的報價數字，不然未稅報價的案場毛利會被高估。
+// 舊資料沒有 taxType 欄位的話，當作「含稅」處理（維持原本的計算方式，不會突然讓毛利變動）。
+function getVendorTrueCost(v){
+  const amt=v.amount||0;
+  if(v.taxType==='excl')return Math.round(amt*1.05);
+  return amt;
+}
 function getVendorPayStatus(v){
   const paid=getVendorPaid(v);
   const total=v.amount||0;
@@ -1547,8 +1402,6 @@ function openVendorPay(vendorId){
      <button onclick="document.getElementById('_payAmt').value=${remain}" style="padding:6px 12px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:800">付清 NT$${remain.toLocaleString()}</button>
     </div>
     <input type="number" id="_payAmt" placeholder="輸入金額" value="${remain}" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
-    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:6px">付款日期</div>
-    <input type="date" id="_payDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
     <input type="text" id="_payNote" placeholder="備注（例：第二期款）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
 
     <div style="display:flex;gap:8px">
@@ -1556,6 +1409,7 @@ function openVendorPay(vendorId){
      <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">✅ 確認付款並記帳</button>
     </div>
    </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 }
 
@@ -1564,10 +1418,7 @@ function confirmVendorPay(){
   const amt=parseInt(document.getElementById('_payAmt')?.value)||0;
   if(amt<=0){showToast('⚠️ 請輸入付款金額');return;}
   const note=document.getElementById('_payNote')?.value?.trim()||'';
-  // 修正重點：付款日期原本是寫死抓「今天」，沒辦法補登之前的付款紀錄。
-  // 改成讀取畫面上的日期欄位（預設還是今天，但可以自己改成實際付款的那天）。
-  const dateInput=document.getElementById('_payDate')?.value;
-  const today=dateInput||new Date().toISOString().split('T')[0];
+  const today=new Date().toISOString().split('T')[0];
 
   // 1. 記錄到廠商付款歷史
   const payments=[...(v.payments||[]),{amount:amt,date:today,note}];
@@ -1613,6 +1464,7 @@ function quickExpense(cat){
      <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">💾 記帳</button>
     </div>
    </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
   setTimeout(()=>document.getElementById('_qeAmt')?.focus(),100);
 }
@@ -1670,6 +1522,7 @@ function renderShareBox(id){
     <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 業主打開連結就能看到：施工進度、收款紀錄、合約摘要。<br>看不到你的成本內帳，安全放心。</div>
     <button onclick="document.getElementById('_shareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
    </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 
   document.getElementById('_shareRegenBtn').addEventListener('click',()=>{

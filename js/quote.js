@@ -166,11 +166,7 @@ function renderPqsItems(secId,items,containerId,sections,opts){
   });
 }
 
-// 修正重點：這是全站防止 XSS（惡意內容注入）最關鍵的一個函式，被呼叫了 100 多次，
-// 但原本的寫法只轉義了 & 和雙引號，漏掉了 < 和 >——這兩個才是真正會讓瀏覽器把文字當成
-// HTML 標籤執行的關鍵字元。等於全站呼叫 esc() 的地方，這段時間都沒有真正擋下 <script> 這類注入，
-// 看起來像有做防護，實際上沒有。這裡補上完整的轉義規則。
-function esc(s){return(s===null||s===undefined?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
 
 function refreshSec(secId,items,containerId,sections,opts){
   const pqs=document.getElementById('pi-'+secId)?.closest('.pqs');
@@ -186,54 +182,22 @@ function refreshGlobalTotals(containerId){
 }
 
 // ── 報價金額計算（畫面顯示與Excel匯出共用同一套公式，避免兩邊算出不同總價）──
-// ── 報價金額計算（畫面顯示與Excel匯出共用同一套公式，避免兩邊算出不同總價）──
-// 管理費可以自訂百分比或整個贈送（免收），存在報價單自己的資料裡，跟這份報價一起存檔、一起匯出，
-// 不會影響其他報價單
-function calcQuoteTotals(sections, mgmtRate){
-  if(mgmtRate==null) mgmtRate=(typeof curMgmtRate!=='undefined'?curMgmtRate:8);
+function calcQuoteTotals(sections){
   const subtotal=calcAll(sections);
-  const mgmt=Math.round(subtotal*(mgmtRate/100));
+  const mgmt=Math.round(subtotal*0.08);
   const tax=Math.round((subtotal+mgmt)*0.05);
   const grand=subtotal+mgmt+tax;
-  return {subtotal,mgmt,tax,grand,mgmtRate};
+  return {subtotal,mgmt,tax,grand};
 }
 
-let curMgmtRate=8; // 目前報價編輯器裡使用的管理費％數，預設8%，可以在畫面上直接改或按「贈送」歸零
-
 function updProTotals(sections,ids){
-  const rateInput=document.getElementById('adMgmtRate');
-  if(ids.mgmt&&rateInput) curMgmtRate=parseFloat(rateInput.value)||0;
-  const {subtotal,mgmt,tax,grand}=calcQuoteTotals(sections, ids.mgmt?curMgmtRate:8);
+  const {subtotal,mgmt,tax,grand}=calcQuoteTotals(sections);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   if(ids.sub)set(ids.sub,fmt(subtotal));
   if(ids.mgmt)set(ids.mgmt,fmt(mgmt));
   if(ids.tax)set(ids.tax,fmt(tax));
   if(ids.total)set(ids.total,fmt(ids.mgmt?grand:subtotal));
 }
-
-// 管理費％數輸入框：改了就即時重算總價
-document.getElementById('adMgmtRate')?.addEventListener('input',()=>{
-  if(typeof adSections!=='undefined') updProTotals(adSections,{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'});
-});
-// 「贈送」按鈕：點一下歸零（免收管理費），再點一下復原成剛剛的％數，方便來回切換
-let _mgmtRateBeforeWaive=8;
-document.getElementById('adMgmtWaive')?.addEventListener('click',()=>{
-  const rateInput=document.getElementById('adMgmtRate');
-  const waiveBtn=document.getElementById('adMgmtWaive');
-  if(!rateInput)return;
-  const cur=parseFloat(rateInput.value)||0;
-  if(cur>0){
-    _mgmtRateBeforeWaive=cur;
-    rateInput.value=0;
-    waiveBtn.textContent='↩️ 取消贈送';
-    waiveBtn.style.background='var(--ok-bg)';waiveBtn.style.color='var(--ok)';waiveBtn.style.borderColor='var(--ok-bd)';
-  }else{
-    rateInput.value=_mgmtRateBeforeWaive||8;
-    waiveBtn.textContent='🎁 贈送';
-    waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';
-  }
-  if(typeof adSections!=='undefined') updProTotals(adSections,{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'});
-});
 
 function addPqsItem(secId,containerId,sections,opts){
   const sec=sections.find(s=>s.id===secId);if(!sec)return;
@@ -303,11 +267,11 @@ document.getElementById('genQBtn').addEventListener('click',async()=>{
   document.getElementById('pqDate').textContent=new Date().toLocaleDateString('zh-TW');
   document.getElementById('pqSize').textContent=sz+'坪';
   document.getElementById('pqType').textContent=tp;
-  const prompt='請幫客戶'+n+'估算'+sz+'坪'+tp+'（'+st+'風格）工程報價，依照台灣裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式輸出，分工程類別，每類下列細項：\n\n🔨 拆除：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作：\n工項名稱｜單位｜數量｜單價\n...\n（以此類推）\n只輸出上述格式，不要額外說明文字。';
+  const prompt='請幫客戶'+n+'估算'+sz+'坪'+tp+'（'+st+'風格）工程報價，依照台灣裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式輸出，分工程類別，每類下列細項：\n\n🔨 拆除工程：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作工程：\n工項名稱｜單位｜數量｜單價\n...\n（以此類推）\n只輸出上述格式，不要額外說明文字。';
   const ups=uSt['qUp']||{imgs:[]};
   const parts=[...ups.imgs.map(i=>({type:'image',source:{type:'base64',media_type:i.mime,data:i.b64}})),{type:'text',text:prompt}];
   try{
-    const rep=await callAI('cs',ups.imgs.length?parts:prompt,3000,80,'快速報價生成');
+    const rep=await callAI('cs',ups.imgs.length?parts:prompt,3000);
     const parsed=parseAIToSections(rep);
     if(parsed&&parsed.length){qSections=parsed;}
     else{qSections=JSON.parse(JSON.stringify(DEF_SECTIONS));qSections.forEach(s=>s.items.forEach(it=>{if(it.unit==='坪')it.qty=sz;it.price=Math.round(sz*3000/qSections.length);}));}
@@ -331,11 +295,11 @@ document.getElementById('genAdQ').addEventListener('click',async()=>{
   const tp=document.getElementById('adTp').value,nt=document.getElementById('adNt').value;
   const sp=document.getElementById('adSp');sp.classList.add('show');
   document.getElementById('adQbClient').textContent=n;document.getElementById('adQbAddr').textContent=ad||'—';document.getElementById('adQbDate').textContent=new Date().toLocaleDateString('zh-TW');
-  const prompt='請為業主'+n+'（'+ad+'）產生'+sz+'坪'+tp+'完整工程報價，依照台灣統包裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式，分類列出所有工程項目：\n\n🔨 拆除：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作：\n...\n只輸出上述格式。';
+  const prompt='請為業主'+n+'（'+ad+'）產生'+sz+'坪'+tp+'完整工程報價，依照台灣統包裝修行情。\n備注：'+(nt||'無')+'。\n請用以下格式，分類列出所有工程項目：\n\n🔨 拆除工程：\n工項名稱｜單位｜數量｜單價\n...\n🧱 泥作工程：\n...\n只輸出上述格式。';
   const ups=uSt['adUp']||{imgs:[]};
   const parts=[...ups.imgs.map(i=>({type:'image',source:{type:'base64',media_type:i.mime,data:i.b64}})),{type:'text',text:prompt}];
   try{
-    const rep=await callAI('ad',ups.imgs.length?parts:prompt,3000,150,'報價單AI生成');
+    const rep=await callAI('ad',ups.imgs.length?parts:prompt,3000);
     const parsed=parseAIToSections(rep);
     if(parsed&&parsed.length)adSections=parsed;
     else adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
@@ -359,7 +323,7 @@ function renderAdVendorPicker(){
   if(empty)empty.style.display='none';
   vendors.forEach(v=>{
     const el=document.createElement('div');el.className='vp-item';el.dataset.id=v._id;
-    el.innerHTML='<div class="vp-chk"></div><div style="flex:1"><div class="vp-name">'+esc(v.vendor)+'</div><div style="font-size:.75rem;color:var(--g400)">'+esc(v.caseN||'')+'</div></div><div class="vp-cat">'+esc(v.cat||'')+'</div><div class="vp-amt">'+fmt(v.amount||0)+'</div>';
+    el.innerHTML='<div class="vp-chk"></div><div style="flex:1"><div class="vp-name">'+v.vendor+'</div><div style="font-size:.75rem;color:var(--g400)">'+v.caseN+'</div></div><div class="vp-cat">'+v.cat+'</div><div class="vp-amt">'+fmt(v.amount||0)+'</div>';
     el.addEventListener('click',()=>{
       if(selVendors.has(v._id)){selVendors.delete(v._id);el.classList.remove('sel');}
       else{selVendors.add(v._id);el.classList.add('sel');}
@@ -400,89 +364,28 @@ document.getElementById('importVendorBtn').addEventListener('click',()=>{
 
 // ── QUOTE TABLE ──
 
-// 報價單直接轉成合約：把報價單的客戶名稱、金額先帶進合約視窗，不用再打一次字，
-// 業主簽名的合約照片還是要手動拍照上傳（這個沒辦法用報價單資料自動生成）
-function convertQuoteToContract(quoteId){
-  const q=DB.get('quotes').find(r=>r._id===quoteId);if(!q)return;
-  curProjectId=q.projectId||curProjectId;
-  ctEditId=null;ctImgUrl=[];
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-  set('ctName',q.name?q.name+' 裝修合約':'');
-  set('ctClient',q.name||'');
-  set('ctAmt2',q.total||'');
-  set('ctNote','');
-  const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
-  const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
-  const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
-  openModal('contractModal');
-  showToast('📝 已帶入報價單資料，拍照上傳簽好的合約即可');
-}
-
 function renderQTable(){
-  const list=document.getElementById('qList');if(!list)return;
+  const tbl=document.getElementById('qTbl');if(!tbl)return;
   const qs=DB.get('quotes');
-  if(!qs.length){list.innerHTML='<div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div>';return;}
-
-  // 修正重點：原本是不分案場的一長串平面列表，案場一多，同一個案場的報價單散落在列表各處，
-  // 很難一眼看出「這個案場總共報過幾次價、加起來多少」。改成跟廠商報價同一套「依案場分組」的方式，
-  // 每個案場一個區塊、自己的合計，同一個案場的報價單自然就排在一起。
-  const byCase={};
+  if(!qs.length){tbl.innerHTML='<tr><td colspan="5"><div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div></td></tr>';return;}
+  tbl.innerHTML='';
   qs.forEach(q=>{
-    const key=q.caseN||'（未指定案場）';
-    if(!byCase[key])byCase[key]=[];
-    byCase[key].push(q);
+    const tr=document.createElement('tr');
+    tr.innerHTML='<td>'+q.name+'</td><td>'+(q.caseN||'—')+'</td><td>'+(q.type||'—')+'</td><td class="mono">'+fmt(q.total||0)+'</td><td class="mono">'+(q._ts||'').split(' ')[0]+'</td>'+
+      '<td><div style="display:flex;gap:5px;flex-wrap:wrap">'+
+      '<button class="btn bo bxs" data-qid="'+q._id+'">✏️ 編輯</button>'+
+      '<button class="btn bgn bxs" data-qxls="'+q._id+'">📥 Excel</button>'+
+      '<button class="btn brd bxs" data-qdel="'+q._id+'">🗑</button></div></td>';
+    tbl.appendChild(tr);
   });
-  const sortedGroups=Object.entries(byCase).sort((a,b)=>{
-    const aLatest=Math.max(...a[1].map(q=>q._id||0));
-    const bLatest=Math.max(...b[1].map(q=>q._id||0));
-    return bLatest-aLatest;
-  });
-
-  list.innerHTML=sortedGroups.map(([caseName,quotes])=>{
-    const caseTotal=quotes.reduce((s,q)=>s+(q.total||0),0);
-    const rows=quotes.map(q=>`
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--g100)">
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:800;font-size:.86rem">${esc(q.name||'未命名')}</div>
-          <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(q.type||'—')} · ${esc((q._ts||'').split(' ')[0])}</div>
-        </div>
-        <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
-        <div style="display:flex;gap:5px;flex-shrink:0">
-          <button class="btn bo bxs" data-qid="${q._id}">✏️ 編輯</button>
-          <button class="btn bo bxs" data-qct="${q._id}" title="把這份報價單的客戶、金額帶進合約，不用重打">📝 轉合約</button>
-          <button class="btn bgn bxs" data-qxls="${q._id}">📥 Excel</button>
-          <button class="btn brd bxs" data-qdel="${q._id}">🗑</button>
-        </div>
-      </div>`).join('');
-    return `
-      <div style="margin-bottom:10px">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,var(--gold-pale),#FFF0C0);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:6px">
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-size:1.1rem">📍</span>
-            <div>
-              <div style="font-size:.95rem;font-weight:900;color:var(--gold-d)">${esc(caseName)}</div>
-              <div style="font-size:.75rem;color:var(--g400);margin-top:1px">共 ${quotes.length} 筆報價單</div>
-            </div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-family:monospace;font-size:1rem;font-weight:900;color:var(--gold-d)">${fmt(caseTotal)}</div>
-            <div style="font-size:.68rem;color:var(--g400)">案場合計</div>
-          </div>
-        </div>
-        <div style="border:1px solid var(--g100);border-radius:var(--rs);overflow:hidden">${rows}</div>
-      </div>`;
-  }).join('');
-
-  list.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
-  list.querySelectorAll('[data-qct]').forEach(btn=>{btn.addEventListener('click',()=>convertQuoteToContract(parseInt(btn.dataset.qct)));});
-  list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[],undefined,(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8);});});
-  list.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
+  tbl.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
+  tbl.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[]);});});
+  tbl.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
 }
 
 // ── EXCEL DOWNLOAD ──
 let _xlsGenerating=false;
-function dlXls(name,type,sections,mode,mgmtRate){
-  if(mgmtRate==null) mgmtRate=8;
+function dlXls(name,type,sections,mode){
   const today=new Date().toLocaleDateString('zh-TW');
   const isInternal=(mode==='internal');
 
@@ -528,7 +431,7 @@ function dlXls(name,type,sections,mode,mgmtRate){
       sts.push(Math.round(t)); grand+=Math.round(t);
     });
     // 管理費、稅金計算跟畫面上完全一致（calcQuoteTotals 同一套公式），避免匯出金額跟畫面對不起來
-    const mgmtFee=Math.round(grand*(mgmtRate/100));
+    const mgmtFee=Math.round(grand*0.08);
     const tax=Math.round((grand+mgmtFee)*0.05);
 
     // ══ 主表：完全按照模板格式 ══
@@ -608,11 +511,11 @@ function dlXls(name,type,sections,mode,mgmtRate){
     ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((20+offset))).border=brd('thin'));
     const f20=ws.getCell('F'+(20+offset)); f20.value=grand; f20.numFmt='#,##0'; f20.alignment={horizontal:'right',vertical:'middle'};
 
-    // R21 工程管理費（％數依這份報價實際設定的比例顯示，贈送時顯示為免收）
+    // R21 工程管理費8%（先前版本漏掉這行，導致匯出金額比畫面上顯示的少8%，這次補上）
     ws.getRow((21+offset)).height=16;
     ws.mergeCells('A'+(21+offset)+':E'+(21+offset));
     ['A','B','C','D','E','F','G'].forEach(col=>ws.getCell(col+String((21+offset))).border=brd('thin'));
-    setCell('A'+(21+offset),mgmtRate>0?('工程管理費'+mgmtRate+'%'):'工程管理費（本次免收）',{sz:10,h:'center',v:'middle'});
+    setCell('A'+(21+offset),'工程管理費8%',{sz:10,h:'center',v:'middle'});
     const fMgmt=ws.getCell('F'+(21+offset)); fMgmt.value=mgmtFee; fMgmt.numFmt='#,##0'; fMgmt.alignment={horizontal:'right',vertical:'middle'};
 
     // R22 稅金（原R21，因為插入管理費行而往下移一行）
@@ -876,6 +779,7 @@ function genDefaultSvg(style,text){
 
 document.getElementById('openV')?.addEventListener('click',()=>{
   vItems=[];
+  if(typeof resetVTaxType==='function')resetVTaxType();
   ['vVd','vCs','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('vAmt')&&(document.getElementById('vAmt').value='');
   document.getElementById('vItemsTable').innerHTML='';

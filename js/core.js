@@ -7,7 +7,7 @@ let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
 let moImgUrl=[]; // 備忘錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
-let vItems=[], vCurrentFilter='all', curVType='image';
+let vItems=[], vCurrentFilter='all', curVType='image', vCurTaxType='incl';
 let curClientId=null, clientChats={};
 let adSections=[], qSections=[], curQuoteMode='internal';
 let _syncInterval=null, _punchSyncInterval=null;
@@ -26,6 +26,8 @@ function isImageUrl(fileUrl){
 }
 
 // ══ CONFIG ════════════════════════════════════════════════
+// 暫時退回：這裡的帳號密碼是舊版登入方式在用的，多租戶那套伺服器驗證還沒完成部署，
+// 先讓系統用回舊的登入邏輯正常運作，之後正式切換多租戶的時候會再拿掉。
 const ACCTS={
   owner:{user:'omnight',pass:'0923',name:'老闆',abbr:'老',role:'Owner · 最高權限',label:'老闆'},
   staff:{user:'member',pass:'zeju',name:'員工',abbr:'員',role:'Member',label:'員工'},
@@ -149,14 +151,14 @@ function saveCompanyProfile(profile){
   const merged={...DEFAULT_COMPANY_PROFILE, ...profile};
   localStorage.setItem('zeju_company_profile', JSON.stringify(merged));
   if(_fbDB&&_fbReady){
-    _fbDB.ref('zeju_data/company_profile').set(merged).catch(e=>console.warn('FB write company_profile:',e.message));
+    _fbDB.ref(tenantPath('company_profile')).set(merged).catch(e=>console.warn('FB write company_profile:',e.message));
   }
   return merged;
 }
 async function loadCompanyProfileFromCloud(){
   if(!_fbDB||!_fbReady)return;
   try{
-    const snap=await _fbDB.ref('zeju_data/company_profile').once('value');
+    const snap=await _fbDB.ref(tenantPath('company_profile')).once('value');
     const cloud=snap.val();
     if(cloud) localStorage.setItem('zeju_company_profile', JSON.stringify({...DEFAULT_COMPANY_PROFILE, ...cloud}));
   }catch(e){console.warn('company_profile load failed:',e.message);}
@@ -314,13 +316,9 @@ function initFirebase(){
   }
 }
 
-// ── 匿名登入 Firebase Auth ──────────────────────────────────
-// 為什麼需要這個：資料庫安全規則設成「.read/.write 需要 auth != null」，
-// 這樣可以擋掉最基本的「直接對資料庫網址發request」的攻擊方式（不會用 SDK、只是亂槍打鳥的掃描機器人）。
-// 老實說明這不是完美的安全機制：因為 Firebase 設定本身是公開可見的，
-// 真的懂技術的人一樣可以自己呼叫 signInAnonymously() 取得 auth，繞過這層防護。
-// 這是「先擋住最省事的攻擊」的第一道關卡，不是最終解法，真正的解法是換成
-// 綁定真實身份的 Firebase Authentication（email/password 或自訂 token），這是之後要做的加強項目。
+// ── 匿名登入 Firebase Auth（暫時退回舊版） ──────────────────────────────
+// 多租戶那套伺服器驗證登入（auth-login Netlify Function）還沒完成部署（需要先設定服務帳戶金鑰、
+// 註冊公司代碼），先退回原本的匿名登入方式，確保系統能正常存檔運作。
 function _ensureFirebaseAuth(){
   return new Promise((resolve)=>{
     if(typeof firebase==='undefined'||!firebase.auth){resolve(false);return;}
@@ -359,32 +357,39 @@ function _normalizeToKeyedObj(raw){
 function _cloudSetRecord(k, id, record){
   try{ localStorage.setItem('z7_'+k, JSON.stringify(Object.values(_cache[k]||{}))); }catch{}
   if(_fbDB&&_fbReady){
-    _fbDB.ref('zeju_data/'+k+'/'+id).set(record).catch(e=>console.warn('FB write:',k,id,e.message));
+    _fbDB.ref(tenantPath(k+'/'+id)).set(record).catch(e=>console.warn('FB write:',k,id,e.message));
   }
 }
 function _cloudRemoveRecord(k, id){
   try{ localStorage.setItem('z7_'+k, JSON.stringify(Object.values(_cache[k]||{}))); }catch{}
   if(_fbDB&&_fbReady){
-    _fbDB.ref('zeju_data/'+k+'/'+id).remove().catch(e=>console.warn('FB remove:',k,id,e.message));
+    _fbDB.ref(tenantPath(k+'/'+id)).remove().catch(e=>console.warn('FB remove:',k,id,e.message));
   }
 }
 // 整批覆蓋（只給「還原備份」這種真的要整包取代的情境用，一般新增/修改/刪除都不要走這條路）
 function _cloudSetAll(k, arr){
   try{ localStorage.setItem('z7_'+k, JSON.stringify(arr)); }catch{}
   if(_fbDB&&_fbReady){
-    _fbDB.ref('zeju_data/'+k).set(_normalizeToKeyedObj(arr)).catch(e=>console.warn('FB write:',k,e.message));
+    _fbDB.ref(tenantPath(k)).set(_normalizeToKeyedObj(arr)).catch(e=>console.warn('FB write:',k,e.message));
   }
 }
 
-// 初始化：從雲端載入所有資料到 cache
+// 初始化：從雲端載入所有資料到 cache（暫時退回舊版流程）
 async function initCloudDB(){
   // 先嘗試 Firebase
   if(initFirebase()){
-    // 先完成匿名登入，資料庫安全規則要求 auth != null 才能讀寫，
-    // 沒有這一步，規則設好之後資料反而會讀不到（不是資安漏洞了，但變成功能壞掉）
     await _ensureFirebaseAuth();
     return new Promise(res=>{
-      _fbDB.ref('zeju_data').once('value', snap=>{
+      let settled=false;
+      const finish=(ok)=>{if(settled)return;settled=true;res(ok);};
+      const timeoutId=setTimeout(()=>{
+        console.log('⚠️ Firebase 連線逾時，改用本機離線資料');
+        _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
+        setSyncStatus('offline');
+        finish(false);
+      },8000);
+      _fbDB.ref(tenantPath()).once('value', snap=>{
+        clearTimeout(timeoutId);
         const data=snap.val()||{};
         _KEYS.forEach(k=>{
           if(data[k]){
@@ -395,11 +400,12 @@ async function initCloudDB(){
         console.log('✅ Firebase data loaded');
         setSyncStatus('ok');
         loadCompanyProfileFromCloud();
-        res(true);
+        finish(true);
       }, ()=>{
+        clearTimeout(timeoutId);
         _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
         setSyncStatus('offline');
-        res(false);
+        finish(false);
       });
     });
   }
@@ -500,7 +506,7 @@ let POINTS=parseInt(localStorage.getItem('zeju_pts'))||76500; // 開機預設值
 async function loadPointsFromCloud(){
   if(_fbDB&&_fbReady){
     try{
-      const snap=await _fbDB.ref('zeju_data/points').once('value');
+      const snap=await _fbDB.ref(tenantPath('points')).once('value');
       const v=snap.val();
       POINTS=(typeof v==='number')?v:(parseInt(localStorage.getItem('zeju_pts'))||76500);
     }catch{
@@ -516,7 +522,7 @@ async function loadPointsFromCloud(){
 // 即時監聽：別的裝置扣點之後，這裡的畫面也會跟著自動更新，不用重新整理頁面
 function startPointsSync(){
   if(!_fbDB||!_fbReady)return;
-  _fbDB.ref('zeju_data/points').on('value',snap=>{
+  _fbDB.ref(tenantPath('points')).on('value',snap=>{
     const v=snap.val();
     if(typeof v==='number'){
       POINTS=v;
@@ -532,7 +538,7 @@ async function deductPoints(amount){
   if(amount<=0)return POINTS;
   if(_fbDB&&_fbReady){
     try{
-      const result=await _fbDB.ref('zeju_data/points').transaction(current=>{
+      const result=await _fbDB.ref(tenantPath('points')).transaction(current=>{
         const base=(typeof current==='number')?current:(parseInt(localStorage.getItem('zeju_pts'))||76500);
         return Math.max(0,base-amount);
       });
@@ -617,7 +623,7 @@ function startCloudSync(){
   }
   setSyncStatus('syncing');
   // Firebase 即時監聽所有資料
-  _fbDB.ref('zeju_data').on('value', snap=>{
+  _fbDB.ref(tenantPath()).on('value', snap=>{
     const data=snap.val()||{};
     let hasPunchChange=false, hasReqChange=false;
     _KEYS.forEach(k=>{
@@ -883,6 +889,12 @@ function openPhotoGallery(title, files){
 
 // ══ LOGIN ════════════════════════════════════════════════
 let curRole='owner';
+// 暫時退回：多租戶那套（公司代碼隔開資料）先關掉，等後端設定（金鑰、公司代碼註冊）都弄好、
+// 完整測試過一輪之後再重新開啟。這裡先讓所有資料照舊寫回同一個 zeju_data 路徑，
+// 恢復成能正常存檔的狀態。
+function tenantPath(subpath){
+  return 'zeju_data'+(subpath?'/'+subpath:'');
+}
 let curProjectId=null; // 目前選取的案場 ID
 let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id，共用帳號為角色名
 
@@ -891,17 +903,18 @@ let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id�
   const savedRole = localStorage.getItem('zeju_session_role');
   const savedTs = parseInt(localStorage.getItem('zeju_session_ts')||'0');
   const EIGHT_HOURS = 8 * 60 * 60 * 1000;
-  // session 8小時內有效
+  // session 8小時內有效（暫時退回舊版邏輯，不依賴公司代碼/Firebase通行證狀態）
   if(savedRole && (Date.now()-savedTs) < EIGHT_HOURS){
     curRole = savedRole;
-    // 等 DOM 完全載入後自動跳過登入
     window.addEventListener('DOMContentLoaded',()=>{
       const ls=document.getElementById('ls');
       const app=document.getElementById('app');
       if(!ls||!app)return;
+      const savedEmpId=localStorage.getItem('zeju_punch_emp_id');
       ls.style.display='none';
       app.style.display='flex';
       initCloudDB().then(()=>{
+        if(savedEmpId){_punchEmployee=DB.get('employees').find(e=>String(e._id)===String(savedEmpId))||null;}
         startCloudSync();
         setupApp(curRole);
       });
@@ -951,9 +964,10 @@ document.getElementById('lBtn').addEventListener('click',doLogin);
 document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 let _punchEmployee=null; // 個人打卡帳號登入時，記錄對應員工資料
 
-// 頁面載入時，登入畫面預設就是「老闆」角色（HTML 裡 lrb-own 預設 on），
-// 所以要在載入當下就把帳號欄位＋記住帳號顯示出來，不用等使用者點一次角色按鈕
+// 暫時退回：把「公司代碼」欄位隱藏起來（多租戶那套還沒上線），恢復顯示舊版的帳號欄位
 window.addEventListener('DOMContentLoaded',()=>{
+  const codeWrap=document.getElementById('lCompanyCode')?.closest('.field');
+  if(codeWrap)codeWrap.style.display='none';
   const accEl=document.getElementById('lAccount');
   const rememberWrap=document.getElementById('lRememberWrap');
   if(accEl&&rememberWrap&&curRole==='owner'){
@@ -983,6 +997,8 @@ window.addEventListener('resize',()=>{
   },200);
 });
 
+// 暫時退回：伺服器驗證登入（呼叫 Netlify Function）那套先關閉，等後端設定完成、
+// 完整測試過後再切換回去。這裡先用回舊版能正常運作的登入邏輯。
 function doLogin(){
   const p=document.getElementById('lPass').value.trim();
   const err=document.getElementById('lErr');
@@ -990,10 +1006,8 @@ function doLogin(){
 
   _punchEmployee=null;
 
-  // 共用帳號密碼對照（員工/公務維持共用密碼，方便好記）
   const SHARED_PW={staff:'zeju',punch:'zeju1'};
 
-  // 查員工個人帳號（staff 和 punch 都可以用個人帳號）
   function findEmployee(acc, pw){
     let empList=[];
     try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
@@ -1004,19 +1018,16 @@ function doLogin(){
   const empAcc=(document.getElementById('lEmpSelect')?.value||'').trim();
 
   if(curRole==='owner'){
-    // 老闆角色：需要帳號＋密碼都正確
     const acc=(document.getElementById('lAccount')?.value||'').trim();
     if(acc!==ACCTS.owner.user||p!==ACCTS.owner.pass){
       err.style.display='block'; err.textContent='帳號或密碼不正確，請再試一次'; return;
     }
-    // 記住帳號
     if(document.getElementById('lRemember')?.checked){
       localStorage.setItem('zeju_owner_account',acc);
     } else {
       localStorage.removeItem('zeju_owner_account');
     }
   } else if(empAcc){
-    // 個人帳號登入（staff 或 punch）
     if(curRole!=='staff'&&curRole!=='punch'){
       err.style.display='block'; err.textContent='個人帳號只適用於員工或公務角色'; return;
     }
@@ -1026,14 +1037,12 @@ function doLogin(){
     }
     _punchEmployee=emp;
   } else {
-    // 共用帳號登入（員工／公務）
     const correctPw=SHARED_PW[curRole];
     if(!correctPw||p!==correctPw){
       err.style.display='block'; err.textContent='密碼不正確，請重新輸入'; return;
     }
   }
   err.style.display='none';
-  // 儲存登入狀態
   localStorage.setItem('zeju_session_role', curRole);
   localStorage.setItem('zeju_session_ts', Date.now());
   if(_punchEmployee){
