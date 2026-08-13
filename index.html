@@ -34,11 +34,6 @@
    ⚠️ 尚未設定 API Key — 請先登入老闆帳號，在儀表板頂部設定後即可使用所有 AI 功能
   </div>
 
-  <div class="field" style="margin-bottom:16px">
-   <label class="fl">公司代碼</label>
-   <input class="linp" type="text" id="lCompanyCode" placeholder="例：zeju" autocomplete="organization" style="text-transform:lowercase">
-  </div>
-
   <span style="font-size:.78rem;font-weight:800;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;display:block">選擇您的身份</span>
   <div class="lrg" id="lRoleGrid" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
    <div class="lrb lrb-own on" data-role="owner"><span class="ri">👑</span>老闆</div>
@@ -1173,7 +1168,7 @@
      <label class="fl" style="margin:0">備注</label>
      <button onclick="document.getElementById('vNt').value=''" style="font-size:.72rem;color:var(--bad);background:none;border:none;cursor:pointer;font-weight:700;padding:2px 6px">🗑 清除</button>
     </div>
-    <input class="fi" id="vNt" placeholder="例：含安裝、含運費、付款條件…">
+    <input class="fi" id="vNt" placeholder="例：含安裝、不含稅、含運費…">
    </div>
   </div>
   <div style="display:flex;gap:8px">
@@ -1600,10 +1595,11 @@
    <p style="font-size:.78rem;color:var(--g500);margin:0 0 12px">只有設定了上面「打卡帳號」的員工才會套用這裡的權限；用共用員工帳號登入的人維持原本預設權限</p>
    <div id="empPermList" style="display:flex;flex-direction:column;gap:9px">
     <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permProjects" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 案場總覽</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permBusiness" checked style="width:16px;height:16px;cursor:pointer"> 💬 業務（客服諮詢、快速報價、貼文、跨案場報價與合約）</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permVendor" checked style="width:16px;height:16px;cursor:pointer"> 🔧 工程（廠商報價、進度）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permMarketing" checked style="width:16px;height:16px;cursor:pointer"> 💬 客服行銷（諮詢、快速報價、貼文）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permQuote" checked style="width:16px;height:16px;cursor:pointer"> 📋 報價合約</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permVendor" checked style="width:16px;height:16px;cursor:pointer"> 🏗️ 廠商工程</label>
     <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permAccounting" style="width:16px;height:16px;cursor:pointer"> 💰 會計（帳款、發票）</label>
-    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permSettings" style="width:16px;height:16px;cursor:pointer"> ⚙️ 管理（系統設定）</label>
+    <label style="display:flex;align-items:center;gap:9px;font-size:.85rem;color:var(--g600);cursor:pointer"><input type="checkbox" id="permSettings" style="width:16px;height:16px;cursor:pointer"> ⚙️ 系統設定</label>
    </div>
   </div>
   <div style="background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--r);padding:16px;margin-bottom:14px">
