@@ -273,7 +273,6 @@ function updVTotal(){
 
 document.getElementById('vAddItem')?.addEventListener('click',()=>{vItems.push({name:'',qty:'1',unit:'式',unitPrice:0,amount:0});renderVItems();updVTotal();});
 
-// 含稅／未稅切換：未稅的話在旁邊提示一下實際成本會加5%，讓使用者輸入的時候就知道差別在哪
 function resetVTaxType(){
   vCurTaxType='incl';
   document.querySelectorAll('#vTaxTypeRow [data-taxtype]').forEach(b=>{
@@ -282,7 +281,6 @@ function resetVTaxType(){
   const hint=document.getElementById('vTaxHint');
   if(hint)hint.textContent='廠商沒有開發票的話，選「含稅／無發票」，報的金額就是實際會付的金額';
 }
-
 document.getElementById('vTaxTypeRow')?.addEventListener('click',e=>{
   const btn=e.target.closest('[data-taxtype]');if(!btn)return;
   vCurTaxType=btn.dataset.taxtype;

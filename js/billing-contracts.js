@@ -106,10 +106,10 @@ function renderBilling(){
 
 // ── 系統設定：分類管理 ─────────────────────────────────────
 const DEFAULT_CATS={
-  quoteCat:['拆除','泥作','木作','水電','系統傢俱','油漆','燈具','衛浴'],
+  quoteCat:['拆除工程','泥作工程','木作工程','水電工程','系統傢俱','油漆工程','燈具工程','衛浴工程'],
   vendorCat:['系統櫃','廚具','玻璃','水電','泥作','油漆','鐵件','其他'],
   incomeCat:['合約收款','訂金','工程款','尾款','設計費','其他收入'],
-  expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','行銷支出','其他支出'],
+  expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','其他支出'],
 };
 // 帳本內：依「收入/支出」決定分類選項（內帳/外帳皆可記收入或支出）
 function getLedgerCats(type){
@@ -472,10 +472,7 @@ function setLedgerDir(dir){
 function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  // 修正重點：「案場」這格是下拉選單，但從來沒有真的塞資料進去，選單一直是空的，
-  // 導致快速記帳存檔時案場永遠是空白、也沒有跟案場建立關聯。補上。
-  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),curProjectId,true);
+  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
@@ -711,17 +708,10 @@ function updVCaseFilter(){
 // ── initAdQuote ────────────────────────────────────────────
 function initAdQuote(){
   adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
-  curMgmtRate=8;
-  const rateInput=document.getElementById('adMgmtRate');if(rateInput)rateInput.value=8;
-  const waiveBtn=document.getElementById('adMgmtWaive');
-  if(waiveBtn){waiveBtn.textContent='🎁 贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
   const qbC=document.getElementById('adQbClient');if(qbC)qbC.textContent='—';
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
-  // 修正重點：「案場名稱」這格早該是下拉選單，卻從來沒有真的塞資料進去，等於一片空白選不了任何東西。
-  // 補上，開報價單編輯器的時候就把目前所有案場列出來。
-  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),curProjectId);
 
   // ── 按鈕綁定（每次初始化都重綁，避免遺失）──
   const getN=()=>document.getElementById('adN')?.value||'業主';
@@ -731,51 +721,43 @@ function initAdQuote(){
   if(adSaveBtn&&!adSaveBtn._bound){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
-      // 修正重點：原本沒選案場也能直接存檔（存進去的案場名稱是空的），事後很難補救、也不知道這份報價單到底是哪個案場的。
-      // 改成存檔前先檢查有沒有選案場，沒選的話跳出清楚的提示，可以直接選既有案場、或當場新增一個，
-      // 不用先取消、跑去案場總覽新增、再回來重新填一次報價單。
-      ensureProjectSelected(document.getElementById('adCase'),(projectIdVal)=>{
-        const selectedProject=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
-        const caseNv=selectedProject?.name||'';
-        const sub=calcAll(adSections);
-        curProjectId=selectedProject?._id||curProjectId;
-        DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
-          name:getN(),type:getTp(),caseN:caseNv,
-          addr:document.getElementById('adAd')?.value||'',
-          projectId:curProjectId||null,
-          mgmtFeeRate:curMgmtRate,
-          sections:JSON.parse(JSON.stringify(adSections)),total:sub});
-        updStats();renderQTable();
-        showToast('✅ 報價單已儲存！');
-        // 下一步提示
-        if(typeof showNextStep==='function'){
-          showNextStep('報價單已儲存，接下來呢？',[
-            {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate)},
-            {label:'📝 建立合約',action:()=>openModal('contractModal')},
-            {label:'稍後再說',action:()=>{}},
-          ]);
-        }
-      });
+      const sub=calcAll(adSections);
+      const caseNv=document.getElementById('adCase')?.value||'';
+      DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
+        name:getN(),type:getTp(),caseN:caseNv,
+        addr:document.getElementById('adAd')?.value||'',
+        projectId:curProjectId||null,
+        sections:JSON.parse(JSON.stringify(adSections)),total:sub});
+      updStats();renderQTable();
+      showToast('✅ 報價單已儲存！');
+      // 下一步提示
+      if(typeof showNextStep==='function'){
+        showNextStep('報價單已儲存，接下來呢？',[
+          {label:'📤 下載 Excel 給業主',action:()=>dlXls(getN(),getTp(),adSections,'client')},
+          {label:'📝 建立合約',action:()=>openModal('contractModal')},
+          {label:'稍後再說',action:()=>{}},
+        ]);
+      }
     });
   }
 
   const adXlsBtn=document.getElementById('adXls');
   if(adXlsBtn&&!adXlsBtn._bound){
     adXlsBtn._bound=true;
-    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal',curMgmtRate));
+    adXlsBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'internal'));
   }
 
   const adXlsClientBtn=document.getElementById('adXlsClient');
   if(adXlsClientBtn&&!adXlsClientBtn._bound){
     adXlsClientBtn._bound=true;
-    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client',curMgmtRate));
+    adXlsClientBtn.addEventListener('click',()=>dlXls(getN(),getTp(),adSections,'client'));
   }
 
   const adAddSecBtn=document.getElementById('adAddSec');
   if(adAddSecBtn&&!adAddSecBtn._bound){
     adAddSecBtn._bound=true;
     adAddSecBtn.addEventListener('click',()=>{
-      adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+      adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
       renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
     });
   }
@@ -812,7 +794,7 @@ function renderClientList(filter){
   const cnt=document.getElementById('clientCount');
   if(cnt)cnt.textContent=DB.get('clients').length+' 位客戶';
   if(!clients.length){
-    list.innerHTML='<div style="padding:20px 14px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">👤</div><div style="font-size:.82rem;color:var(--g400);font-weight:600">'+(filter?'找不到「'+esc(filter)+'」':'尚無客戶')+'</div>'+(filter?'':'<div style="font-size:.75rem;color:var(--g300);margin-top:4px">點上方按鈕新增</div>')+'</div>';
+    list.innerHTML='<div style="padding:20px 14px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">👤</div><div style="font-size:.82rem;color:var(--g400);font-weight:600">'+(filter?'找不到「'+filter+'」':'尚無客戶')+'</div>'+(filter?'':'<div style="font-size:.75rem;color:var(--g300);margin-top:4px">點上方按鈕新增</div>')+'</div>';
     return;
   }
   list.innerHTML='';
@@ -821,13 +803,13 @@ function renderClientList(filter){
     const el=document.createElement('div');
     el.style.cssText='padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--g100);transition:all var(--ease);position:relative;'+(isActive?'background:var(--gold-pale);border-left:3px solid var(--gold)':'border-left:3px solid transparent');
 
-    const initials=esc(c.name.charAt(0));
+    const initials=c.name.charAt(0);
     el.innerHTML=
       '<div style="display:flex;align-items:center;gap:9px">'+
         '<div style="width:32px;height:32px;border-radius:50%;background:'+(isActive?'linear-gradient(135deg,var(--gold-d),var(--gold))':'var(--g200)')+';color:'+(isActive?'var(--w)':'var(--g500)')+';font-size:.82rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--ease)">'+initials+'</div>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.name)+'</div>'+
-          '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+esc(c.phone||'未填電話')+'</div>'+
+          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.name+'</div>'+
+          '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+(c.phone||'未填電話')+'</div>'+
         '</div>'+
       '</div>';
 
@@ -841,10 +823,7 @@ function renderClientList(filter){
     delBtn.addEventListener('click',e=>{
       e.stopPropagation();
       confirmAction('刪除客戶「'+c.name+'」及所有對話？此動作不可復原。',()=>{
-        // 修正重點：這裡原本是「整包客戶清單抓出來、過濾掉這一個、整包寫回去」，
-        // 這種整包覆蓋的寫法，如果剛好另一台裝置同時也在寫入客戶資料，會互相蓋掉對方的異動、
-        // 資料無故消失（跟很早之前修過的「合約消失」是同一種病因）。改成只刪除這一筆，不會動到其他人剛好在異動的資料。
-        DB.del('clients',c._id);
+        const cs=DB.get('clients').filter(x=>x._id!==c._id);DB.set('clients',cs);
         if(curClientId===c._id){curClientId=null;const chat=document.getElementById('cs-chat');if(chat)chat.innerHTML='';}
         renderClientList();showToast('✅ 已刪除客戶「'+c.name+'」');
       });
@@ -894,53 +873,23 @@ const RPTS={
   monthly:{
     t:'月度損益報表',
     b:()=>{
-      // 修正重點：原本這份報表只是把「帳款」裡所有進出款項加總，看起來像是公司整體損益，
-      // 但實際上「人事支出」（薪資）根本是存在另一個獨立的地方（薪資管理），
-      // 從來沒被算進這份報表——等於公司一大筆固定成本完全不會反映在損益表上，很不直覺。
-      // 「行銷支出」則是混在一般記帳的「其他支出」裡，看不出實際花了多少在行銷上。
-      // 改成把損益拆成三塊：①案場相關收支（帳款裡有連到案場的），②人事支出（從薪資管理抓），
-      // ③公司營運支出（帳款裡沒連案場的，依分類列出，行銷支出會是清楚的一行，不是混在一起的數字）。
       const all=DB.get('ledger');
-      const salaryRecs=DB.get('salary_records');
       const months=new Set();
       all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
-      salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
       const sm=[...months].sort().reverse().slice(0,12);
       if(!sm.length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
-
-      let grandProjectProfit=0,grandPersonnel=0,grandOpex=0;
+      let tIn=0,tOut=0;
       const rows=sm.map(month=>{
         const it=all.filter(r=>(r.date||'').startsWith(month));
-        // ① 案場相關收支：帳款裡有連到 projectId 的
-        const projIt=it.filter(r=>r.projectId);
-        const projIn=projIt.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
-        const projOut=projIt.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-        const projProfit=projIn-projOut;
-        // ② 人事支出：從薪資管理抓這個月的記錄（底薪+伙食+交通+其他+獎金+代墊費，公司實際付出的金額）
-        const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
-        const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
-        // ③ 公司營運支出：帳款裡沒連到案場的支出（行銷、房租、雜支這類），依分類列出
-        const opexIt=it.filter(r=>!r.projectId&&getLedgerBook(r)==='out'&&r.type==='out');
-        const opexByCat={};
-        opexIt.forEach(r=>{const c=r.cat||'其他支出';opexByCat[c]=(opexByCat[c]||0)+(r.amount||0);});
-        const opexTotal=opexIt.reduce((s,r)=>s+(r.amount||0),0);
-        const opexDetail=Object.entries(opexByCat).sort((a,b)=>b[1]-a[1]).map(([c,amt])=>c+' NT$'+amt.toLocaleString()).join('、')||'—';
-
-        const netProfit=projProfit-personnel-opexTotal;
-        grandProjectProfit+=projProfit;grandPersonnel+=personnel;grandOpex+=opexTotal;
+        const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+        const outOut=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+        const profit=inIn-outOut;const rate=inIn>0?Math.round(profit/inIn*100):0;
+        tIn+=inIn;tOut+=outOut;
         const [y,m]=month.split('-');
-        return `<tr>
-          <td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td>
-          <td style="padding:8px 12px;text-align:right;color:${projProfit>=0?'var(--ok)':'var(--bad)'}">NT$${projProfit.toLocaleString()}</td>
-          <td style="padding:8px 12px;text-align:right;color:var(--bad)">${personnel?'NT$'+personnel.toLocaleString():'—'}</td>
-          <td style="padding:8px 12px;text-align:right;color:var(--bad)" title="${esc(opexDetail)}">${opexTotal?'NT$'+opexTotal.toLocaleString():'—'}</td>
-          <td style="padding:8px 12px;text-align:right;font-weight:800;color:${netProfit>=0?'var(--ok)':'var(--bad)'}">NT$${netProfit.toLocaleString()}</td>
-        </tr>
-        <tr><td colspan="5" style="padding:0 12px 8px;font-size:.72rem;color:var(--g400)">${opexTotal?'營運支出明細：'+esc(opexDetail):''}</td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${inIn?'NT$'+inIn.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${outOut?'NT$'+outOut.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${inIn?rate+'%':'—'}</td></tr>`;
       }).join('');
-      const grandNet=grandProjectProfit-grandPersonnel-grandOpex;
-      return `<div style="font-size:.76rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 案場淨利＝有連到案場的收入減支出；人事支出抓自「薪資管理」；營運支出＝沒連案場的一般記帳（行銷、房租等），滑鼠移到金額上可看分類明細。</div>
-      <table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">案場淨利</th><th style="padding:8px 12px;text-align:right">人事支出</th><th style="padding:8px 12px;text-align:right">營運支出</th><th style="padding:8px 12px;text-align:right">公司淨利</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:${grandProjectProfit>=0?'var(--ok)':'var(--bad)'}">NT$${grandProjectProfit.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandPersonnel.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandOpex.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${grandNet>=0?'var(--ok)':'var(--bad)'}">NT$${grandNet.toLocaleString()}</td></tr></tfoot></table>`;
+      const tp=tIn-tOut;
+      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">外帳收入</th><th style="padding:8px 12px;text-align:right">內帳支出</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:var(--ok)">NT$${tIn.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${tOut.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${tp>=0?'var(--ok)':'var(--bad)'}">NT$${tp.toLocaleString()}</td><td style="padding:10px 12px;text-align:right">${tIn?Math.round(tp/tIn*100)+'%':'—'}</td></tr></tfoot></table>`;
     }
   },
   profit:{
@@ -971,7 +920,7 @@ const RPTS={
       const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
       const rows=vendors.map(v=>{
         const proj=v.projectId?projects.find(p=>p._id==v.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('vendors',${v._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記付款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記「${esc(v.vendor||'這筆').replace(/'/g,"\\'")}」已付款嗎？',()=>{DB.upd('vendors',${v._id},{paid:true});row.remove();showToast('✅ 已標記付款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
@@ -985,7 +934,7 @@ const RPTS={
       const total=ledger.reduce((s,l)=>s+(l.amount||0),0);
       const rows=ledger.map(l=>{
         const proj=l.projectId?projects.find(p=>p._id==l.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('ledger',${l._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記收款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記這筆已收款嗎？',()=>{DB.upd('ledger',${l._id},{paid:true});row.remove();showToast('✅ 已標記收款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--ok);font-weight:800;margin-bottom:12px">應收總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">說明</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:left">日期</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }

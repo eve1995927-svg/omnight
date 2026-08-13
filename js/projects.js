@@ -1067,21 +1067,44 @@ function renderProjVendors(id,p,c){
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
     ${vendors.length?vendors.map(v=>`
-      <div class="card" style="margin-bottom:8px">
+      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="showProjVendorDetail(${v._id})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:700">${esc(v.vendor||'廠商')}</div>
-            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')} ${v.caseN?' · '+esc(v.caseN):''}</div>
+            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')}</div>
           </div>
           <div style="font-weight:900;color:var(--bad)">NT$${(v.amount||0).toLocaleString()}</div>
         </div>
       </div>`).join(''):'<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>'}`;
 }
 
+function showProjVendorDetail(vendorId){
+  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const items=v.items||[];
+  const itemRows=items.length
+    ? items.map(it=>'<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:.85rem;border-top:1px dashed var(--g100)">'+
+        '<span style="color:var(--g600)">'+esc(it.name||'（未命名）')+'</span>'+
+        '<span style="font-family:monospace;color:var(--g600)">NT$'+(it.amount||0).toLocaleString()+'</span>'+
+      '</div>').join('')
+    : '<div style="padding:8px 0;font-size:.82rem;color:var(--g400)">這筆沒有拆細項，只有總價</div>';
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:420px">'+
+    '<div class="mtit">'+esc(v.vendor||'廠商')+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin-bottom:10px">'+esc(v.cat||'')+'</div>'+
+    '<div style="background:var(--gold-pale);border-radius:var(--rs);padding:10px 14px;margin-bottom:12px;text-align:center">'+
+      '<div style="font-size:.7rem;color:var(--gold-d);font-weight:800">報價總額</div>'+
+      '<div style="font-family:monospace;font-weight:900;font-size:1.15rem;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+    '</div>'+
+    '<div style="max-height:40vh;overflow-y:auto">'+itemRows+'</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+}
+
 function openVendorForProject(projectId){
   curProjectId=projectId;
   const p=getProject(projectId);
   vItems=[];
+  if(typeof resetVTaxType==='function')resetVTaxType();
   // 修正重點：這裡原本把「廠商名稱」「備注」兩個欄位也一起設成案場名稱（跟合約表單同一種殘留/欄位對錯的問題），
   // 廠商名稱應該是空的讓使用者自己填，不是案場名稱；同時原本也沒清照片預覽跟 AI 辨識狀態，
   // 上一次上傳的照片、辨識結果會殘留在畫面上。這裡改成比照「行政 → 廠商報價」通用的重置邏輯，確保每次都是乾淨的表單。
@@ -1157,16 +1180,16 @@ function openContractForProject(projectId){
 // ── 案場帳款 Tab ──────────────────────────────────────────
 function renderProjLedger(id,p,c){
   const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>b._id-a._id);
-  const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
-  const income=incomeItems.reduce((s,l)=>s+(l.amount||0),0);
+  const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
   // 修正重點：標記廠商付款時，系統會自動在這裡多記一筆內帳支出方便對帳，
   // 但那筆錢已經算在下面的「廠商成本」裡了，兩個一起加會把同一筆錢算兩次。
   // 這裡「內帳支出」這個統計數字，只加總「不是廠商付款」自動產生的那些（沒有 vendorId 標記），
   // 避免重複計算；下面的交易紀錄清單還是完整顯示每一筆，包含廠商付款那筆，只是不會被重複加進總數。
-  const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
-  const cost=costItems.reduce((s,l)=>s+(l.amount||0),0);
-  const vendorList=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
-  const vendorCost=vendorList.reduce((s,v)=>s+getVendorTrueCost(v),0);
+  const cost=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
+  // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
+  // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
+  // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
+  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
 
   c.innerHTML=`
@@ -1193,10 +1216,16 @@ function renderProjLedger(id,p,c){
     </div>`;
 }
 
-// 修正重點：原本「毛利」只有一個總數字，看不出這個數字是怎麼算出來的——
-// 收入有哪幾筆、內帳支出扣了哪些、廠商成本又是哪幾家，全部混在一個數字裡看不到。
-// 點開這張卡片，把外帳收入／內帳支出／廠商成本三塊，各自一筆一筆列出來，
-// 最後加總對到毛利數字，一眼就能看懂這個案場的毛利是怎麼組成的，不用自己回頭一筆一筆對帳。
+function openProjLedgerModal(projectId, dir){
+  curProjectId=projectId;
+  curLedgerBook=dir==='in'?'in':'out';
+  curLedgerType=dir;
+  // openLedgerModal 會用 curProjectId 自動把案場選單選好，不用再另外補設定
+  openLedgerModal(curLedgerBook);
+}
+
+// 點「毛利」卡片，把外帳收入／內帳支出／廠商成本三塊，各自一筆一筆列出來，
+// 最後加總對到毛利數字，一眼就能看懂這個案場的毛利是怎麼組成的
 function showProjProfitDetail(projectId){
   const items=DB.get('ledger').filter(l=>l.projectId===projectId);
   const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
@@ -1232,14 +1261,6 @@ function showProjProfitDetail(projectId){
     '</div>'+
     '</div>';
   document.body.appendChild(modal);
-}
-
-function openProjLedgerModal(projectId, dir){
-  curProjectId=projectId;
-  curLedgerBook=dir==='in'?'in':'out';
-  curLedgerType=dir;
-  // openLedgerModal 會用 curProjectId 自動把案場選單選好，不用再另外補設定
-  openLedgerModal(curLedgerBook);
 }
 
 // ── 案場進度 Tab ──────────────────────────────────────────

@@ -7,7 +7,7 @@ let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
 let moImgUrl=[]; // 備忘錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
-let vItems=[], vCurrentFilter='all', curVType='image';
+let vItems=[], vCurrentFilter='all', curVType='image', vCurTaxType='incl';
 let curClientId=null, clientChats={};
 let adSections=[], qSections=[], curQuoteMode='internal';
 let _syncInterval=null, _punchSyncInterval=null;
@@ -910,8 +910,6 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
     accEl.value='';
   }
   // 員工/公務角色：顯示員工姓名選單（不用打字，直接選是誰）
-  // 修正重點：打卡改成一定要選自己的名字，不能再用「共用帳號」打卡——這樣每一筆打卡記錄
-  // 才會確實對應到「是誰」，不是一筆糊在一起的共用記錄，之後查出缺勤、算加班費才會準確。
   const empSelEl=document.getElementById('lEmpSelect');
   if(empSelEl){
     const needAcc=(curRole==='punch'||curRole==='staff');
@@ -921,12 +919,8 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
       const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
-      if(withAccount.length){
-        empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
-          withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
-      } else {
-        empSelEl.innerHTML='<option value="">尚無員工帳號，請聯絡老闆設定</option>';
-      }
+      empSelEl.innerHTML='<option value="">共用帳號（不指定個人）</option>'+
+        withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
       empSelEl.style.display='block';
     } else {
       empSelEl.style.display='none';
@@ -977,6 +971,9 @@ function doLogin(){
 
   _punchEmployee=null;
 
+  // 共用帳號密碼對照（員工/公務維持共用密碼，方便好記）
+  const SHARED_PW={staff:'zeju',punch:'zeju1'};
+
   // 查員工個人帳號（staff 和 punch 都可以用個人帳號）
   function findEmployee(acc, pw){
     let empList=[];
@@ -1010,9 +1007,11 @@ function doLogin(){
     }
     _punchEmployee=emp;
   } else {
-    // 修正重點：員工／公務角色不再允許用共用密碼登入打卡，一定要選自己的名字，
-    // 這樣每一筆打卡記錄才會確實對應到「是誰」，不會變成一筆分不清楚是誰打的共用記錄。
-    err.style.display='block'; err.textContent='請選擇你的名字才能打卡'; return;
+    // 共用帳號登入（員工／公務）
+    const correctPw=SHARED_PW[curRole];
+    if(!correctPw||p!==correctPw){
+      err.style.display='block'; err.textContent='密碼不正確，請重新輸入'; return;
+    }
   }
   err.style.display='none';
   // 儲存登入狀態

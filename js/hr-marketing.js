@@ -16,15 +16,21 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  const caseN=document.getElementById('progCase').value.trim();
+  // 修正重點：這個 bug 已經修過好幾次，每次都因為上傳到舊版本又跑回來。原因是「案場名稱」欄位
+  // 是下拉選單，選單存的 value 是案場的「編號」，不是名稱本身——直接把 .value 當成名字存進去，
+  // 結果存進去的是一長串數字（案場編號），不是案場名稱。這裡改成用選到的編號去查真正的案場名稱。
+  const projectIdVal=document.getElementById('progCase').value.trim();
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
-  if(!caseN){showToast('⚠️ 請填入案場名稱');return;}
+  if(!projectIdVal){showToast('⚠️ 請選擇案場');return;}
+  const proj=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
+  const caseN=proj?.name||'';
+  if(!caseN){showToast('⚠️ 找不到這個案場，請重新選擇');return;}
   if(progEditId){
-    DB.upd('progress',progEditId,{caseN,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+    DB.upd('progress',progEditId,{caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
     showToast('✅ 進度已更新！');
   }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,items:progItems.map(x=>({...x}))});
+    DB.push('progress',{summary:'進度 '+caseN,caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x}))});
     showToast('✅ 案場進度已建立！');
   }
   closeModal('progressModal');renderProgress();progEditId=null;
@@ -46,11 +52,19 @@ function renderProgress(){
     const done=(p.items||[]).filter(x=>x.done).length;
     const total=(p.items||[]).length;
     const pct=total?Math.round(done/total*100):0;
+    // 防呆：如果之前存進去的 caseN 剛好是一串數字（舊 bug 造成的舊資料），
+    // 這裡用 projectId 或這串數字反查一次案場名稱，畫面上盡量不要讓使用者看到一串數字，
+    // 這只是顯示層的補救，正確的資料還是要重新編輯存檔一次才會真的修正
+    let displayName=p.caseN||'';
+    if(/^\d+$/.test(displayName)){
+      const proj=DB.get('projects').find(pr=>String(pr._id)===String(p.projectId||displayName));
+      if(proj?.name)displayName=proj.name+'（原始資料異常，建議重新編輯存檔）';
+    }
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+p.caseN+'</div>'+
-          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+p.client+'</div>':'')+
+          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName)+'</div>'+
+          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
@@ -123,7 +137,7 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
 });
 
 // ── 權限checkbox 讀寫小工具 ──────────────────────────────
-const PERM_CHECKBOX_MAP={projects:'permProjects',business:'permBusiness',vendor:'permVendor',accounting:'permAccounting',settings:'permSettings'};
+const PERM_CHECKBOX_MAP={projects:'permProjects',marketing:'permMarketing',quote:'permQuote',vendor:'permVendor',accounting:'permAccounting',settings:'permSettings'};
 function setEmpPermCheckboxes(perms){
   Object.entries(PERM_CHECKBOX_MAP).forEach(([key,id])=>{
     const el=document.getElementById(id);if(el)el.checked=!!(perms&&perms[key]);
@@ -209,8 +223,8 @@ function renderEmployees(){
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
-      setEmpPermCheckboxes(migrateEmployeePermissions(e.permissions)||DEFAULT_STAFF_PERMISSIONS);
-      document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
+      setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
+      document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
     card.querySelector('[data-edel]')?.addEventListener('click',()=>{confirmAction('刪除員工「'+e.name+'」？歷史打卡和薪資記錄仍會保留。',()=>{DB.upd('employees',e._id,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW')});renderEmployees();updHRStats();showToast('✅ 員工已移除，歷史記錄保留');});});
