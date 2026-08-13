@@ -34,6 +34,11 @@
    ⚠️ 尚未設定 API Key — 請先登入老闆帳號，在儀表板頂部設定後即可使用所有 AI 功能
   </div>
 
+  <div class="field" style="margin-bottom:16px">
+   <label class="fl">公司代碼</label>
+   <input class="linp" type="text" id="lCompanyCode" placeholder="例：zeju" autocomplete="organization" style="text-transform:lowercase">
+  </div>
+
   <span style="font-size:.78rem;font-weight:800;color:var(--gray-400);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px;display:block">選擇您的身份</span>
   <div class="lrg" id="lRoleGrid" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
    <div class="lrb lrb-own on" data-role="owner"><span class="ri">👑</span>老闆</div>
@@ -1151,16 +1156,24 @@
    </div>
    <button class="btn bo bsm" id="vAddItem" style="margin-bottom:12px">＋ 新增細項</button>
    <!-- 合計 -->
-   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:12px">
+   <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:8px">
     <span style="font-size:.9rem;font-weight:800;color:var(--gold-d)">報價合計</span>
     <span style="font-family:'DM Mono',monospace;font-size:1.2rem;font-weight:900;color:var(--gold-d)" id="vTotal">NT$0</span>
+   </div>
+   <div class="field" style="margin-bottom:12px">
+    <label class="fl">這筆報價是否含稅</label>
+    <div style="display:flex;gap:8px" id="vTaxTypeRow">
+     <button type="button" class="btn bg bsm" data-taxtype="incl" style="flex:1">含稅／無發票</button>
+     <button type="button" class="btn bo bsm" data-taxtype="excl" style="flex:1">未稅（要另加5%）</button>
+    </div>
+    <div style="font-size:.72rem;color:var(--g400);margin-top:6px" id="vTaxHint">廠商沒有開發票的話，選「含稅／無發票」，報的金額就是實際會付的金額</div>
    </div>
    <div class="field" style="margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
      <label class="fl" style="margin:0">備注</label>
      <button onclick="document.getElementById('vNt').value=''" style="font-size:.72rem;color:var(--bad);background:none;border:none;cursor:pointer;font-weight:700;padding:2px 6px">🗑 清除</button>
     </div>
-    <input class="fi" id="vNt" placeholder="例：含安裝、不含稅、含運費…">
+    <input class="fi" id="vNt" placeholder="例：含安裝、含運費、付款條件…">
    </div>
   </div>
   <div style="display:flex;gap:8px">
