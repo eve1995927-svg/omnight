@@ -7,7 +7,7 @@ let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
 let moImgUrl=[]; // 備忘錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
-let vItems=[], vCurrentFilter='all', curVType='image', vCurTaxType='incl';
+let vItems=[], vCurrentFilter='all', curVType='image';
 let curClientId=null, clientChats={};
 let adSections=[], qSections=[], curQuoteMode='internal';
 let _syncInterval=null, _punchSyncInterval=null;
@@ -26,8 +26,6 @@ function isImageUrl(fileUrl){
 }
 
 // ══ CONFIG ════════════════════════════════════════════════
-// 暫時退回：這裡的帳號密碼是舊版登入方式在用的，多租戶那套伺服器驗證還沒完成部署，
-// 先讓系統用回舊的登入邏輯正常運作，之後正式切換多租戶的時候會再拿掉。
 const ACCTS={
   owner:{user:'omnight',pass:'0923',name:'老闆',abbr:'老',role:'Owner · 最高權限',label:'老闆'},
   staff:{user:'member',pass:'zeju',name:'員工',abbr:'員',role:'Member',label:'員工'},
@@ -37,28 +35,25 @@ const ACCTS={
   ad:{user:'member',pass:'zeju',name:'員工',abbr:'員',role:'Member',label:'員工'},
   ac:{user:'member',pass:'zeju',name:'員工',abbr:'員',role:'Member',label:'員工'},
 };
-// 修正重點：原本選單是「功能做出來的順序」在排（主頁/客服行銷/報價與合約/廠商與進度/會計/人資/系統，共7組），
-// 不是「業務邏輯」在排，例如客服行銷（接觸客戶）跟報價與合約（成交客戶）明明是同一條業務線，卻拆成兩個入口。
-// 改成照公司實際運作的角色分：業務端（客戶接觸＋報價合約）、工程端（廠商＋進度）、會計、後台管理，
-// 從 7 組減到 6 組，同一件事只在一個地方找，不用猜「這個功能在哪一個分類底下」。
 const GROUPS={
   owner:[
-    {l:'儀表板',   items:[{id:'owner-dash',l:'今日總覽',ic:'📊'}]},
-    {l:'案場',     items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'業務',     items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
-    {l:'工程',     items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
-    {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
-    {l:'管理',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'},{id:'settings',l:'系統設定',ic:'⚙️'}]},
+    {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
+    {l:'報價與合約', items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
+    {l:'廠商與進度', items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
+    {l:'人資',       items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
+    {l:'系統',       items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   // 員工可用的模組全集：實際登入時會依照 getEmployeePermissions() 過濾，只顯示老闆開放的部分
-  // 每個分組標記 _perm，對應人資管理裡的權限開關 key。人資管理本身不開放給員工（薪資、個資太敏感），
-  // 「管理」這組對員工來說只有系統設定。
+  // 每個分組標記 _perm，對應人資管理裡的權限開關 key
   staff:[
-    {l:'案場',   _perm:'projects',   items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'業務',   _perm:'business',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
-    {l:'工程',   _perm:'vendor',     items:[{id:'ad-vendor',l:'跨案場廠商',ic:'🏗️'},{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
-    {l:'會計',   _perm:'accounting', items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
-    {l:'管理',   _perm:'settings',   items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
+    {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
+    {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
+    {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
+    {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
+    {l:'系統',       _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
   punch:[
     {l:'打卡',    items:[{id:'punch-clock',l:'上下班打卡',ic:'🕐'}]},
@@ -71,17 +66,7 @@ const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
-// 修正重點：原本「客服行銷」「報價與合約」是各自獨立的權限開關，合併成「業務」一組之後，
-// 這裡也跟著合併成一個 business 開關；已經幫舊員工設定過 marketing 或 quote 任一權限的，
-// 這裡做相容判斷，合併後預設沿用原本比較寬鬆的那個設定，不會讓已經開放的員工突然被鎖住看不到東西。
-const DEFAULT_STAFF_PERMISSIONS={projects:true,business:true,vendor:true,accounting:false,settings:false};
-function migrateEmployeePermissions(perms){
-  if(!perms)return perms;
-  if(perms.business===undefined&&(perms.marketing!==undefined||perms.quote!==undefined)){
-    return {...perms,business:!!(perms.marketing||perms.quote)};
-  }
-  return perms;
-}
+const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
 
 // ── 案場選擇器：把「案場名稱」欄位從自由輸入改成從既有案場挑選 ──────────
 // 目的：自由輸入常常打法不一致（「民有十三街」跟「民有13街」變成兩個不同案場），
@@ -106,24 +91,18 @@ function getEmployeePermissions(){
   // 用共用「員工」帳號登入（沒有指定個人身份）：維持過去的預設行為，開放常用模組，會計/系統設定不開放
   if(!_punchEmployee) return DEFAULT_STAFF_PERMISSIONS;
   // 個人帳號登入：套用老闆在人資管理設定的權限，沒設定過的員工使用預設值
-  // migrateEmployeePermissions：把舊版「客服行銷」「報價與合約」分開的權限設定，轉換成合併後的 business 權限，
-  // 已經設定過的員工不會因為這次選單合併就突然被鎖住
-  return {...DEFAULT_STAFF_PERMISSIONS, ...migrateEmployeePermissions(_punchEmployee.permissions||{})};
+  return {...DEFAULT_STAFF_PERMISSIONS, ...(_punchEmployee.permissions||{})};
 }
 
-// 依權限過濾 GROUPS.staff：沒開放的分組不是直接濾掉不見，而是標記成鎖住（灰階＋鎖頭顯示），
-// 員工看得到「有這個功能，只是還沒開放」，不會誤以為系統根本沒有這個功能
+// 依權限過濾 GROUPS.staff，只回傳老闆有開放的分組
 function getFilteredStaffGroups(){
   const perms=getEmployeePermissions();
-  return GROUPS.staff.map(g=>({...g,_locked:!!(g._perm&&!perms[g._perm])}));
-}
-function getUnlockedStaffGroups(){
-  return getFilteredStaffGroups().filter(g=>!g._locked);
+  return GROUPS.staff.filter(g=>!g._perm||perms[g._perm]);
 }
 
-// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾，只回傳有開放的）
+// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾）
 function groupsFor(role){
-  return role==='staff' ? getUnlockedStaffGroups() : (GROUPS[role]||[]);
+  return role==='staff' ? getFilteredStaffGroups() : (GROUPS[role]||[]);
 }
 // ══ 公司資料設定（多租戶核心：換公司只要改這裡）═══════════════
 // 賣給新客戶時，這是唯一需要調整品牌/業務資料的地方（Firebase 專案設定另見文件說明）
@@ -151,14 +130,14 @@ function saveCompanyProfile(profile){
   const merged={...DEFAULT_COMPANY_PROFILE, ...profile};
   localStorage.setItem('zeju_company_profile', JSON.stringify(merged));
   if(_fbDB&&_fbReady){
-    _fbDB.ref(tenantPath('company_profile')).set(merged).catch(e=>console.warn('FB write company_profile:',e.message));
+    _fbDB.ref('zeju_data/company_profile').set(merged).catch(e=>console.warn('FB write company_profile:',e.message));
   }
   return merged;
 }
 async function loadCompanyProfileFromCloud(){
   if(!_fbDB||!_fbReady)return;
   try{
-    const snap=await _fbDB.ref(tenantPath('company_profile')).once('value');
+    const snap=await _fbDB.ref('zeju_data/company_profile').once('value');
     const cloud=snap.val();
     if(cloud) localStorage.setItem('zeju_company_profile', JSON.stringify({...DEFAULT_COMPANY_PROFILE, ...cloud}));
   }catch(e){console.warn('company_profile load failed:',e.message);}
@@ -316,9 +295,13 @@ function initFirebase(){
   }
 }
 
-// ── 匿名登入 Firebase Auth（暫時退回舊版） ──────────────────────────────
-// 多租戶那套伺服器驗證登入（auth-login Netlify Function）還沒完成部署（需要先設定服務帳戶金鑰、
-// 註冊公司代碼），先退回原本的匿名登入方式，確保系統能正常存檔運作。
+// ── 匿名登入 Firebase Auth ──────────────────────────────────
+// 為什麼需要這個：資料庫安全規則設成「.read/.write 需要 auth != null」，
+// 這樣可以擋掉最基本的「直接對資料庫網址發request」的攻擊方式（不會用 SDK、只是亂槍打鳥的掃描機器人）。
+// 老實說明這不是完美的安全機制：因為 Firebase 設定本身是公開可見的，
+// 真的懂技術的人一樣可以自己呼叫 signInAnonymously() 取得 auth，繞過這層防護。
+// 這是「先擋住最省事的攻擊」的第一道關卡，不是最終解法，真正的解法是換成
+// 綁定真實身份的 Firebase Authentication（email/password 或自訂 token），這是之後要做的加強項目。
 function _ensureFirebaseAuth(){
   return new Promise((resolve)=>{
     if(typeof firebase==='undefined'||!firebase.auth){resolve(false);return;}
@@ -357,39 +340,32 @@ function _normalizeToKeyedObj(raw){
 function _cloudSetRecord(k, id, record){
   try{ localStorage.setItem('z7_'+k, JSON.stringify(Object.values(_cache[k]||{}))); }catch{}
   if(_fbDB&&_fbReady){
-    _fbDB.ref(tenantPath(k+'/'+id)).set(record).catch(e=>console.warn('FB write:',k,id,e.message));
+    _fbDB.ref('zeju_data/'+k+'/'+id).set(record).catch(e=>console.warn('FB write:',k,id,e.message));
   }
 }
 function _cloudRemoveRecord(k, id){
   try{ localStorage.setItem('z7_'+k, JSON.stringify(Object.values(_cache[k]||{}))); }catch{}
   if(_fbDB&&_fbReady){
-    _fbDB.ref(tenantPath(k+'/'+id)).remove().catch(e=>console.warn('FB remove:',k,id,e.message));
+    _fbDB.ref('zeju_data/'+k+'/'+id).remove().catch(e=>console.warn('FB remove:',k,id,e.message));
   }
 }
 // 整批覆蓋（只給「還原備份」這種真的要整包取代的情境用，一般新增/修改/刪除都不要走這條路）
 function _cloudSetAll(k, arr){
   try{ localStorage.setItem('z7_'+k, JSON.stringify(arr)); }catch{}
   if(_fbDB&&_fbReady){
-    _fbDB.ref(tenantPath(k)).set(_normalizeToKeyedObj(arr)).catch(e=>console.warn('FB write:',k,e.message));
+    _fbDB.ref('zeju_data/'+k).set(_normalizeToKeyedObj(arr)).catch(e=>console.warn('FB write:',k,e.message));
   }
 }
 
-// 初始化：從雲端載入所有資料到 cache（暫時退回舊版流程）
+// 初始化：從雲端載入所有資料到 cache
 async function initCloudDB(){
   // 先嘗試 Firebase
   if(initFirebase()){
+    // 先完成匿名登入，資料庫安全規則要求 auth != null 才能讀寫，
+    // 沒有這一步，規則設好之後資料反而會讀不到（不是資安漏洞了，但變成功能壞掉）
     await _ensureFirebaseAuth();
     return new Promise(res=>{
-      let settled=false;
-      const finish=(ok)=>{if(settled)return;settled=true;res(ok);};
-      const timeoutId=setTimeout(()=>{
-        console.log('⚠️ Firebase 連線逾時，改用本機離線資料');
-        _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
-        setSyncStatus('offline');
-        finish(false);
-      },8000);
-      _fbDB.ref(tenantPath()).once('value', snap=>{
-        clearTimeout(timeoutId);
+      _fbDB.ref('zeju_data').once('value', snap=>{
         const data=snap.val()||{};
         _KEYS.forEach(k=>{
           if(data[k]){
@@ -400,12 +376,11 @@ async function initCloudDB(){
         console.log('✅ Firebase data loaded');
         setSyncStatus('ok');
         loadCompanyProfileFromCloud();
-        finish(true);
+        res(true);
       }, ()=>{
-        clearTimeout(timeoutId);
         _KEYS.forEach(k=>{try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}});
         setSyncStatus('offline');
-        finish(false);
+        res(false);
       });
     });
   }
@@ -506,7 +481,7 @@ let POINTS=parseInt(localStorage.getItem('zeju_pts'))||76500; // 開機預設值
 async function loadPointsFromCloud(){
   if(_fbDB&&_fbReady){
     try{
-      const snap=await _fbDB.ref(tenantPath('points')).once('value');
+      const snap=await _fbDB.ref('zeju_data/points').once('value');
       const v=snap.val();
       POINTS=(typeof v==='number')?v:(parseInt(localStorage.getItem('zeju_pts'))||76500);
     }catch{
@@ -522,7 +497,7 @@ async function loadPointsFromCloud(){
 // 即時監聽：別的裝置扣點之後，這裡的畫面也會跟著自動更新，不用重新整理頁面
 function startPointsSync(){
   if(!_fbDB||!_fbReady)return;
-  _fbDB.ref(tenantPath('points')).on('value',snap=>{
+  _fbDB.ref('zeju_data/points').on('value',snap=>{
     const v=snap.val();
     if(typeof v==='number'){
       POINTS=v;
@@ -538,7 +513,7 @@ async function deductPoints(amount){
   if(amount<=0)return POINTS;
   if(_fbDB&&_fbReady){
     try{
-      const result=await _fbDB.ref(tenantPath('points')).transaction(current=>{
+      const result=await _fbDB.ref('zeju_data/points').transaction(current=>{
         const base=(typeof current==='number')?current:(parseInt(localStorage.getItem('zeju_pts'))||76500);
         return Math.max(0,base-amount);
       });
@@ -623,7 +598,7 @@ function startCloudSync(){
   }
   setSyncStatus('syncing');
   // Firebase 即時監聽所有資料
-  _fbDB.ref(tenantPath()).on('value', snap=>{
+  _fbDB.ref('zeju_data').on('value', snap=>{
     const data=snap.val()||{};
     let hasPunchChange=false, hasReqChange=false;
     _KEYS.forEach(k=>{
@@ -889,12 +864,6 @@ function openPhotoGallery(title, files){
 
 // ══ LOGIN ════════════════════════════════════════════════
 let curRole='owner';
-// 暫時退回：多租戶那套（公司代碼隔開資料）先關掉，等後端設定（金鑰、公司代碼註冊）都弄好、
-// 完整測試過一輪之後再重新開啟。這裡先讓所有資料照舊寫回同一個 zeju_data 路徑，
-// 恢復成能正常存檔的狀態。
-function tenantPath(subpath){
-  return 'zeju_data'+(subpath?'/'+subpath:'');
-}
 let curProjectId=null; // 目前選取的案場 ID
 let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id，共用帳號為角色名
 
@@ -903,18 +872,17 @@ let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id�
   const savedRole = localStorage.getItem('zeju_session_role');
   const savedTs = parseInt(localStorage.getItem('zeju_session_ts')||'0');
   const EIGHT_HOURS = 8 * 60 * 60 * 1000;
-  // session 8小時內有效（暫時退回舊版邏輯，不依賴公司代碼/Firebase通行證狀態）
+  // session 8小時內有效
   if(savedRole && (Date.now()-savedTs) < EIGHT_HOURS){
     curRole = savedRole;
+    // 等 DOM 完全載入後自動跳過登入
     window.addEventListener('DOMContentLoaded',()=>{
       const ls=document.getElementById('ls');
       const app=document.getElementById('app');
       if(!ls||!app)return;
-      const savedEmpId=localStorage.getItem('zeju_punch_emp_id');
       ls.style.display='none';
       app.style.display='flex';
       initCloudDB().then(()=>{
-        if(savedEmpId){_punchEmployee=DB.get('employees').find(e=>String(e._id)===String(savedEmpId))||null;}
         startCloudSync();
         setupApp(curRole);
       });
@@ -942,6 +910,8 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
     accEl.value='';
   }
   // 員工/公務角色：顯示員工姓名選單（不用打字，直接選是誰）
+  // 修正重點：打卡改成一定要選自己的名字，不能再用「共用帳號」打卡——這樣每一筆打卡記錄
+  // 才會確實對應到「是誰」，不是一筆糊在一起的共用記錄，之後查出缺勤、算加班費才會準確。
   const empSelEl=document.getElementById('lEmpSelect');
   if(empSelEl){
     const needAcc=(curRole==='punch'||curRole==='staff');
@@ -951,8 +921,12 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
       const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
-      empSelEl.innerHTML='<option value="">共用帳號（不指定個人）</option>'+
-        withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+      if(withAccount.length){
+        empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
+          withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+      } else {
+        empSelEl.innerHTML='<option value="">尚無員工帳號，請聯絡老闆設定</option>';
+      }
       empSelEl.style.display='block';
     } else {
       empSelEl.style.display='none';
@@ -964,10 +938,9 @@ document.getElementById('lBtn').addEventListener('click',doLogin);
 document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 let _punchEmployee=null; // 個人打卡帳號登入時，記錄對應員工資料
 
-// 暫時退回：把「公司代碼」欄位隱藏起來（多租戶那套還沒上線），恢復顯示舊版的帳號欄位
+// 頁面載入時，登入畫面預設就是「老闆」角色（HTML 裡 lrb-own 預設 on），
+// 所以要在載入當下就把帳號欄位＋記住帳號顯示出來，不用等使用者點一次角色按鈕
 window.addEventListener('DOMContentLoaded',()=>{
-  const codeWrap=document.getElementById('lCompanyCode')?.closest('.field');
-  if(codeWrap)codeWrap.style.display='none';
   const accEl=document.getElementById('lAccount');
   const rememberWrap=document.getElementById('lRememberWrap');
   if(accEl&&rememberWrap&&curRole==='owner'){
@@ -997,8 +970,6 @@ window.addEventListener('resize',()=>{
   },200);
 });
 
-// 暫時退回：伺服器驗證登入（呼叫 Netlify Function）那套先關閉，等後端設定完成、
-// 完整測試過後再切換回去。這裡先用回舊版能正常運作的登入邏輯。
 function doLogin(){
   const p=document.getElementById('lPass').value.trim();
   const err=document.getElementById('lErr');
@@ -1006,8 +977,7 @@ function doLogin(){
 
   _punchEmployee=null;
 
-  const SHARED_PW={staff:'zeju',punch:'zeju1'};
-
+  // 查員工個人帳號（staff 和 punch 都可以用個人帳號）
   function findEmployee(acc, pw){
     let empList=[];
     try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
@@ -1018,16 +988,19 @@ function doLogin(){
   const empAcc=(document.getElementById('lEmpSelect')?.value||'').trim();
 
   if(curRole==='owner'){
+    // 老闆角色：需要帳號＋密碼都正確
     const acc=(document.getElementById('lAccount')?.value||'').trim();
     if(acc!==ACCTS.owner.user||p!==ACCTS.owner.pass){
       err.style.display='block'; err.textContent='帳號或密碼不正確，請再試一次'; return;
     }
+    // 記住帳號
     if(document.getElementById('lRemember')?.checked){
       localStorage.setItem('zeju_owner_account',acc);
     } else {
       localStorage.removeItem('zeju_owner_account');
     }
   } else if(empAcc){
+    // 個人帳號登入（staff 或 punch）
     if(curRole!=='staff'&&curRole!=='punch'){
       err.style.display='block'; err.textContent='個人帳號只適用於員工或公務角色'; return;
     }
@@ -1037,12 +1010,12 @@ function doLogin(){
     }
     _punchEmployee=emp;
   } else {
-    const correctPw=SHARED_PW[curRole];
-    if(!correctPw||p!==correctPw){
-      err.style.display='block'; err.textContent='密碼不正確，請重新輸入'; return;
-    }
+    // 修正重點：員工／公務角色不再允許用共用密碼登入打卡，一定要選自己的名字，
+    // 這樣每一筆打卡記錄才會確實對應到「是誰」，不會變成一筆分不清楚是誰打的共用記錄。
+    err.style.display='block'; err.textContent='請選擇你的名字才能打卡'; return;
   }
   err.style.display='none';
+  // 儲存登入狀態
   localStorage.setItem('zeju_session_role', curRole);
   localStorage.setItem('zeju_session_ts', Date.now());
   if(_punchEmployee){
@@ -1218,20 +1191,9 @@ function buildTabs(role){
   }
 
   // 電腦版：維持原本「每個分組一個 Tab，點了展開到第一個功能」的邏輯
-  // 修正重點：員工被關掉的模組，這裡改成還是顯示這個分頁（灰階＋鎖頭），點下去清楚告訴他要找老闆開權限，
-  // 不會讓人以為系統根本沒有這個功能
-  const tabGrps=role==='staff'?getFilteredStaffGroups():grps;
-  tabGrps.forEach(grp=>{
+  grps.forEach(grp=>{
     const b=document.createElement('button');
     b.className='rtab';b.dataset.grp=grp.l;
-    if(grp._locked){
-      b.style.cssText='opacity:.45;cursor:not-allowed';
-      b.textContent='🔒 '+grp.l;
-      b.title='此功能尚未開放，請洽老闆開通權限';
-      b.addEventListener('click',()=>showToast('🔒 「'+grp.l+'」尚未開放給你，請洽老闆開通權限'));
-      tabs.appendChild(b);
-      return;
-    }
     b.textContent=grp.l;
     b.addEventListener('click',()=>{
       showPanel(grp.items[0].id);
@@ -1242,9 +1204,8 @@ function buildTabs(role){
     });
     tabs.appendChild(b);
   });
-  // 預設選第一個（跳過鎖住的，避免一登入就卡在鎖住的分頁上）
-  const firstUnlocked=Array.from(tabs.children).find(el=>!el.title);
-  if(firstUnlocked)firstUnlocked.classList.add('on');
+  // 預設選第一個
+  if(tabs.firstChild)tabs.firstChild.classList.add('on');
 }
 function syncTabActive(panelId){
   if(isMobileView()){
