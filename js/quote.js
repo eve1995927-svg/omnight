@@ -444,7 +444,23 @@ function renderQTable(){
       </div>`;
   }).join('');
 
-  list.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));document.getElementById('adN').value=q.name||'';document.getElementById('adAd').value=q.addr||'';document.getElementById('adQbClient').textContent=q.name||'—';document.getElementById('adQbAddr').textContent=q.addr||'—';renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});openAllSecs('adSections');showPanel('ad-newquote');});});
+  list.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{
+    const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;
+    qEditId=q._id;
+    adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
+    document.getElementById('adN').value=q.name||'';
+    document.getElementById('adAd').value=q.addr||'';
+    document.getElementById('adQbClient').textContent=q.name||'—';
+    document.getElementById('adQbAddr').textContent=q.addr||'—';
+    // 修正重點：原本點「編輯」進去，案場選單完全沒有被重新整理過，
+    // 對「未指定案場」的報價單來說，選單裡連可以選的案場清單都是空的，等於根本選不了；
+    // 就算是已經有案場的報價單，選單也不會自動選回原本那個案場。
+    // 改成每次點編輯，都先重新把目前所有案場填進選單，並且把這筆報價單原本對應的案場選好。
+    if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),q.projectId);
+    renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+    openAllSecs('adSections');
+    showPanel('ad-newquote');
+  });});
   list.querySelectorAll('[data-qct]').forEach(btn=>{btn.addEventListener('click',()=>{if(typeof convertQuoteToContract==='function')convertQuoteToContract(parseInt(btn.dataset.qct));});});
   list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[]);});});
   list.querySelectorAll('[data-qarch]').forEach(btn=>{btn.addEventListener('click',()=>{

@@ -707,10 +707,14 @@ function updVCaseFilter(){
 
 // ── initAdQuote ────────────────────────────────────────────
 function initAdQuote(){
+  qEditId=null;
   adSections=JSON.parse(JSON.stringify(DEF_SECTIONS));
   const qbC=document.getElementById('adQbClient');if(qbC)qbC.textContent='—';
   const qbA=document.getElementById('adQbAddr');if(qbA)qbA.textContent='—';
   const qbD=document.getElementById('adQbDate');if(qbD)qbD.textContent=new Date().toLocaleDateString('zh-TW');
+  const nEl=document.getElementById('adN');if(nEl)nEl.value='';
+  const aEl=document.getElementById('adAd');if(aEl)aEl.value='';
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),curProjectId);
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 
   // ── 按鈕綁定（每次初始化都重綁，避免遺失）──
@@ -722,12 +726,24 @@ function initAdQuote(){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
       const sub=calcAll(adSections);
-      const caseNv=document.getElementById('adCase')?.value||'';
-      DB.push('quotes',{summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
+      // 修正重點：這裡有兩個問題一起修。①案場欄位存的是選單的「值」，也就是案場編號，
+      // 不是案場名稱，直接存進去 caseN 會變成一串數字。②不管是「新建報價單」還是「點編輯」進來的，
+      // 存檔一律用 DB.push 新增一筆，即使是編輯既有報價單，也會多存一筆新的、原本那筆沒有被更新，
+      // 等於「編輯」實際上在做的是「複製一份新的」，舊的那筆還在、內容卻沒被改到。
+      const caseSelVal=document.getElementById('adCase')?.value||'';
+      const selectedProject=caseSelVal?DB.get('projects').find(p=>String(p._id)===String(caseSelVal)):null;
+      const caseNv=selectedProject?.name||'';
+      const payload={summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
-        projectId:curProjectId||null,
-        sections:JSON.parse(JSON.stringify(adSections)),total:sub});
+        projectId:selectedProject?._id||null,
+        sections:JSON.parse(JSON.stringify(adSections)),total:sub};
+      if(qEditId){
+        DB.upd('quotes',qEditId,payload);
+        qEditId=null;
+      } else {
+        DB.push('quotes',payload);
+      }
       updStats();renderQTable();
       showToast('✅ 報價單已儲存！');
       // 下一步提示
@@ -920,7 +936,7 @@ const RPTS={
       const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
       const rows=vendors.map(v=>{
         const proj=v.projectId?projects.find(p=>p._id==v.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記「${esc(v.vendor||'這筆').replace(/'/g,"\\'")}」已付款嗎？',()=>{DB.upd('vendors',${v._id},{paid:true});row.remove();showToast('✅ 已標記付款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('vendors',${v._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記付款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
@@ -934,7 +950,7 @@ const RPTS={
       const total=ledger.reduce((s,l)=>s+(l.amount||0),0);
       const rows=ledger.map(l=>{
         const proj=l.projectId?projects.find(p=>p._id==l.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記這筆已收款嗎？',()=>{DB.upd('ledger',${l._id},{paid:true});row.remove();showToast('✅ 已標記收款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('ledger',${l._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記收款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--ok);font-weight:800;margin-bottom:12px">應收總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">說明</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:left">日期</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }

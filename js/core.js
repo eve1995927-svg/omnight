@@ -1,13 +1,13 @@
 
 
 // ══ 全域變數宣告 ════════════
-let ctImgUrl=null, ctEditId=null, ieId=null;
+let ctImgUrl=null, ctEditId=null, ieId=null, qEditId=null;
 let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
 let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
 let moImgUrl=[]; // 備忘錄照片上傳
 let invImgUrl=null, invIItems=[], ldItems=[], ldImgUrl=null;
-let vItems=[], vCurrentFilter='all', curVType='image', vCurTaxType='incl';
+let vItems=[], vCurrentFilter='all', curVType='image';
 let curClientId=null, clientChats={};
 let adSections=[], qSections=[], curQuoteMode='internal';
 let _syncInterval=null, _punchSyncInterval=null;
