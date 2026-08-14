@@ -210,55 +210,6 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .kb-card-t{font-size:.85rem;font-weight:800;color:var(--ink);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kb-card-c{font-size:.72rem;color:var(--steel);margin-bottom:6px}
 .kb-card-amt{font-size:.75rem;font-weight:800;color:var(--ok);font-family:var(--mono)}
-.kb-card-move{margin-top:8px}
-.kb-card-move select{width:100%;padding:6px 8px;border:1.5px solid var(--g200);border-radius:8px;font-size:.72rem;font-weight:700;color:var(--steel);background:var(--g50);cursor:pointer;font-family:inherit}
-.kb-card-move select:hover{border-color:var(--gold-l);color:var(--ink)}
-
-/* ── 案場日行事曆 ── */
-.proj-cal{margin-top:28px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r);padding:20px;box-shadow:var(--sh1)}
-.pc-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
-.pc-title{font-size:.95rem;font-weight:900;color:var(--ink)}
-.pc-nav{display:flex;align-items:center;gap:10px}
-.pc-nbtn{width:30px;height:30px;border:1.5px solid var(--g200);border-radius:8px;background:var(--w);color:var(--g600);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
-.pc-nbtn:hover{border-color:var(--gold-l);color:var(--gold-d)}
-.pc-month{font-size:.88rem;font-weight:800;color:var(--ink);min-width:88px;text-align:center}
-.pc-today{padding:6px 14px;border:1.5px solid var(--gold-l);border-radius:8px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit}
-.pc-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin-bottom:8px}
-.pc-weekdays span{text-align:center;font-size:.72rem;font-weight:800;color:var(--g400);padding:4px 0;text-transform:uppercase;letter-spacing:.04em}
-.pc-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
-.pc-day{
-  aspect-ratio:1/1;border:1.5px solid var(--g150,var(--g100));border-radius:12px;padding:7px;
-  background:var(--w);transition:all .15s;display:flex;flex-direction:column;gap:3px;
-  overflow:hidden;position:relative;
-}
-.pc-day.other-month{opacity:.4;background:var(--g50)}
-.pc-day.today{border-color:var(--gold);border-width:2px;background:var(--gold-pale)}
-.pc-day.drag-over{border-color:var(--gold-d);background:var(--gold-pale);box-shadow:inset 0 0 0 2px var(--gold-l)}
-.pc-day-num{
-  font-size:.76rem;font-weight:800;color:var(--g500);flex-shrink:0;
-  width:20px;height:20px;display:flex;align-items:center;justify-content:center;border-radius:50%;
-}
-.pc-day.today .pc-day-num{color:#fff;background:var(--gold-d)}
-.pc-day-chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;flex:1;min-height:0}
-.pc-chip{
-  font-size:.66rem;font-weight:700;padding:2px 6px;border-radius:5px;cursor:grab;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;transition:transform .12s;
-  border-left:3px solid transparent;flex-shrink:0;
-}
-.pc-chip:active{cursor:grabbing}
-.pc-chip:hover{transform:translateX(2px)}
-.pc-chip.dragging{opacity:.4}
-.pc-day-more{font-size:.62rem;font-weight:800;color:var(--g400);cursor:pointer;padding:1px 4px;flex-shrink:0}
-.pc-day-more:hover{color:var(--gold-d);text-decoration:underline}
-.pc-hint{margin-top:14px;font-size:.74rem;color:var(--g400);text-align:center}
-@media(max-width:700px){
-  .pc-day{padding:4px;border-radius:8px}
-  .pc-day-num{font-size:.66rem;width:16px;height:16px}
-  .pc-chip{font-size:.56rem;padding:1px 4px}
-  .pc-weekdays span{font-size:.6rem}
-  .pc-grid{gap:4px}
-  .pc-weekdays{gap:4px}
-}
 .kb-empty{padding:20px 12px;text-align:center;color:var(--g300);font-size:.75rem}
 
 .fl{font-size:.72rem;font-weight:900;color:var(--g500);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;display:block}
@@ -532,8 +483,15 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
   .mtit{font-size:1rem}
 
   /* ── 報價單 ── */
-  .pqs-col-hd,.pqs-item{grid-template-columns:2fr 45px 45px 75px 75px 70px 26px!important}
-  .pqs-col-hd.dual,.pqs-item.dual{grid-template-columns:2fr 45px 45px 75px 75px 70px 26px!important}
+  /* 修正重點：這裡原本只定義了7個欄位寬度，但雙價模式（成本單價+對客單價+對客小計+毛利）
+     實際上每一列有8個元素（工項名稱/單位/數量/成本單價/對客單價/對客小計/毛利/刪除），
+     少一格會讓最後兩個元素被擠進同一個欄位，數字跟刪除按鈕疊在一起看不清楚——
+     這就是手機上會看到毛利數字跟垃圾桶按鈕黏在一起的原因，先補滿8欄修正這個問題。
+     但8欄要塞進普通手機螢幕寬度，就算再怎麼縮，文字還是會小到看不清楚，所以額外讓這塊表格
+     可以「左右滑動」查看，欄位維持一個看得清楚的最小寬度，不要為了塞進螢幕犧牲可讀性。 */
+  .pqs-body{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
+  .pqs-col-hd,.pqs-item{grid-template-columns:120px 40px 40px 68px 68px 72px 62px 30px!important;gap:4px!important;min-width:520px}
+  .pqs-col-hd.dual,.pqs-item.dual{grid-template-columns:120px 40px 40px 68px 68px 72px 62px 30px!important;gap:4px!important;min-width:520px}
 
   /* ── HR 薪資 Tab ── */
   .ledger-tab{flex-wrap:wrap;gap:4px}
