@@ -1,7 +1,7 @@
 
 
 // ══ 全域變數宣告 ════════════
-let ctImgUrl=null, ctEditId=null, ieId=null, qEditId=null;
+let ctImgUrl=null, ctEditId=null, ieId=null;
 let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
 let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
@@ -85,6 +85,45 @@ function buildProjectSelect(selectEl, selectedId, allowEmpty){
   selectEl.innerHTML=placeholder+
     projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.client?'（'+esc(p.client)+'）':'')+'</option>').join('');
   if(selectedId!=null && selectedId!=='') selectEl.value=String(selectedId);
+}
+
+// ══ 通用防呆：儲存前檢查有沒有選案場，沒選就跳出清楚的提示，可以選既有案場、或直接在這裡新增一個 ══
+// 用法：ensureProjectSelected(document.getElementById('progCase'), (projectId) => { ...實際儲存的程式碼... })
+let _pendingProjectCallback=null;
+function ensureProjectSelected(selectEl,onReady){
+  const val=selectEl?.value;
+  if(val){onReady(val);return;}
+  const projects=DB.get('projects');
+  const box=document.createElement('div');
+  box.className='mov show';
+  box.innerHTML='<div class="modal" style="max-width:420px">'+
+    '<div class="mtit">📍 這筆還沒選案場 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.85rem;color:var(--g500);margin-bottom:16px;line-height:1.6">如果案場總覽裡還沒有這個案場，可以直接在這裡新增，不用先跳去別的頁面。</div>'+
+    (projects.length?'<div class="field"><label class="fl">選擇既有案場</label><select class="fi" id="_epsSelect"><option value="">請選擇…</option>'+
+      projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.client?'（'+esc(p.client)+'）':'')+'</option>').join('')+'</select></div>':
+      '<div style="font-size:.82rem;color:var(--g400);margin-bottom:12px">目前還沒有任何案場。</div>')+
+    '<button class="btn bg bfull" id="_epsConfirm" style="padding:12px;margin-top:6px">✅ 使用這個案場</button>'+
+    '<button class="btn bo bfull" id="_epsNew" style="padding:12px;margin-top:8px">➕ 新增一個案場</button>'+
+    '</div>';
+  document.body.appendChild(box);
+
+  document.getElementById('_epsConfirm')?.addEventListener('click',()=>{
+    const picked=document.getElementById('_epsSelect')?.value;
+    if(!picked){showToast('⚠️ 請選擇一個案場');return;}
+    selectEl.value=picked;
+    box.remove();
+    onReady(picked);
+  });
+  document.getElementById('_epsNew')?.addEventListener('click',()=>{
+    box.remove();
+    // 修正重點：這個防呆常常是從另一個已經開著的視窗裡觸發的（例如存進度的時候跳出來），
+    // 原本只把這個提示框關掉，底下那個視窗還開著、疊在上面，導致新增案場那個視窗的按鈕點不到
+    // （被底下那層擋住）。改成連同外層那個視窗也一起暫時關閉，新增完案場再自動繼續原本的動作。
+    const enclosingModal=selectEl.closest('.mov');
+    if(enclosingModal)enclosingModal.classList.remove('show');
+    _pendingProjectCallback={selectEl,onReady};
+    if(typeof openAddProject==='function')openAddProject();
+  });
 }
 
 function getEmployeePermissions(){

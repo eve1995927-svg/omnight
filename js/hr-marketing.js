@@ -16,25 +16,25 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  // 修正重點：「案場名稱」欄位是下拉選單，選單存的 value 是案場的「編號」，不是名稱本身——
-  // 直接把 .value 當成名字存進去，結果存進去的是一長串數字（案場編號），不是案場名稱。
-  // 改成用選到的編號去查真正的案場名稱，名稱、案場關聯都存正確的值，這樣以後點編輯，
-  // 就能正確透過 projectId 帶回選單，不會再變回空白選不到。
-  const projectIdVal=document.getElementById('progCase').value.trim();
+  // 修正重點：原本沒選案場就沒辦法存檔，但如果這個案場根本還沒在「案場總覽」建立過
+  // （例如「平鎮」還沒建案場），使用者會卡住不知道要先跳去哪裡新增。
+  // 改成用共用的防呆流程：沒選案場的話，直接跳出「選既有案場」或「新增一個案場」，
+  // 新增完會自動帶回來繼續存這筆進度，不用自己跳頁面、跳回來再重填一次。
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
-  if(!projectIdVal){showToast('⚠️ 請選擇案場');return;}
-  const proj=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
-  const caseN=proj?.name||'';
-  if(!caseN){showToast('⚠️ 找不到這個案場，請重新選擇');return;}
-  if(progEditId){
-    DB.upd('progress',progEditId,{caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
-    showToast('✅ 進度已更新！');
-  }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x}))});
-    showToast('✅ 案場進度已建立！');
-  }
-  closeModal('progressModal');renderProgress();progEditId=null;
+  ensureProjectSelected(document.getElementById('progCase'),(projectIdVal)=>{
+    const proj=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
+    const caseN=proj?.name||'';
+    if(!caseN){showToast('⚠️ 找不到這個案場，請重新選擇');return;}
+    if(progEditId){
+      DB.upd('progress',progEditId,{caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+      showToast('✅ 進度已更新！');
+    }else{
+      DB.push('progress',{summary:'進度 '+caseN,caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x}))});
+      showToast('✅ 案場進度已建立！');
+    }
+    closeModal('progressModal');renderProgress();progEditId=null;
+  });
 });
 
 function renderProgress(){
@@ -46,6 +46,26 @@ function renderProgress(){
   if(sf!=='all')data=data.filter(p=>p.status===sf);
   if(!data.length){list.innerHTML='<div class="empty-state"><div class="es-ic">🔧</div><div class="es-t">尚無進度記錄</div><div class="es-s">新增合約時會自動建立，或點右上方「新增案場」</div></div>';return;}
   list.innerHTML='';
+  // 舊資料如果案場名稱存成一串數字（案場編號誤存進 caseN 欄位），先掃一次，
+  // 有壞資料的話最上面跳出「一鍵修復」，不用一筆一筆手動點編輯存檔才能修好。
+  const brokenRecs=data.filter(p=>/^\d+$/.test(p.caseN||''));
+  if(brokenRecs.length){
+    const fixBar=document.createElement('div');
+    fixBar.style.cssText='background:var(--warn-bg,#FFF3D6);border:1.5px solid var(--warn-bd,#E8CE8E);border-radius:var(--rs);padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap';
+    fixBar.innerHTML='<span style="font-size:.85rem;font-weight:700;color:#8A6D1E">⚠️ 有 '+brokenRecs.length+' 筆進度記錄的案場名稱異常（顯示成一串數字）</span>'+
+      '<button class="btn bg bsm" id="fixBrokenProgBtn">🔧 一鍵修復</button>';
+    list.appendChild(fixBar);
+    document.getElementById('fixBrokenProgBtn').addEventListener('click',()=>{
+      let fixed=0,skipped=0;
+      brokenRecs.forEach(p=>{
+        const proj=DB.get('projects').find(pr=>String(pr._id)===String(p.caseN));
+        if(proj){DB.upd('progress',p._id,{caseN:proj.name,projectId:proj._id});fixed++;}
+        else skipped++;
+      });
+      renderProgress();
+      showToast(skipped?('✅ 已修復 '+fixed+' 筆，'+skipped+' 筆找不到對應案場（可能已被刪除）'):('✅ 已修復 '+fixed+' 筆'));
+    });
+  }
   const tagMap={pending:{l:'📋 未開始',cls:'start'},ing:{l:'🔨 進行中',cls:'ing'},done:{l:'✅ 結案',cls:'done'}};
   data.forEach(p=>{
     const card=document.createElement('div');card.className='progress-card';
@@ -53,11 +73,18 @@ function renderProgress(){
     const done=(p.items||[]).filter(x=>x.done).length;
     const total=(p.items||[]).length;
     const pct=total?Math.round(done/total*100):0;
+    // 防呆：如果之前存進去的 caseN 剛好是一串數字（舊 bug 造成的舊資料），
+    // 這裡用 projectId 或這串數字反查一次案場名稱，畫面上盡量不要讓使用者看到一串數字
+    let displayName=p.caseN||'';
+    if(/^\d+$/.test(displayName)){
+      const proj=DB.get('projects').find(pr=>String(pr._id)===String(p.projectId||displayName));
+      if(proj?.name)displayName=proj.name+'（原始資料異常，建議點上方「一鍵修復」）';
+    }
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+p.caseN+'</div>'+
-          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+p.client+'</div>':'')+
+          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName)+'</div>'+
+          (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
@@ -80,20 +107,13 @@ function renderProgress(){
         ).join('')+
       '</div>';
     card.querySelector('[data-pedit]')?.addEventListener('click',()=>{
-      // 修正重點：這裡有兩個問題。①案場選單從來沒有被填過資料，開啟編輯的時候是空的，
-      // 當然選不了。②就算選單有資料，這裡也是把 .value 設成案場「名稱」文字，
-      // 但選單每個選項的 value 其實是案場的「編號」，名稱對不上任何一個選項，一樣選不到。
-      // 改成先把所有案場填進選單，再用 projectId（編號）去選對應的選項。
       progEditId=p._id;progItems=p.items?p.items.map(x=>({...x})):[];
-      // 舊資料如果沒有 projectId（在還沒修正案場關聯之前建立的記錄），caseN 欄位本身可能就是
-      // 當初誤存進去的案場編號（一串數字）——這種情況拿它來當作案場編號試著自動選上，
-      // 這樣舊資料這次點編輯，選單有機會直接幫你選對，不用自己重新找一次是哪個案場。
       const fallbackProjectId=p.projectId||(/^\d+$/.test(p.caseN||'')?p.caseN:null);
       if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('progCase'),fallbackProjectId);
       document.getElementById('progClient').value=p.client||'';
       document.getElementById('progStatus').value=p.status||'pending';
-      const displayName=(typeof esc==='function')?esc(p.caseN||''):(p.caseN||'');
-      document.getElementById('progModalTitle').innerHTML='編輯進度：'+displayName+' <button class="mcl" data-close="progressModal">✕</button>';
+      const displayName2=(typeof esc==='function')?esc(p.caseN||''):(p.caseN||'');
+      document.getElementById('progModalTitle').innerHTML='編輯進度：'+displayName2+' <button class="mcl" data-close="progressModal">✕</button>';
       renderProgItems();openModal('progressModal');
     });
     card.querySelector('[data-pdel]')?.addEventListener('click',()=>{confirmAction('刪除「'+(p.caseN||'')+'」進度？',()=>{DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});});
