@@ -273,28 +273,6 @@ function updVTotal(){
 
 document.getElementById('vAddItem')?.addEventListener('click',()=>{vItems.push({name:'',qty:'1',unit:'式',unitPrice:0,amount:0});renderVItems();updVTotal();});
 
-function resetVTaxType(){
-  vCurTaxType='incl';
-  document.querySelectorAll('#vTaxTypeRow [data-taxtype]').forEach(b=>{
-    b.className=b.dataset.taxtype==='incl'?'btn bg bsm':'btn bo bsm';
-  });
-  const hint=document.getElementById('vTaxHint');
-  if(hint)hint.textContent='廠商沒有開發票的話，選「含稅／無發票」，報的金額就是實際會付的金額';
-}
-document.getElementById('vTaxTypeRow')?.addEventListener('click',e=>{
-  const btn=e.target.closest('[data-taxtype]');if(!btn)return;
-  vCurTaxType=btn.dataset.taxtype;
-  document.querySelectorAll('#vTaxTypeRow [data-taxtype]').forEach(b=>{
-    b.className=b.dataset.taxtype===vCurTaxType?'btn bg bsm':'btn bo bsm';
-  });
-  const hint=document.getElementById('vTaxHint');
-  if(hint){
-    hint.textContent=vCurTaxType==='incl'
-      ?'廠商沒有開發票的話，選「含稅／無發票」，報的金額就是實際會付的金額'
-      :'廠商報未稅價，公司實際要付的錢＝這個金額 ×1.05，工程成本／毛利計算會自動用加稅後的金額';
-  }
-});
-
 document.getElementById('addVBtn')?.addEventListener('click',()=>{
   const vd=document.getElementById('vVd').value.trim(),cat=document.getElementById('vCat').value;
   const pid=document.getElementById('vCs').value,nt=document.getElementById('vNt').value.trim();
@@ -305,7 +283,7 @@ document.getElementById('addVBtn')?.addEventListener('click',()=>{
   curProjectId=parseInt(pid);
   const total=vItems.reduce((s,it)=>s+(it.amount||0),0);
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
-  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,taxType:vCurTaxType,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
+  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
   closeModal('vModal');renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
 });
 
@@ -610,6 +588,14 @@ function renderVendors(filter){
       hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
       hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
       hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
+      // 修正重點：卡片的 CSS 早就設了 cursor:pointer（滑鼠移上去會變成手指），
+      // 看起來整個卡片都能點，但點擊事件之前只綁在小小的「▾明細」按鈕上，點卡片其他地方完全沒反應，
+      // 跟看起來的樣子不一致。改成點整個卡片（除了付款/明細/刪除這三個按鈕本身）都能展開明細，
+      // 跟游標樣式給的視覺提示一致。
+      hd.addEventListener('click',()=>{
+        const open=body.classList.toggle('open');
+        hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';
+      });
       card.appendChild(hd);card.appendChild(body);grpBody.appendChild(card);
     });
 
