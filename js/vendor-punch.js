@@ -2,6 +2,27 @@ function getVendorPrompt(){
   return '請仔細辨識這份廠商報價單的所有內容。\n只回覆純JSON（不要加```），格式：\n{"vendor":"廠商完整名稱","case":"案場名稱沒有則空字串","cat":"工程類別只能填系統櫃廚具玻璃鋁窗水電泥作油漆鐵件其他之一","note":"備注如含安裝不含稅等","items":[{"name":"工項名稱","qty":"數量與單位如3坪或1式","amount":金額數字}]}\n請盡量列出所有細項，金額盡量辨識為數字。無法辨識的填空字串或0。';
 }
 
+// 補充上傳用：新辨識到的工項「加進去」既有清單，不是整個蓋掉——
+// 這樣一份很多頁的報價單，可以分好幾次上傳照片，每次辨識到的工項會累加，不用一次塞滿5張圖
+function appendVendorItems(dat){
+  const newItems=(dat.items||[]).filter(it=>it&&(it.name||'').trim()).map(it=>{
+    const qty=it.qty||'1式';
+    const qNum=parseFloat(qty.toString().replace(/[^\d.]/g,''))||1;
+    let unitPrice=parseFloat(it.unitPrice)||0;
+    let amount=parseFloat(it.amount)||0;
+    if(unitPrice>0){amount=Math.round(unitPrice*qNum);}
+    else if(amount>0){unitPrice=Math.round(amount/qNum);}
+    return {...it, qty, unitPrice, amount};
+  });
+  if(!newItems.length){showToast('⚠️ 這幾張沒有辨識到新的工項，可能圖片不清楚或內容重複');return;}
+  // 如果目前只有一筆空白的預設列，先把它清掉，不要留一筆空的在最前面
+  if(vItems.length===1&&!vItems[0].name&&!vItems[0].amount)vItems=[];
+  vItems=[...vItems,...newItems];
+  renderVItems();
+  updVTotal();
+  showToast('✅ 已新增 '+newItems.length+' 筆工項，目前共 '+vItems.length+' 筆');
+}
+
 function applyVendorResult(dat){
   if(dat.vendor) document.getElementById('vVd').value=dat.vendor;
   // 修正重點：案場名稱欄位改成一定要從既有案場挑選，AI 辨識出來的是自由文字（可能跟案場名稱打法不完全一樣），
@@ -1049,4 +1070,52 @@ document.getElementById('addProgressBtn')?.addEventListener('click',()=>{
 
 document.getElementById('addProgItemBtn')?.addEventListener('click',()=>{
   progItems.push({text:'',done:false,date:''});renderProgItems();
+});
+
+// 補充上傳：一份報價單很多頁的話，可以分好幾次上傳，每次辨識到的工項會累加進去，
+// 不會蓋掉前面已經辨識好的內容——每次最多處理5張，超過的話會自動分批依序處理，並顯示目前處理到第幾批
+document.getElementById('vSupplementBtn')?.addEventListener('click',()=>{
+  document.getElementById('vSupplementFile')?.click();
+});
+document.getElementById('vSupplementFile')?.addEventListener('change',async e=>{
+  const files=Array.from(e.target.files).filter(f=>f.type.startsWith('image/'));
+  e.target.value='';
+  if(!files.length){showToast('⚠️ 請選擇圖片檔案');return;}
+
+  const ocr=document.getElementById('vOcr');
+  const readImg=f=>new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res({b64:ev.target.result.split(',')[1],mime:f.type});rd.readAsDataURL(f);});
+  const imgs=await Promise.all(files.map(readImg));
+
+  // 每批最多5張，超過的話自動分成好幾批依序送出，避免單次請求塞太多圖片
+  const BATCH_SIZE=5;
+  const batches=[];
+  for(let i=0;i<imgs.length;i+=BATCH_SIZE)batches.push(imgs.slice(i,i+BATCH_SIZE));
+
+  ocr.classList.add('show');
+  let totalAppended=0;
+  for(let b=0;b<batches.length;b++){
+    // #vOcr 的文字是直接掛在 div 底下的文字節點（前面三個 .sdot 是轉圈圈動畫），
+    // 找最後一個文字節點來更新目前處理進度，其他 .sdot 元素不動
+    const textNode=Array.from(ocr.childNodes).find(n=>n.nodeType===3)||ocr;
+    textNode.textContent=' AI 辨識中（補充上傳 第'+(b+1)+'／'+batches.length+'批）…';
+    try{
+      const content=[];
+      batches[b].forEach((img,i)=>{
+        content.push({type:'image',source:{type:'base64',media_type:img.mime,data:img.b64}});
+        content.push({type:'text',text:'（補充頁面 '+(i+1)+'）'});
+      });
+      content.push({type:'text',text:getVendorPrompt()+'\n\n注意：這是補充上傳的額外頁面，請辨識這幾張裡的所有細項。'});
+      const rep=await callAI('ad',content,3000,100,'廠商報價辨識（補充）');
+      const dat=JSON.parse(rep.replace(/```json|```/g,'').trim());
+      appendVendorItems(dat);
+      totalAppended++;
+    }catch(err){
+      console.log('補充上傳 OCR err',err);
+      showToast('⚠️ 第'+(b+1)+'批辨識失敗：'+friendlyAIError(err));
+    }
+  }
+  ocr.classList.remove('show');
+  if(totalAppended<batches.length){
+    showToast('⚠️ 部分批次辨識失敗，已補上成功的部分，失敗的頁面可以再試一次或手動輸入');
+  }
 });
