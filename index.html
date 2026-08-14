@@ -1151,7 +1151,11 @@
     </div>
     <div id="vItemsTable"></div>
    </div>
-   <button class="btn bo bsm" id="vAddItem" style="margin-bottom:12px">＋ 新增細項</button>
+   <div style="display:flex;gap:8px;margin-bottom:12px">
+    <button class="btn bo bsm" id="vAddItem">＋ 新增細項</button>
+    <button class="btn bo bsm" id="vSupplementBtn">📷 補充上傳（多頁報價單）</button>
+    <input type="file" id="vSupplementFile" accept="image/*" multiple style="display:none">
+   </div>
    <!-- 合計 -->
    <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r-sm);margin-bottom:12px">
     <span style="font-size:.9rem;font-weight:800;color:var(--gold-d)">報價合計</span>
