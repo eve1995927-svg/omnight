@@ -317,7 +317,7 @@ document.getElementById('addVBtn')?.addEventListener('click',()=>{
   const total=vItems.reduce((s,it)=>s+(it.amount||0),0);
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
   DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||'',taxType:it.taxType||'incl'})),imgDataUrl:imgUrl});
-  closeModal('vModal');renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
+  closeModal('vModal');refreshVendorViews();updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
 });
 
 const VICO={系統櫃:'🪵',廚具:'🍳',玻璃:'🪟',鋁窗:'🪟',水電:'⚡',泥作:'🧱',油漆:'🎨',鐵件:'🔩',其他:'📦'};
@@ -439,6 +439,165 @@ document.getElementById('mergeVGroupBtn')?.addEventListener('click',()=>{
   );
 });
 
+// 廠商報價的新增/編輯/刪除/付款，現在同時可能發生在「全域廠商報價清單」跟「案場詳情→廠商報價」兩個地方，
+// 這裡統一處理：兩邊只要目前有顯示在畫面上，動作完就一起刷新，不會出現改了一邊、另一邊還是舊資料的情況。
+function refreshVendorViews(){
+  if(typeof renderVendors==='function'&&document.getElementById('vList'))renderVendors(vCurrentFilter);
+  const pc=document.getElementById('projDetailContent');
+  if(pc&&pc.dataset.tab==='vendor'&&pc.dataset.projId&&typeof renderProjectDetail==='function'){
+    renderProjectDetail(parseInt(pc.dataset.projId),'vendor');
+  }
+}
+
+function buildVendorCard(v){
+    const editItems=v.items?v.items.map(it=>({...it})):[];
+    const card=document.createElement('div');card.className='vcard';card.style.marginBottom='6px';
+
+    // Header
+    const hd=document.createElement('div');hd.className='vchd';
+    const catIco=VICO[v.cat]||'📦';
+    hd.innerHTML=
+      '<span style="font-size:1.3rem;flex-shrink:0">'+catIco+'</span>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-size:.9rem;font-weight:900">'+esc(v.vendor)+
+          ' <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800">'+esc(v.cat)+'</span>'+
+        '</div>'+
+        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
+      '</div>'+
+      '<div style="text-align:right;flex-shrink:0">'+
+        '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+        (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
+      '</div>'+
+      '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
+        '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
+        '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
+        '<button class="btn brd bxs" data-vdel>🗑</button>'+
+      '</div>';
+
+    // 展開明細 body
+    const body=document.createElement('div');body.className='vcbody';
+    // 基本資料編輯
+    const basicEdit=document.createElement('div');
+    basicEdit.style.cssText='padding:12px 16px;border-bottom:1px solid var(--g100);background:var(--w)';
+    // 修正重點：這裡原本是自己寫死一份類別清單（沒有「＋新增分類」選項，也看不到別的地方新增過的自訂分類），
+    // 跟「新增廠商報價」表單用的不是同一套機制，導致在這裡改一筆既有廠商報價的類別時，沒辦法新增類別。
+    // 改成呼叫共用的 buildCatSelectWithAdd，跟其他地方共用同一份分類清單、也都能直接新增。
+    basicEdit.innerHTML=
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+        '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">廠商名稱</div>'+
+        '<input id="ve-vendor-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.vendor||'')+'"></div>'+
+        '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">工程類別</div>'+
+        '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none"></select></div>'+
+      '</div>'+
+      '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">備注</div>'+
+      '<input id="ve-note-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.note||'')+'" placeholder="例：含安裝、不含稅…"></div>';
+    if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(basicEdit.querySelector('select'),'vendorCat',v.cat);
+
+    // 細項表格
+    const itemWrap=document.createElement('div');
+    const itmHd=document.createElement('div');
+    itmHd.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
+    itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400)">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">稅別</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">小計</span><span></span>';
+    const itmBody=document.createElement('div');itmBody.id='vi-body-'+v._id;
+
+    function renderVCardItems(){
+      itmBody.innerHTML='';
+      if(!editItems.length){const em=document.createElement('div');em.style.cssText='padding:10px 16px;font-size:.82rem;color:var(--g400)';em.textContent='無細項';itmBody.appendChild(em);return;}
+      editItems.forEach((it,i)=>{
+        const row=document.createElement('div');
+        row.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
+        const IS='padding:5px 6px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';
+        const mkF=el=>{el.addEventListener('focus',()=>el.style.borderColor='var(--gold)');el.addEventListener('blur',()=>el.style.borderColor='transparent');};
+
+        const n=document.createElement('input');n.style.cssText=IS;n.value=it.name||'';n.placeholder='工項名稱';n.addEventListener('input',()=>it.name=n.value);mkF(n);
+
+        const qtyNum=parseFloat((it.qty||'1').toString().replace(/[^\d.]/g,''))||1;
+        const q=document.createElement('input');q.type='number';q.style.cssText=IS+'text-align:center';q.value=qtyNum;q.placeholder='數量';
+        const u=document.createElement('input');u.style.cssText=IS+'text-align:center';u.value=it.unit||(it.qty||'').toString().replace(/[\d.]/g,'')||'式';u.placeholder='單位';mkF(u);
+
+        const up=document.createElement('input');up.type='number';up.style.cssText=IS+'text-align:right;font-family:monospace';
+        up.value=it.unitPrice!=null?it.unitPrice:(qtyNum?Math.round((it.amount||0)/qtyNum):(it.amount||0));
+        mkF(up);
+
+        const a=document.createElement('input');a.type='number';a.style.cssText=IS+'text-align:right;font-family:monospace;font-weight:700';a.value=it.amount||0;mkF(a);
+
+        // 稅別：跟新增報價單那邊同一套，每個工項各自切換
+        const taxBtn=document.createElement('button');
+        const setTaxBtnStyle=()=>{
+          const isExcl=it.taxType==='excl';
+          taxBtn.style.cssText='padding:3px 2px;border-radius:var(--rxs);font-size:.62rem;font-weight:800;cursor:pointer;border:1.5px solid '+(isExcl?'var(--warn-bd,#E8CE8E)':'var(--g200)')+';background:'+(isExcl?'var(--warn-bg,#FFF3D6)':'var(--w)')+';color:'+(isExcl?'#8A6D1E':'var(--g500)')+';width:100%';
+          taxBtn.textContent=isExcl?'未稅':'含稅';
+          taxBtn.title=isExcl?'未稅：算成本時會自動加5%':'含稅／無發票：報價金額就是實際成本';
+        };
+        setTaxBtnStyle();
+        taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();});
+
+        function recalc(){
+          const qv=parseFloat(q.value)||1, upv=parseFloat(up.value)||0;
+          it.unitPrice=upv;it.qty=qv+(u.value||'式');it.unit=u.value||'式';
+          it.amount=Math.round(qv*upv);
+          a.value=it.amount;
+          updVCardTotal();
+        }
+        q.addEventListener('input',recalc);
+        up.addEventListener('input',recalc);
+        u.addEventListener('input',()=>{it.unit=u.value;it.qty=(parseFloat(q.value)||1)+(u.value||'式');});
+        a.addEventListener('input',()=>{
+          it.amount=parseFloat(a.value)||0;
+          const qv=parseFloat(q.value)||1;
+          it.unitPrice=qv?Math.round(it.amount/qv):it.amount;
+          up.value=it.unitPrice;
+          updVCardTotal();
+        });
+        mkF(q);
+
+        const del=document.createElement('button');del.style.cssText='width:26px;height:26px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center';del.textContent='🗑';del.addEventListener('click',()=>{editItems.splice(i,1);renderVCardItems();updVCardTotal();});
+        row.appendChild(n);row.appendChild(q);row.appendChild(u);row.appendChild(up);row.appendChild(taxBtn);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
+      });
+    }
+    function updVCardTotal(){
+      const t=editItems.reduce((s,x)=>s+(x.amount||0),0);
+      subTotEl.textContent='小計 NT$'+t.toLocaleString();
+      hd.querySelector('[style*="gold"]')?.textContent&&(hd.querySelectorAll('div')[2].textContent='NT$'+t.toLocaleString());
+    }
+    const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:1,unit:'式',unitPrice:0,amount:0});renderVCardItems();});
+    const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.textContent='小計 NT$'+(v.amount||0).toLocaleString();
+
+    // 儲存列
+    const saveBar=document.createElement('div');saveBar.style.cssText='padding:10px 16px;border-top:1px solid var(--g100);display:flex;gap:7px;background:var(--g50)';
+    const saveBtn=document.createElement('button');saveBtn.className='btn bg bsm';saveBtn.textContent='💾 儲存修改';
+    saveBtn.addEventListener('click',()=>{
+      const nv=document.getElementById('ve-vendor-'+v._id)?.value.trim()||v.vendor;
+      const nc=document.getElementById('ve-cat-'+v._id)?.value||v.cat;
+      const nn=document.getElementById('ve-note-'+v._id)?.value.trim()||'';
+      const nt=editItems.reduce((s,x)=>s+(x.amount||0),0);
+      DB.upd('vendors',v._id,{vendor:nv,cat:nc,note:nn,amount:nt,items:editItems.map(x=>({...x})),caseN:v.caseN,summary:'廠商報價 '+nv+' '+nc+' NT$'+nt.toLocaleString()});
+      refreshVendorViews();updStats();renderAdVendorPicker();showToast('✅ 已更新！');
+    });
+    const cancelBtn=document.createElement('button');cancelBtn.className='btn bo bsm';cancelBtn.textContent='取消';cancelBtn.addEventListener('click',()=>body.classList.remove('open'));
+    saveBar.appendChild(saveBtn);saveBar.appendChild(cancelBtn);
+
+    if(v.imgDataUrl){const iw=document.createElement('div');iw.style.cssText='padding:8px 16px;border-top:1px solid var(--g100);display:flex;gap:8px';const img=document.createElement('img');img.className='ith';img.src=v.imgDataUrl;img.style.cssText='width:80px;height:80px';img.addEventListener('click',()=>openLB(v.imgDataUrl));iw.appendChild(img);body.appendChild(iw);}
+
+    itemWrap.appendChild(itmHd);itemWrap.appendChild(itmBody);itemWrap.appendChild(addItmBtn);
+    body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(saveBar);
+    renderVCardItems();
+
+    hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
+    hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
+    hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);refreshVendorViews();updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
+    // 修正重點：卡片的 CSS 早就設了 cursor:pointer（滑鼠移上去會變成手指），
+    // 看起來整個卡片都能點，但點擊事件之前只綁在小小的「▾明細」按鈕上，點卡片其他地方完全沒反應，
+    // 跟看起來的樣子不一致。改成點整個卡片（除了付款/明細/刪除這三個按鈕本身）都能展開明細，
+    // 跟游標樣式給的視覺提示一致。
+    hd.addEventListener('click',()=>{
+      const open=body.classList.toggle('open');
+      hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';
+    });
+    card.appendChild(hd);card.appendChild(body);
+  return card;
+}
+
 function renderVendors(filter){
   const list=document.getElementById('vList');if(!list)return;
   let data=DB.get('vendors');
@@ -495,151 +654,7 @@ function renderVendors(filter){
 
     // 案場內的廠商卡片
     vendors.forEach(v=>{
-      const editItems=v.items?v.items.map(it=>({...it})):[];
-      const card=document.createElement('div');card.className='vcard';card.style.marginBottom='6px';
-
-      // Header
-      const hd=document.createElement('div');hd.className='vchd';
-      const catIco=VICO[v.cat]||'📦';
-      hd.innerHTML=
-        '<span style="font-size:1.3rem;flex-shrink:0">'+catIco+'</span>'+
-        '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.9rem;font-weight:900">'+esc(v.vendor)+
-            ' <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800">'+esc(v.cat)+'</span>'+
-          '</div>'+
-          '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
-        '</div>'+
-        '<div style="text-align:right;flex-shrink:0">'+
-          '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(v.amount||0).toLocaleString()+'</div>'+
-          (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
-        '</div>'+
-        '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
-          '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
-          '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
-          '<button class="btn brd bxs" data-vdel>🗑</button>'+
-        '</div>';
-
-      // 展開明細 body
-      const body=document.createElement('div');body.className='vcbody';
-      // 基本資料編輯
-      const basicEdit=document.createElement('div');
-      basicEdit.style.cssText='padding:12px 16px;border-bottom:1px solid var(--g100);background:var(--w)';
-      // 修正重點：這裡原本是自己寫死一份類別清單（沒有「＋新增分類」選項，也看不到別的地方新增過的自訂分類），
-      // 跟「新增廠商報價」表單用的不是同一套機制，導致在這裡改一筆既有廠商報價的類別時，沒辦法新增類別。
-      // 改成呼叫共用的 buildCatSelectWithAdd，跟其他地方共用同一份分類清單、也都能直接新增。
-      basicEdit.innerHTML=
-        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
-          '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">廠商名稱</div>'+
-          '<input id="ve-vendor-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.vendor||'')+'"></div>'+
-          '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">工程類別</div>'+
-          '<select id="ve-cat-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none"></select></div>'+
-        '</div>'+
-        '<div><div style="font-size:.62rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px">備注</div>'+
-        '<input id="ve-note-'+v._id+'" style="width:100%;padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.85rem;font-family:inherit;outline:none" value="'+esc(v.note||'')+'" placeholder="例：含安裝、不含稅…"></div>';
-      if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(basicEdit.querySelector('select'),'vendorCat',v.cat);
-
-      // 細項表格
-      const itemWrap=document.createElement('div');
-      const itmHd=document.createElement('div');
-      itmHd.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
-      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400)">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">稅別</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">小計</span><span></span>';
-      const itmBody=document.createElement('div');itmBody.id='vi-body-'+v._id;
-
-      function renderVCardItems(){
-        itmBody.innerHTML='';
-        if(!editItems.length){const em=document.createElement('div');em.style.cssText='padding:10px 16px;font-size:.82rem;color:var(--g400)';em.textContent='無細項';itmBody.appendChild(em);return;}
-        editItems.forEach((it,i)=>{
-          const row=document.createElement('div');
-          row.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
-          const IS='padding:5px 6px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';
-          const mkF=el=>{el.addEventListener('focus',()=>el.style.borderColor='var(--gold)');el.addEventListener('blur',()=>el.style.borderColor='transparent');};
-
-          const n=document.createElement('input');n.style.cssText=IS;n.value=it.name||'';n.placeholder='工項名稱';n.addEventListener('input',()=>it.name=n.value);mkF(n);
-
-          const qtyNum=parseFloat((it.qty||'1').toString().replace(/[^\d.]/g,''))||1;
-          const q=document.createElement('input');q.type='number';q.style.cssText=IS+'text-align:center';q.value=qtyNum;q.placeholder='數量';
-          const u=document.createElement('input');u.style.cssText=IS+'text-align:center';u.value=it.unit||(it.qty||'').toString().replace(/[\d.]/g,'')||'式';u.placeholder='單位';mkF(u);
-
-          const up=document.createElement('input');up.type='number';up.style.cssText=IS+'text-align:right;font-family:monospace';
-          up.value=it.unitPrice!=null?it.unitPrice:(qtyNum?Math.round((it.amount||0)/qtyNum):(it.amount||0));
-          mkF(up);
-
-          const a=document.createElement('input');a.type='number';a.style.cssText=IS+'text-align:right;font-family:monospace;font-weight:700';a.value=it.amount||0;mkF(a);
-
-          // 稅別：跟新增報價單那邊同一套，每個工項各自切換
-          const taxBtn=document.createElement('button');
-          const setTaxBtnStyle=()=>{
-            const isExcl=it.taxType==='excl';
-            taxBtn.style.cssText='padding:3px 2px;border-radius:var(--rxs);font-size:.62rem;font-weight:800;cursor:pointer;border:1.5px solid '+(isExcl?'var(--warn-bd,#E8CE8E)':'var(--g200)')+';background:'+(isExcl?'var(--warn-bg,#FFF3D6)':'var(--w)')+';color:'+(isExcl?'#8A6D1E':'var(--g500)')+';width:100%';
-            taxBtn.textContent=isExcl?'未稅':'含稅';
-            taxBtn.title=isExcl?'未稅：算成本時會自動加5%':'含稅／無發票：報價金額就是實際成本';
-          };
-          setTaxBtnStyle();
-          taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();});
-
-          function recalc(){
-            const qv=parseFloat(q.value)||1, upv=parseFloat(up.value)||0;
-            it.unitPrice=upv;it.qty=qv+(u.value||'式');it.unit=u.value||'式';
-            it.amount=Math.round(qv*upv);
-            a.value=it.amount;
-            updVCardTotal();
-          }
-          q.addEventListener('input',recalc);
-          up.addEventListener('input',recalc);
-          u.addEventListener('input',()=>{it.unit=u.value;it.qty=(parseFloat(q.value)||1)+(u.value||'式');});
-          a.addEventListener('input',()=>{
-            it.amount=parseFloat(a.value)||0;
-            const qv=parseFloat(q.value)||1;
-            it.unitPrice=qv?Math.round(it.amount/qv):it.amount;
-            up.value=it.unitPrice;
-            updVCardTotal();
-          });
-          mkF(q);
-
-          const del=document.createElement('button');del.style.cssText='width:26px;height:26px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center';del.textContent='🗑';del.addEventListener('click',()=>{editItems.splice(i,1);renderVCardItems();updVCardTotal();});
-          row.appendChild(n);row.appendChild(q);row.appendChild(u);row.appendChild(up);row.appendChild(taxBtn);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
-        });
-      }
-      function updVCardTotal(){
-        const t=editItems.reduce((s,x)=>s+(x.amount||0),0);
-        subTotEl.textContent='小計 NT$'+t.toLocaleString();
-        hd.querySelector('[style*="gold"]')?.textContent&&(hd.querySelectorAll('div')[2].textContent='NT$'+t.toLocaleString());
-      }
-      const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:1,unit:'式',unitPrice:0,amount:0});renderVCardItems();});
-      const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.textContent='小計 NT$'+(v.amount||0).toLocaleString();
-
-      // 儲存列
-      const saveBar=document.createElement('div');saveBar.style.cssText='padding:10px 16px;border-top:1px solid var(--g100);display:flex;gap:7px;background:var(--g50)';
-      const saveBtn=document.createElement('button');saveBtn.className='btn bg bsm';saveBtn.textContent='💾 儲存修改';
-      saveBtn.addEventListener('click',()=>{
-        const nv=document.getElementById('ve-vendor-'+v._id)?.value.trim()||v.vendor;
-        const nc=document.getElementById('ve-cat-'+v._id)?.value||v.cat;
-        const nn=document.getElementById('ve-note-'+v._id)?.value.trim()||'';
-        const nt=editItems.reduce((s,x)=>s+(x.amount||0),0);
-        DB.upd('vendors',v._id,{vendor:nv,cat:nc,note:nn,amount:nt,items:editItems.map(x=>({...x})),caseN:v.caseN,summary:'廠商報價 '+nv+' '+nc+' NT$'+nt.toLocaleString()});
-        renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已更新！');
-      });
-      const cancelBtn=document.createElement('button');cancelBtn.className='btn bo bsm';cancelBtn.textContent='取消';cancelBtn.addEventListener('click',()=>body.classList.remove('open'));
-      saveBar.appendChild(saveBtn);saveBar.appendChild(cancelBtn);
-
-      if(v.imgDataUrl){const iw=document.createElement('div');iw.style.cssText='padding:8px 16px;border-top:1px solid var(--g100);display:flex;gap:8px';const img=document.createElement('img');img.className='ith';img.src=v.imgDataUrl;img.style.cssText='width:80px;height:80px';img.addEventListener('click',()=>openLB(v.imgDataUrl));iw.appendChild(img);body.appendChild(iw);}
-
-      itemWrap.appendChild(itmHd);itemWrap.appendChild(itmBody);itemWrap.appendChild(addItmBtn);
-      body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(saveBar);
-      renderVCardItems();
-
-      hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
-      hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
-      hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
-      // 修正重點：卡片的 CSS 早就設了 cursor:pointer（滑鼠移上去會變成手指），
-      // 看起來整個卡片都能點，但點擊事件之前只綁在小小的「▾明細」按鈕上，點卡片其他地方完全沒反應，
-      // 跟看起來的樣子不一致。改成點整個卡片（除了付款/明細/刪除這三個按鈕本身）都能展開明細，
-      // 跟游標樣式給的視覺提示一致。
-      hd.addEventListener('click',()=>{
-        const open=body.classList.toggle('open');
-        hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';
-      });
-      card.appendChild(hd);card.appendChild(body);grpBody.appendChild(card);
+      grpBody.appendChild(buildVendorCard(v));
     });
 
     list.appendChild(grpHd);
@@ -887,6 +902,7 @@ function doPunch(){
             if(recs.length&&recs[0].lat===lat){
               DB.upd('punch_recs',recs[0]._id,{addr});
               renderPunchRec&&renderPunchRec();
+              if(typeof renderHRPanel==='function'&&document.getElementById('hrPunchList'))renderHRPanel();
             }
           }
         }catch(e){console.log('地址查詢失敗:',e.message);}
@@ -950,6 +966,14 @@ function renderHRPanel(){
         row.style.cssText='display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--rxs);margin-bottom:3px;background:var(--g50)';
         const nameLabel=r.userName||r.user||'員工';
         const roleLabel=r.user&&r.user.startsWith('emp_')?'個人帳號':({owner:'老闆',staff:'員工',punch:'公務'}[r.user]||r.user);
+        // 地址：優先顯示 Nominatim 查回來的中文地址（addr 不是「緯度,經度」格式的話），
+        // 查詢還沒回來或失敗時才退回顯示原始座標，兩種都沒有才顯示「無定位」。不用很準，能大概判斷打卡地點就好。
+        const looksLikeCoords=r.addr&&/^-?\d+(\.\d+)?,\s*-?\d+(\.\d+)?$/.test(r.addr);
+        const addrHtml=(r.addr&&!looksLikeCoords)
+          ? '<div style="font-size:.68rem;color:var(--g400);margin-top:2px;max-width:180px;text-align:right;line-height:1.4">📍 '+esc(r.addr)+'</div>'
+          : r.lat
+            ? '<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+r.lat+', '+r.lng+'</div>'
+            : '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>';
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+
@@ -960,8 +984,7 @@ function renderHRPanel(){
           '</div>'+
           '<div style="text-align:right">'+
             '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+r.time+'</div>'+
-            (r.lat?'<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+r.lat+', '+r.lng+'</div>':
-             '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>')+
+            addrHtml+
           '</div>';
         list.appendChild(row);
       });

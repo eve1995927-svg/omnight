@@ -420,15 +420,15 @@ function renderProjectCalendar(){
   const MAX_CHIPS=3; // 正方形格子放不下太多，超過用「+N 更多」收起來，跟 Google 日曆一樣
   cells.forEach(cell=>{
     const el=document.createElement('div');
-    el.className='pc-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
+    el.className='cal-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
     el.dataset.date=cell.dateStr;
     const dayProjects=byDate[cell.dateStr]||[];
-    el.innerHTML='<div class="pc-day-num">'+cell.dnum+'</div><div class="pc-day-chips"></div>';
-    const chipsWrap=el.querySelector('.pc-day-chips');
+    el.innerHTML='<div class="cal-day-num">'+cell.dnum+'</div><div class="cal-day-chips"></div>';
+    const chipsWrap=el.querySelector('.cal-day-chips');
     dayProjects.slice(0,MAX_CHIPS).forEach(p=>{
       const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
       const chip=document.createElement('div');
-      chip.className='pc-chip';
+      chip.className='cal-chip';
       chip.draggable=true;
       chip.dataset.id=p._id;
       chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
@@ -445,7 +445,7 @@ function renderProjectCalendar(){
     });
     if(dayProjects.length>MAX_CHIPS){
       const more=document.createElement('div');
-      more.className='pc-day-more';
+      more.className='cal-day-more';
       more.textContent='+'+(dayProjects.length-MAX_CHIPS)+' 更多';
       more.addEventListener('click',e=>{e.stopPropagation();showDayProjectsPopover(cell.dateStr,dayProjects);});
       chipsWrap.appendChild(more);
@@ -822,6 +822,9 @@ function renderProjectDetail(id, activeTab='overview'){
   // Tab 內容
   const content=document.getElementById('projDetailContent');
   if(!content) return;
+  content.dataset.projId=id;
+  content.dataset.tab=activeTab;
+
 
   switch(activeTab){
     case 'overview': renderProjOverview(id,p,content); break;
@@ -1079,16 +1082,15 @@ function renderProjVendors(id,p,c){
       </div>
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
-    ${vendors.length?vendors.map(v=>`
-      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="showProjVendorDetail(${v._id})">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-weight:700">${esc(v.vendor||'廠商')}</div>
-            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')}</div>
-          </div>
-          <div style="font-weight:900;color:var(--bad)">NT$${(v.amount||0).toLocaleString()}</div>
-        </div>
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>'}`;
+    <div id="projVendorCards"></div>`;
+  const wrap=c.querySelector('#projVendorCards');
+  if(!vendors.length){
+    wrap.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>';
+    return;
+  }
+  // 直接沿用「廠商報價整理」頁面同一套卡片（可展開看細項、改廠商名稱／類別／備注／工項、標記付款、刪除），
+  // 這樣不用切去別的頁面找那一筆廠商報價，在案場詳情裡就能直接編輯，操作起來順很多。
+  vendors.forEach(v=>wrap.appendChild(buildVendorCard(v)));
 }
 
 function showProjVendorDetail(vendorId){
@@ -1540,7 +1542,7 @@ function confirmVendorPay(){
 
   document.getElementById('_payBox')?.remove();
   showToast('✅ 已付款 NT$'+amt.toLocaleString()+'，並自動記入內帳');
-  if(typeof renderVendors==='function')renderVendors(vCurrentFilter);
+  if(typeof refreshVendorViews==='function')refreshVendorViews();
   if(typeof renderLedger==='function')renderLedger();
   if(typeof renderDashboard==='function')renderDashboard();
 }
