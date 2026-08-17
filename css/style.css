@@ -276,9 +276,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .pqs-toggle.open{transform:rotate(180deg)}
 .pqs-body{display:none;padding:0}
 .pqs-body.open{display:block;animation:slideUp .2s ease}
-.pqs-col-hd{display:grid;grid-template-columns:1fr 70px 80px 100px 90px 34px;gap:6px;padding:8px 16px;background:var(--g100);border-bottom:1px solid var(--g200)}
+.pqs-col-hd{display:grid;grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px;gap:6px;padding:8px 16px;background:var(--g100);border-bottom:1px solid var(--g200)}
 .pqs-col-hd span{font-size:.64rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em}
-.pqs-item{display:grid;grid-template-columns:1fr 70px 80px 100px 90px 34px;gap:6px;align-items:center;padding:5px 16px;border-bottom:1px solid var(--g100)}
+.pqs-item{display:grid;grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px;gap:6px;align-items:center;padding:5px 16px;border-bottom:1px solid var(--g100)}
 .pqs-item:last-child{border-bottom:none}
 .pqs-item input{padding:7px 10px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;color:var(--g800);background:transparent;outline:none;width:100%;transition:all var(--ease)}
 .pqs-item input:focus{border-color:var(--gold);background:var(--w);box-shadow:0 0 0 2px rgba(200,164,74,.12)}
@@ -482,16 +482,27 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
     padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
   .mtit{font-size:1rem}
 
-  /* ── 報價單 ── */
-  /* 修正重點：這裡原本只定義了7個欄位寬度，但雙價模式（成本單價+對客單價+對客小計+毛利）
-     實際上每一列有8個元素（工項名稱/單位/數量/成本單價/對客單價/對客小計/毛利/刪除），
-     少一格會讓最後兩個元素被擠進同一個欄位，數字跟刪除按鈕疊在一起看不清楚——
-     這就是手機上會看到毛利數字跟垃圾桶按鈕黏在一起的原因，先補滿8欄修正這個問題。
-     但8欄要塞進普通手機螢幕寬度，就算再怎麼縮，文字還是會小到看不清楚，所以額外讓這塊表格
-     可以「左右滑動」查看，欄位維持一個看得清楚的最小寬度，不要為了塞進螢幕犧牲可讀性。 */
-  .pqs-body{overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%}
-  .pqs-col-hd,.pqs-item{grid-template-columns:120px 40px 40px 68px 68px 72px 62px 30px!important;gap:4px!important;min-width:520px}
-  .pqs-col-hd.dual,.pqs-item.dual{grid-template-columns:120px 40px 40px 68px 68px 72px 62px 30px!important;gap:4px!important;min-width:520px}
+  /* ── 報價單（手機版）── */
+  /* 修正重點：原本試過「固定寬度+左右滑動」解決8欄位塞不進手機螢幕的問題，
+     但實測後發現外層的 .pqs 容器沒有限制寬度，會直接把整個區塊撐寬到跟內容一樣寬
+     （超過手機螢幕），滑動機制沒有真正生效，數字還是被硬塞進太窄的欄位。
+     改用「自然換行」：工項名稱自己一整行，單位/數量/成本/對客價四個小欄位一列，
+     對客小計/毛利兩個金額各自有夠寬的空間單獨一列，刪除鈕放最後。
+     這樣不管外層容器實際寬度多少，都不會重疊、也不用依賴左右滑動才能看到內容。 */
+  .pqs-col-hd{display:none!important}
+  .pqs-item,.pqs-item.dual{
+    display:flex!important;flex-wrap:wrap!important;gap:6px 8px!important;
+    padding:10px 14px!important;min-width:0!important;
+  }
+  .pqs-item>input:nth-child(1){flex:1 1 100%!important;order:1;font-weight:700}
+  .pqs-item>input:nth-child(2){flex:1 1 60px!important;order:2}
+  .pqs-item>input:nth-child(3){flex:1 1 60px!important;order:3}
+  .pqs-item>input:nth-child(4){flex:1 1 calc(50% - 30px)!important;order:4;min-width:100px}
+  .pqs-item>input:nth-child(5){flex:1 1 calc(50% - 30px)!important;order:5;min-width:100px}
+  .pqs-item>div:nth-child(6){flex:1 1 calc(50% - 4px)!important;order:6;font-size:.92rem!important;padding:6px 4px!important}
+  .pqs-item>div:nth-child(7){flex:1 1 calc(50% - 4px)!important;order:7;font-size:.85rem!important;padding:6px 4px!important}
+  .pqs-item>button:last-child{flex:0 0 auto!important;order:8;margin-left:auto}
+  .pqs-body{overflow-x:visible!important;width:auto!important}
 
   /* ── HR 薪資 Tab ── */
   .ledger-tab{flex-wrap:wrap;gap:4px}
@@ -649,10 +660,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 
 
 /* ── 雙價欄報價單 ── */
-.pqs-col-hd.dual{grid-template-columns:2fr 55px 65px 90px 90px 85px 75px 28px}
-.pqs-item.dual{grid-template-columns:2fr 55px 65px 90px 90px 85px 75px 28px}
-.pqs-col-hd{grid-template-columns:2fr 55px 65px 90px 90px 85px 75px 28px}
-.pqs-item{grid-template-columns:2fr 55px 65px 90px 90px 85px 75px 28px}
+.pqs-col-hd.dual{grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px}
+.pqs-item.dual{grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px}
+/* .pqs-col-hd / .pqs-item 基本欄位定義已合併到最上面那組，這裡不用再重複一次，避免以後又出現兩組衝突的定義 */
 .cost-val{font-family:monospace;font-size:.8rem;font-weight:700;color:var(--bad);text-align:right;padding:4px 2px}
 .sell-val{font-family:monospace;font-size:.8rem;font-weight:700;color:var(--ok);text-align:right;padding:4px 2px}
 .profit-bar{background:linear-gradient(135deg,var(--gold-pale),#FFF8E0);border:1.5px solid var(--gold-l);border-radius:var(--rs);padding:14px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
