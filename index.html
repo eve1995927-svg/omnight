@@ -656,6 +656,7 @@
   <div style="display:flex;gap:8px">
    <button class="btn bg bsm" onclick="openLedgerModal('in')">＋ 外帳收款</button>
    <button class="btn bo bsm" onclick="openLedgerModal('out')">＋ 內帳支出</button>
+   <button class="btn bo bsm" onclick="openRecurringExpenseModal()">🔁 每月固定支出</button>
   </div>
  </div>
 
@@ -1535,6 +1536,39 @@
   </div>
 
   <button class="btn bg bfull" id="addLedgerBtn" style="padding:14px;font-size:.95rem">💾 儲存記錄</button>
+ </div>
+</div>
+
+<!-- ══ 每月固定支出 MODAL ══ -->
+<div class="mov" id="recurringExpModal">
+ <div class="modal" style="max-width:520px">
+  <div class="mtit">🔁 每月固定支出 <button class="mcl" data-close="recurringExpModal">✕</button></div>
+  <div style="font-size:.78rem;color:var(--g400);margin-bottom:14px;line-height:1.6">房租、訂閱服務這類每月都要付的固定支出，設定一次，之後每個月會自動記一筆內帳支出，不用每個月手動再輸入一次。</div>
+
+  <div id="recurringExpList" style="margin-bottom:16px"></div>
+
+  <div style="background:var(--g50);border-radius:var(--rs);padding:14px;border:1.5px dashed var(--g200)">
+   <div style="font-size:.82rem;font-weight:800;color:var(--g600);margin-bottom:10px">➕ 新增固定支出</div>
+   <div class="field" style="margin-bottom:10px">
+    <label class="fl">項目名稱</label>
+    <input class="fi" id="recExpName" placeholder="例：辦公室房租">
+   </div>
+   <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+    <div class="field" style="margin:0">
+     <label class="fl">金額</label>
+     <input class="fi" id="recExpAmt" type="number" placeholder="35000">
+    </div>
+    <div class="field" style="margin:0">
+     <label class="fl">每月幾號自動記帳</label>
+     <input class="fi" id="recExpDay" type="number" min="1" max="28" placeholder="1" value="1">
+    </div>
+   </div>
+   <div class="field" style="margin-bottom:12px">
+    <label class="fl">支出分類</label>
+    <select class="fi" id="recExpCat"></select>
+   </div>
+   <button class="btn bg bfull" id="addRecurringExpBtn" style="padding:12px">💾 新增固定支出</button>
+  </div>
  </div>
 </div>
 
