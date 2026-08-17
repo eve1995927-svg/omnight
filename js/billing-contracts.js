@@ -109,7 +109,7 @@ const DEFAULT_CATS={
   quoteCat:['拆除工程','泥作工程','木作工程','水電工程','系統傢俱','油漆工程','燈具工程','衛浴工程'],
   vendorCat:['系統櫃','廚具','玻璃','水電','泥作','油漆','鐵件','其他'],
   incomeCat:['合約收款','訂金','工程款','尾款','設計費','其他收入'],
-  expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','其他支出'],
+  expenseCat:['材料費','工資','廠商費用','管理費','設備費','運費','房租','行銷支出','其他支出'],
 };
 // 帳本內：依「收入/支出」決定分類選項（內帳/外帳皆可記收入或支出）
 function getLedgerCats(type){
@@ -469,6 +469,97 @@ function setLedgerDir(dir){
   const catKey=dir==='in'?'incomeCat':'expenseCat';
   if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('ldCat'),catKey);
 }
+// ══ 每月固定支出（房租、訂閱服務這類）══════════════════════════
+// 設定一次，之後系統每次進帳款頁面都會檢查：這個月的固定支出，是不是已經自動記過帳了，
+// 沒有的話就自動補一筆內帳支出，不用每個月手動再輸入一次。用 recurringId 標記這筆帳款
+// 是從哪個固定支出項目自動產生的，同一個項目同一個月只會產生一筆，不會重複記帳。
+function openRecurringExpenseModal(){
+  renderRecurringExpList();
+  if(typeof buildCatSelectWithAdd==='function')buildCatSelectWithAdd(document.getElementById('recExpCat'),'expenseCat');
+  openModal('recurringExpModal');
+}
+
+function renderRecurringExpList(){
+  const list=document.getElementById('recurringExpList');if(!list)return;
+  const recs=DB.get('recurring_expenses');
+  if(!recs.length){list.innerHTML='<div style="font-size:.82rem;color:var(--g400);text-align:center;padding:12px 0">目前沒有設定任何固定支出</div>';return;}
+  list.innerHTML=recs.map(r=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border:1.5px solid ${r.active===false?'var(--g100)':'var(--g200)'};border-radius:var(--rs);margin-bottom:8px;${r.active===false?'opacity:.55':''}">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:.86rem">${esc(r.name)}${r.active===false?' <span style="font-size:.65rem;color:var(--g400);font-weight:400">（已暫停）</span>':''}</div>
+        <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(r.cat||'其他支出')} · 每月 ${r.day} 號自動記帳</div>
+      </div>
+      <div style="font-family:monospace;font-weight:800;color:var(--bad)">NT$${(r.amount||0).toLocaleString()}</div>
+      <button class="btn bo bxs" data-rtgl="${r._id}">${r.active===false?'▶ 啟用':'⏸ 暫停'}</button>
+      <button class="btn brd bxs" data-rdel="${r._id}">🗑</button>
+    </div>`).join('');
+  list.querySelectorAll('[data-rtgl]').forEach(btn=>{btn.addEventListener('click',()=>{
+    const r=DB.get('recurring_expenses').find(x=>x._id===parseInt(btn.dataset.rtgl));if(!r)return;
+    DB.upd('recurring_expenses',r._id,{active:r.active===false});
+    renderRecurringExpList();
+    showToast(r.active===false?'✅ 已啟用':'⏸ 已暫停，之後不會再自動記帳');
+  });});
+  list.querySelectorAll('[data-rdel]').forEach(btn=>{btn.addEventListener('click',()=>{
+    confirmAction('刪除這筆固定支出設定？已經記過的帳款不會被刪除，只是之後不會再自動產生新的。',()=>{
+      DB.del('recurring_expenses',parseInt(btn.dataset.rdel));
+      renderRecurringExpList();
+      showToast('✅ 已刪除');
+    });
+  });});
+}
+
+document.getElementById('addRecurringExpBtn')?.addEventListener('click',()=>{
+  const name=document.getElementById('recExpName').value.trim();
+  const amt=parseFloat(document.getElementById('recExpAmt').value)||0;
+  const day=Math.min(28,Math.max(1,parseInt(document.getElementById('recExpDay').value)||1));
+  const cat=document.getElementById('recExpCat').value;
+  if(!name){showToast('⚠️ 請填寫項目名稱');return;}
+  if(!amt){showToast('⚠️ 請填寫金額');return;}
+  DB.push('recurring_expenses',{name,amount:amt,day,cat,active:true});
+  document.getElementById('recExpName').value='';
+  document.getElementById('recExpAmt').value='';
+  renderRecurringExpList();
+  showToast('✅ 已新增，之後每月會自動記帳');
+  // 新增當下如果本月已經過了設定的日期，直接補記本月這一筆，不用等到下個月才生效
+  checkAndGenerateRecurringExpenses();
+});
+
+// 檢查所有啟用中的固定支出，本月該記的帳有沒有記過，沒有的話自動補一筆
+function checkAndGenerateRecurringExpenses(){
+  const recs=DB.get('recurring_expenses').filter(r=>r.active!==false);
+  if(!recs.length)return;
+  const now=new Date();
+  const monthKey=now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  const today=now.getDate();
+  const existingLedger=DB.get('ledger');
+  let generated=0;
+  recs.forEach(r=>{
+    if(today<r.day)return; // 還沒到這個月該記帳的日子
+    const alreadyDone=existingLedger.some(l=>l.recurringId===r._id&&(l.date||'').startsWith(monthKey));
+    if(alreadyDone)return;
+    DB.push('ledger',{book:'out',type:'out',amount:r.amount,cat:r.cat||'其他支出',desc:r.name+'（固定支出自動產生）',date:monthKey+'-'+String(r.day).padStart(2,'0'),recurringId:r._id,projectId:null,summary:r.name+' '+fmt(r.amount)});
+    generated++;
+  });
+  if(generated>0){
+    showToast('🔁 已自動產生 '+generated+' 筆本月固定支出記帳');
+    if(typeof renderLedger==='function')renderLedger();
+    if(typeof updLedgerStats==='function')updLedgerStats();
+  }
+}
+// 進到帳款總覽的時候順便檢查一次（放在這裡而不是頁面一載入就跑，
+// 避免員工角色沒有帳款權限的情況下，也在背景偷偷跑這個檢查）
+document.addEventListener('DOMContentLoaded',()=>{
+  const origShowPanel=window.showPanel;
+  if(typeof origShowPanel==='function'){
+    window.showPanel=function(id){
+      origShowPanel(id);
+      if(id==='ac-overview'&&typeof checkAndGenerateRecurringExpenses==='function'){
+        checkAndGenerateRecurringExpenses();
+      }
+    };
+  }
+});
+
 function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
@@ -726,10 +817,6 @@ function initAdQuote(){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
       const sub=calcAll(adSections);
-      // 修正重點：這裡有兩個問題一起修。①案場欄位存的是選單的「值」，也就是案場編號，
-      // 不是案場名稱，直接存進去 caseN 會變成一串數字。②不管是「新建報價單」還是「點編輯」進來的，
-      // 存檔一律用 DB.push 新增一筆，即使是編輯既有報價單，也會多存一筆新的、原本那筆沒有被更新，
-      // 等於「編輯」實際上在做的是「複製一份新的」，舊的那筆還在、內容卻沒被改到。
       const caseSelVal=document.getElementById('adCase')?.value||'';
       const selectedProject=caseSelVal?DB.get('projects').find(p=>String(p._id)===String(caseSelVal)):null;
       const caseNv=selectedProject?.name||'';
@@ -773,7 +860,7 @@ function initAdQuote(){
   if(adAddSecBtn&&!adAddSecBtn._bound){
     adAddSecBtn._bound=true;
     adAddSecBtn.addEventListener('click',()=>{
-      adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+      adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
       renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
     });
   }
@@ -810,7 +897,7 @@ function renderClientList(filter){
   const cnt=document.getElementById('clientCount');
   if(cnt)cnt.textContent=DB.get('clients').length+' 位客戶';
   if(!clients.length){
-    list.innerHTML='<div style="padding:20px 14px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">👤</div><div style="font-size:.82rem;color:var(--g400);font-weight:600">'+(filter?'找不到「'+filter+'」':'尚無客戶')+'</div>'+(filter?'':'<div style="font-size:.75rem;color:var(--g300);margin-top:4px">點上方按鈕新增</div>')+'</div>';
+    list.innerHTML='<div style="padding:20px 14px;text-align:center"><div style="font-size:1.5rem;margin-bottom:8px">👤</div><div style="font-size:.82rem;color:var(--g400);font-weight:600">'+(filter?'找不到「'+esc(filter)+'」':'尚無客戶')+'</div>'+(filter?'':'<div style="font-size:.75rem;color:var(--g300);margin-top:4px">點上方按鈕新增</div>')+'</div>';
     return;
   }
   list.innerHTML='';
@@ -819,13 +906,13 @@ function renderClientList(filter){
     const el=document.createElement('div');
     el.style.cssText='padding:12px 14px;cursor:pointer;border-bottom:1px solid var(--g100);transition:all var(--ease);position:relative;'+(isActive?'background:var(--gold-pale);border-left:3px solid var(--gold)':'border-left:3px solid transparent');
 
-    const initials=c.name.charAt(0);
+    const initials=esc(c.name.charAt(0));
     el.innerHTML=
       '<div style="display:flex;align-items:center;gap:9px">'+
         '<div style="width:32px;height:32px;border-radius:50%;background:'+(isActive?'linear-gradient(135deg,var(--gold-d),var(--gold))':'var(--g200)')+';color:'+(isActive?'var(--w)':'var(--g500)')+';font-size:.82rem;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all var(--ease)">'+initials+'</div>'+
         '<div style="flex:1;min-width:0">'+
-          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+c.name+'</div>'+
-          '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+(c.phone||'未填電話')+'</div>'+
+          '<div style="font-size:.88rem;font-weight:'+(isActive?'900':'700')+';color:'+(isActive?'var(--gold-d)':'var(--g700)')+';overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(c.name)+'</div>'+
+          '<div style="font-size:.7rem;color:var(--g400);margin-top:1px">'+esc(c.phone||'未填電話')+'</div>'+
         '</div>'+
       '</div>';
 
@@ -839,7 +926,10 @@ function renderClientList(filter){
     delBtn.addEventListener('click',e=>{
       e.stopPropagation();
       confirmAction('刪除客戶「'+c.name+'」及所有對話？此動作不可復原。',()=>{
-        const cs=DB.get('clients').filter(x=>x._id!==c._id);DB.set('clients',cs);
+        // 修正重點：這裡原本是「整包客戶清單抓出來、過濾掉這一個、整包寫回去」，
+        // 這種整包覆蓋的寫法，如果剛好另一台裝置同時也在寫入客戶資料，會互相蓋掉對方的異動、
+        // 資料無故消失（跟很早之前修過的「合約消失」是同一種病因）。改成只刪除這一筆，不會動到其他人剛好在異動的資料。
+        DB.del('clients',c._id);
         if(curClientId===c._id){curClientId=null;const chat=document.getElementById('cs-chat');if(chat)chat.innerHTML='';}
         renderClientList();showToast('✅ 已刪除客戶「'+c.name+'」');
       });
@@ -889,23 +979,46 @@ const RPTS={
   monthly:{
     t:'月度損益報表',
     b:()=>{
+      // 拆成三塊：①案場相關收支（帳款裡有連到案場的），②人事支出（從薪資管理抓），
+      // ③公司營運支出（帳款裡沒連案場的固定支出，像房租、水電雜支，依分類列出）。
       const all=DB.get('ledger');
+      const salaryRecs=DB.get('salary_records');
       const months=new Set();
       all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
+      salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
       const sm=[...months].sort().reverse().slice(0,12);
       if(!sm.length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
-      let tIn=0,tOut=0;
+
+      let grandProjectProfit=0,grandPersonnel=0,grandOpex=0;
       const rows=sm.map(month=>{
         const it=all.filter(r=>(r.date||'').startsWith(month));
-        const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
-        const outOut=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-        const profit=inIn-outOut;const rate=inIn>0?Math.round(profit/inIn*100):0;
-        tIn+=inIn;tOut+=outOut;
+        const projIt=it.filter(r=>r.projectId);
+        const projIn=projIt.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+        const projOut=projIt.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
+        const projProfit=projIn-projOut;
+        const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
+        const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
+        const opexIt=it.filter(r=>!r.projectId&&getLedgerBook(r)==='out'&&r.type==='out');
+        const opexByCat={};
+        opexIt.forEach(r=>{const c=r.cat||'其他支出';opexByCat[c]=(opexByCat[c]||0)+(r.amount||0);});
+        const opexTotal=opexIt.reduce((s,r)=>s+(r.amount||0),0);
+        const opexDetail=Object.entries(opexByCat).sort((a,b)=>b[1]-a[1]).map(([c,amt])=>c+' NT$'+amt.toLocaleString()).join('、')||'—';
+
+        const netProfit=projProfit-personnel-opexTotal;
+        grandProjectProfit+=projProfit;grandPersonnel+=personnel;grandOpex+=opexTotal;
         const [y,m]=month.split('-');
-        return `<tr><td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${inIn?'NT$'+inIn.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${outOut?'NT$'+outOut.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${inIn?rate+'%':'—'}</td></tr>`;
+        return `<tr>
+          <td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td>
+          <td style="padding:8px 12px;text-align:right;color:${projProfit>=0?'var(--ok)':'var(--bad)'}">NT$${projProfit.toLocaleString()}</td>
+          <td style="padding:8px 12px;text-align:right;color:var(--bad)">${personnel?'NT$'+personnel.toLocaleString():'—'}</td>
+          <td style="padding:8px 12px;text-align:right;color:var(--bad)" title="${esc(opexDetail)}">${opexTotal?'NT$'+opexTotal.toLocaleString():'—'}</td>
+          <td style="padding:8px 12px;text-align:right;font-weight:800;color:${netProfit>=0?'var(--ok)':'var(--bad)'}">NT$${netProfit.toLocaleString()}</td>
+        </tr>
+        <tr><td colspan="5" style="padding:0 12px 8px;font-size:.72rem;color:var(--g400)">${opexTotal?'營運支出明細：'+esc(opexDetail):''}</td></tr>`;
       }).join('');
-      const tp=tIn-tOut;
-      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">外帳收入</th><th style="padding:8px 12px;text-align:right">內帳支出</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:var(--ok)">NT$${tIn.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${tOut.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${tp>=0?'var(--ok)':'var(--bad)'}">NT$${tp.toLocaleString()}</td><td style="padding:10px 12px;text-align:right">${tIn?Math.round(tp/tIn*100)+'%':'—'}</td></tr></tfoot></table>`;
+      const grandNet=grandProjectProfit-grandPersonnel-grandOpex;
+      return `<div style="font-size:.76rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 案場淨利＝有連到案場的收入減支出；人事支出抓自「薪資管理」；營運支出＝沒連案場的一般記帳（房租、水電、雜支等固定支出），滑鼠移到金額上可看分類明細。房租這類每月固定支出，記帳的時候選「支出分類：房租」即可自動歸類進來。</div>
+      <table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">案場淨利</th><th style="padding:8px 12px;text-align:right">人事支出</th><th style="padding:8px 12px;text-align:right">營運支出</th><th style="padding:8px 12px;text-align:right">公司淨利</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:${grandProjectProfit>=0?'var(--ok)':'var(--bad)'}">NT$${grandProjectProfit.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandPersonnel.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandOpex.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${grandNet>=0?'var(--ok)':'var(--bad)'}">NT$${grandNet.toLocaleString()}</td></tr></tfoot></table>`;
     }
   },
   profit:{
@@ -936,7 +1049,7 @@ const RPTS={
       const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
       const rows=vendors.map(v=>{
         const proj=v.projectId?projects.find(p=>p._id==v.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('vendors',${v._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記付款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記「${esc(v.vendor||'這筆').replace(/'/g,"\\'")}」已付款嗎？',()=>{DB.upd('vendors',${v._id},{paid:true});row.remove();showToast('✅ 已標記付款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
@@ -950,7 +1063,7 @@ const RPTS={
       const total=ledger.reduce((s,l)=>s+(l.amount||0),0);
       const rows=ledger.map(l=>{
         const proj=l.projectId?projects.find(p=>p._id==l.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="DB.upd('ledger',${l._id},{paid:true});this.closest('tr').remove();showToast('✅ 已標記收款')" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(l.desc||l.cat||'未填')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(l.caseN||'—')}</td><td style="padding:8px 12px">${l.date||'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--ok);font-weight:700">NT$${(l.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記這筆已收款嗎？',()=>{DB.upd('ledger',${l._id},{paid:true});row.remove();showToast('✅ 已標記收款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記收款</button></td></tr>`;
       }).join('');
       return `<div style="font-size:.82rem;color:var(--ok);font-weight:800;margin-bottom:12px">應收總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">說明</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:left">日期</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
     }

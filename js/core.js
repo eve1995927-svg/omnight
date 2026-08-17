@@ -1,7 +1,7 @@
 
 
 // ══ 全域變數宣告 ════════════
-let ctImgUrl=null, ctEditId=null, ieId=null;
+let ctImgUrl=null, ctEditId=null, ieId=null, qEditId=null;
 let qfImgUrl=[]; // 報價單檔案上傳（案場總覽 → 報價分頁 → 上傳報價單檔案）
 let svImgUrl=[]; // 丈量記錄照片上傳
 let dfImgUrl=[]; // 設計圖／渲染圖上傳
@@ -37,23 +37,19 @@ const ACCTS={
 };
 const GROUPS={
   owner:[
-    {l:'主頁',       items:[{id:'owner-dash',l:'今日總覽',ic:'📊'},{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'}]},
-    {l:'報價與合約', items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
-    {l:'廠商與進度', items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
-    {l:'會計',       items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
-    {l:'人資',       items:[{id:'hr-settings',l:'人資管理',ic:'👥'}]},
-    {l:'系統',       items:[{id:'settings',l:'系統設定',ic:'⚙️'}]},
+    {l:'儀表板',   items:[{id:'owner-dash',l:'今日總覽',ic:'📊'}]},
+    {l:'案場',     items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'業務',     items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'工程',     items:[{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
+    {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
+    {l:'管理',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'},{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
-  // 員工可用的模組全集：實際登入時會依照 getEmployeePermissions() 過濾，只顯示老闆開放的部分
-  // 每個分組標記 _perm，對應人資管理裡的權限開關 key
   staff:[
-    {l:'案場',       _perm:'projects', items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'客服行銷',   _perm:'marketing',items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'}]},
-    {l:'報價與合約', _perm:'quote',    items:[{id:'ad-quote',l:'報價管理',ic:'📋'},{id:'contract',l:'合約管理',ic:'📝'}]},
-    {l:'廠商與進度', _perm:'vendor',   items:[{id:'ad-vendor',l:'廠商報價',ic:'🏗️'},{id:'ad-progress',l:'工程進度',ic:'🔧'}]},
-    {l:'會計',       _perm:'accounting',items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
-    {l:'系統',       _perm:'settings', items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
+    {l:'案場',   _perm:'projects',   items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
+    {l:'業務',   _perm:'business',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'工程',   _perm:'vendor',     items:[{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
+    {l:'會計',   _perm:'accounting', items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
+    {l:'管理',   _perm:'settings',   items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
   punch:[
     {l:'打卡',    items:[{id:'punch-clock',l:'上下班打卡',ic:'🕐'}]},
@@ -66,7 +62,14 @@ const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
-const DEFAULT_STAFF_PERMISSIONS={projects:true,marketing:true,quote:true,vendor:true,accounting:false,settings:false};
+const DEFAULT_STAFF_PERMISSIONS={projects:true,business:true,vendor:true,accounting:false,settings:false};
+function migrateEmployeePermissions(perms){
+  if(!perms)return perms;
+  if(perms.business===undefined&&(perms.marketing!==undefined||perms.quote!==undefined)){
+    return {...perms,business:!!(perms.marketing||perms.quote)};
+  }
+  return perms;
+}
 
 // ── 案場選擇器：把「案場名稱」欄位從自由輸入改成從既有案場挑選 ──────────
 // 目的：自由輸入常常打法不一致（「民有十三街」跟「民有13街」變成兩個不同案場），
@@ -130,18 +133,21 @@ function getEmployeePermissions(){
   // 用共用「員工」帳號登入（沒有指定個人身份）：維持過去的預設行為，開放常用模組，會計/系統設定不開放
   if(!_punchEmployee) return DEFAULT_STAFF_PERMISSIONS;
   // 個人帳號登入：套用老闆在人資管理設定的權限，沒設定過的員工使用預設值
-  return {...DEFAULT_STAFF_PERMISSIONS, ...(_punchEmployee.permissions||{})};
+  return {...DEFAULT_STAFF_PERMISSIONS, ...migrateEmployeePermissions(_punchEmployee.permissions||{})};
 }
 
-// 依權限過濾 GROUPS.staff，只回傳老闆有開放的分組
+// 依權限過濾 GROUPS.staff：沒開放的分組不是直接濾掉不見，而是標記成鎖住（灰階＋鎖頭顯示）
 function getFilteredStaffGroups(){
   const perms=getEmployeePermissions();
-  return GROUPS.staff.filter(g=>!g._perm||perms[g._perm]);
+  return GROUPS.staff.map(g=>({...g,_locked:!!(g._perm&&!perms[g._perm])}));
+}
+function getUnlockedStaffGroups(){
+  return getFilteredStaffGroups().filter(g=>!g._locked);
 }
 
-// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾）
+// 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾，只回傳有開放的）
 function groupsFor(role){
-  return role==='staff' ? getFilteredStaffGroups() : (GROUPS[role]||[]);
+  return role==='staff' ? getUnlockedStaffGroups() : (GROUPS[role]||[]);
 }
 // ══ 公司資料設定（多租戶核心：換公司只要改這裡）═══════════════
 // 賣給新客戶時，這是唯一需要調整品牌/業務資料的地方（Firebase 專案設定另見文件說明）
@@ -359,7 +365,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','memos'];
+               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','memos','recurring_expenses'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -949,6 +955,7 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
     accEl.value='';
   }
   // 員工/公務角色：顯示員工姓名選單（不用打字，直接選是誰）
+  // 打卡一律要選自己的名字才能打，不能再用共用帳號跳過
   const empSelEl=document.getElementById('lEmpSelect');
   if(empSelEl){
     const needAcc=(curRole==='punch'||curRole==='staff');
@@ -958,8 +965,12 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
       const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
-      empSelEl.innerHTML='<option value="">共用帳號（不指定個人）</option>'+
-        withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+      if(withAccount.length){
+        empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
+          withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+      } else {
+        empSelEl.innerHTML='<option value="">尚無員工帳號，請聯絡老闆設定</option>';
+      }
       empSelEl.style.display='block';
     } else {
       empSelEl.style.display='none';
@@ -967,6 +978,38 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
     }
   }
 });
+
+// 修正重點：登入畫面上「選自己的名字」那個下拉選單，資料是讀這台裝置上次登入時
+// 存下來的本機快取——如果這台裝置從來沒有成功登入同步過，本機快取是空的，
+// 新增過的員工帳號完全不會出現在選單裡。這裡在登入畫面一打開的時候，
+// 就先偷偷用匿名身份跟雲端要一份最新的員工清單，拿到就直接更新選單。
+async function silentRefreshEmployeesForLogin(){
+  try{
+    if(typeof initFirebase!=='function'||!initFirebase())return;
+    const authOk=await _ensureFirebaseAuth();
+    if(!authOk||!_fbDB)return;
+    const snap=await Promise.race([
+      _fbDB.ref('zeju_data/employees').once('value'),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),6000)),
+    ]);
+    const data=snap.val()||{};
+    const arr=Object.values(data);
+    localStorage.setItem('z7_employees',JSON.stringify(arr));
+    const empSelEl=document.getElementById('lEmpSelect');
+    if(empSelEl&&empSelEl.style.display!=='none'){
+      const withAccount=arr.filter(e=>e&&e.account&&!e.deleted);
+      const curVal=empSelEl.value;
+      empSelEl.innerHTML=withAccount.length
+        ?'<option value="">請選擇你的名字…</option>'+withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('')
+        :'<option value="">尚無員工帳號，請聯絡老闆設定</option>';
+      if(curVal)empSelEl.value=curVal;
+    }
+  }catch(e){
+    console.log('登入畫面背景更新員工清單失敗（不影響正常登入）：',e.message);
+  }
+}
+window.addEventListener('DOMContentLoaded',()=>{silentRefreshEmployeesForLogin();});
+
 document.getElementById('lBtn').addEventListener('click',doLogin);
 document.getElementById('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin();});
 let _punchEmployee=null; // 個人打卡帳號登入時，記錄對應員工資料
@@ -1010,9 +1053,6 @@ function doLogin(){
 
   _punchEmployee=null;
 
-  // 共用帳號密碼對照（員工/公務維持共用密碼，方便好記）
-  const SHARED_PW={staff:'zeju',punch:'zeju1'};
-
   // 查員工個人帳號（staff 和 punch 都可以用個人帳號）
   function findEmployee(acc, pw){
     let empList=[];
@@ -1046,11 +1086,8 @@ function doLogin(){
     }
     _punchEmployee=emp;
   } else {
-    // 共用帳號登入（員工／公務）
-    const correctPw=SHARED_PW[curRole];
-    if(!correctPw||p!==correctPw){
-      err.style.display='block'; err.textContent='密碼不正確，請重新輸入'; return;
-    }
+    // 打卡一律要選自己的名字才能打，不能再用共用密碼登入
+    err.style.display='block'; err.textContent='請選擇你的名字才能打卡'; return;
   }
   err.style.display='none';
   // 儲存登入狀態
@@ -1229,9 +1266,19 @@ function buildTabs(role){
   }
 
   // 電腦版：維持原本「每個分組一個 Tab，點了展開到第一個功能」的邏輯
-  grps.forEach(grp=>{
+  // 員工被關掉的模組，這裡改成還是顯示這個分頁（灰階＋鎖頭），點下去清楚告訴他要找老闆開權限
+  const tabGrps=role==='staff'?getFilteredStaffGroups():grps;
+  tabGrps.forEach(grp=>{
     const b=document.createElement('button');
     b.className='rtab';b.dataset.grp=grp.l;
+    if(grp._locked){
+      b.style.cssText='opacity:.45;cursor:not-allowed';
+      b.textContent='🔒 '+grp.l;
+      b.title='此功能尚未開放，請洽老闆開通權限';
+      b.addEventListener('click',()=>showToast('🔒 「'+grp.l+'」尚未開放給你，請洽老闆開通權限'));
+      tabs.appendChild(b);
+      return;
+    }
     b.textContent=grp.l;
     b.addEventListener('click',()=>{
       showPanel(grp.items[0].id);
@@ -1242,8 +1289,9 @@ function buildTabs(role){
     });
     tabs.appendChild(b);
   });
-  // 預設選第一個
-  if(tabs.firstChild)tabs.firstChild.classList.add('on');
+  // 預設選第一個（跳過鎖住的）
+  const firstUnlocked=Array.from(tabs.children).find(el=>!el.title);
+  if(firstUnlocked)firstUnlocked.classList.add('on');
 }
 function syncTabActive(panelId){
   if(isMobileView()){

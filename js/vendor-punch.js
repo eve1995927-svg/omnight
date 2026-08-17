@@ -185,21 +185,23 @@ function renderVItems(){
     empty.textContent='尚無細項 — 點下方「＋ 新增細項」';
     c.appendChild(empty);return;
   }
-  // 表頭：工項名稱 | 數量 | 單位 | 單價 | 小計 | 刪
+  // 表頭：工項名稱 | 數量 | 單位 | 單價 | 稅別 | 小計 | 備注 | 刪
   const hd=document.createElement('div');
-  hd.style.cssText='display:grid;grid-template-columns:2fr 55px 50px 90px 90px 36px;padding:6px 14px;background:var(--g100);border-bottom:1px solid var(--g200);font-size:.7rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.04em';
+  hd.style.cssText='display:grid;grid-template-columns:1.6fr 46px 42px 76px 68px 76px 1fr 32px;padding:6px 12px;background:var(--g100);border-bottom:1px solid var(--g200);font-size:.68rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.03em;gap:4px';
   hd.innerHTML=
     '<span>工項名稱</span>'+
     '<span style="text-align:center">數量</span>'+
     '<span style="text-align:center">單位</span>'+
     '<span style="text-align:right">單價</span>'+
+    '<span style="text-align:center">稅別</span>'+
     '<span style="text-align:right">小計</span>'+
+    '<span>備注</span>'+
     '<span></span>';
   c.appendChild(hd);
 
   vItems.forEach((it,i)=>{
     const row=document.createElement('div');
-    row.style.cssText='display:grid;grid-template-columns:2fr 55px 50px 90px 90px 36px;padding:7px 14px;border-bottom:1px solid var(--g100);align-items:center;gap:4px;transition:background var(--ease)';
+    row.style.cssText='display:grid;grid-template-columns:1.6fr 46px 42px 76px 68px 76px 1fr 32px;padding:7px 12px;border-bottom:1px solid var(--g100);align-items:center;gap:4px;transition:background var(--ease)';
     row.onmouseenter=()=>row.style.background='var(--g50)';
     row.onmouseleave=()=>row.style.background='';
 
@@ -219,13 +221,11 @@ function renderVItems(){
 
     // 數量（純數字）
     const qNum=mkInp('number','center');qNum.placeholder='1';qNum.min=0;qNum.step='any';
-    // 解析現有 qty 裡的數字部分
     const existQNum=parseFloat((it.qty||'1').toString().replace(/[^\d.]/g,''))||1;
     qNum.value=existQNum;
 
     // 單位
     const qUnit=mkInp('text','center');qUnit.placeholder='式';
-    // 解析現有 qty 裡的文字部分
     const existUnit=(it.qty||'1式').toString().replace(/[\d.]/g,'').trim()||'式';
     qUnit.value=it.unit||existUnit;
 
@@ -233,6 +233,17 @@ function renderVItems(){
     const uPrice=mkInp('number','right');uPrice.placeholder='單價';uPrice.min=0;
     uPrice.style.color='#1E7A58';uPrice.style.fontFamily='monospace';uPrice.style.fontWeight='700';
     uPrice.value=it.unitPrice||( it.amount&&existQNum?Math.round(it.amount/existQNum):0);
+
+    // 稅別：每個工項各自切換，含稅／無發票（算成本不用另外加）或未稅（算成本時自動加5%）
+    const taxBtn=document.createElement('button');
+    const setTaxBtnStyle=()=>{
+      const isExcl=it.taxType==='excl';
+      taxBtn.style.cssText='padding:4px 2px;border-radius:var(--rxs);font-size:.68rem;font-weight:800;cursor:pointer;border:1.5px solid '+(isExcl?'var(--warn-bd,#E8CE8E)':'var(--g200)')+';background:'+(isExcl?'var(--warn-bg,#FFF3D6)':'var(--w)')+';color:'+(isExcl?'#8A6D1E':'var(--g500)')+';width:100%';
+      taxBtn.textContent=isExcl?'未稅':'含稅';
+      taxBtn.title=isExcl?'未稅：算成本時會自動加5%':'含稅／無發票：報價金額就是實際成本';
+    };
+    setTaxBtnStyle();
+    taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();});
 
     // 小計（自動計算，唯讀）
     const subEl=document.createElement('div');
@@ -242,7 +253,7 @@ function renderVItems(){
       const qty=parseFloat(qNum.value)||0;
       const unit_=qUnit.value.trim()||'式';
       const up=parseFloat(uPrice.value)||0;
-      it.qty=qty?qty+unit_:'1'+unit_; // 合併存回
+      it.qty=qty?qty+unit_:'1'+unit_;
       it.unit=unit_;
       it.unitPrice=up;
       it.amount=Math.round(up*qty)||0;
@@ -252,10 +263,14 @@ function renderVItems(){
     qNum.addEventListener('input',recalc);
     qUnit.addEventListener('input',recalc);
     uPrice.addEventListener('input',recalc);
-    // 初始顯示
     const initQty=parseFloat(qNum.value)||1;
     const initUp=parseFloat(uPrice.value)||0;
     subEl.textContent='NT$'+Math.round(initUp*initQty).toLocaleString();
+
+    // 備注
+    const noteInp=mkInp('text','left');noteInp.placeholder='備注';noteInp.style.fontSize='.8rem';
+    noteInp.value=it.note||'';
+    noteInp.addEventListener('input',()=>{it.note=noteInp.value;});
 
     // 刪除
     const del=document.createElement('button');
@@ -264,10 +279,7 @@ function renderVItems(){
     del.onclick=()=>{vItems.splice(i,1);renderVItems();updVTotal();};
 
     row.appendChild(n);row.appendChild(qNum);row.appendChild(qUnit);
-    const noteInp=mkInp('text','left');noteInp.placeholder='備注';noteInp.style.fontSize='.8rem';
-    noteInp.value=it.note||'';
-    noteInp.addEventListener('input',()=>{it.note=noteInp.value;});
-    row.appendChild(uPrice);row.appendChild(subEl);row.appendChild(noteInp);row.appendChild(del);
+    row.appendChild(uPrice);row.appendChild(taxBtn);row.appendChild(subEl);row.appendChild(noteInp);row.appendChild(del);
     c.appendChild(row);
   });
 
@@ -304,7 +316,7 @@ document.getElementById('addVBtn')?.addEventListener('click',()=>{
   curProjectId=parseInt(pid);
   const total=vItems.reduce((s,it)=>s+(it.amount||0),0);
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
-  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||''})),imgDataUrl:imgUrl});
+  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||'',taxType:it.taxType||'incl'})),imgDataUrl:imgUrl});
   closeModal('vModal');renderVendors(vCurrentFilter);updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
 });
 
@@ -529,8 +541,8 @@ function renderVendors(filter){
       // 細項表格
       const itemWrap=document.createElement('div');
       const itmHd=document.createElement('div');
-      itmHd.style.cssText='display:grid;grid-template-columns:2fr 50px 45px 80px 85px 32px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
-      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400)">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">小計</span><span></span>';
+      itmHd.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
+      itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400)">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">稅別</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">小計</span><span></span>';
       const itmBody=document.createElement('div');itmBody.id='vi-body-'+v._id;
 
       function renderVCardItems(){
@@ -538,7 +550,7 @@ function renderVendors(filter){
         if(!editItems.length){const em=document.createElement('div');em.style.cssText='padding:10px 16px;font-size:.82rem;color:var(--g400)';em.textContent='無細項';itmBody.appendChild(em);return;}
         editItems.forEach((it,i)=>{
           const row=document.createElement('div');
-          row.style.cssText='display:grid;grid-template-columns:2fr 50px 45px 80px 85px 32px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
+          row.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
           const IS='padding:5px 6px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';
           const mkF=el=>{el.addEventListener('focus',()=>el.style.borderColor='var(--gold)');el.addEventListener('blur',()=>el.style.borderColor='transparent');};
 
@@ -554,6 +566,17 @@ function renderVendors(filter){
 
           const a=document.createElement('input');a.type='number';a.style.cssText=IS+'text-align:right;font-family:monospace;font-weight:700';a.value=it.amount||0;mkF(a);
 
+          // 稅別：跟新增報價單那邊同一套，每個工項各自切換
+          const taxBtn=document.createElement('button');
+          const setTaxBtnStyle=()=>{
+            const isExcl=it.taxType==='excl';
+            taxBtn.style.cssText='padding:3px 2px;border-radius:var(--rxs);font-size:.62rem;font-weight:800;cursor:pointer;border:1.5px solid '+(isExcl?'var(--warn-bd,#E8CE8E)':'var(--g200)')+';background:'+(isExcl?'var(--warn-bg,#FFF3D6)':'var(--w)')+';color:'+(isExcl?'#8A6D1E':'var(--g500)')+';width:100%';
+            taxBtn.textContent=isExcl?'未稅':'含稅';
+            taxBtn.title=isExcl?'未稅：算成本時會自動加5%':'含稅／無發票：報價金額就是實際成本';
+          };
+          setTaxBtnStyle();
+          taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();});
+
           function recalc(){
             const qv=parseFloat(q.value)||1, upv=parseFloat(up.value)||0;
             it.unitPrice=upv;it.qty=qv+(u.value||'式');it.unit=u.value||'式';
@@ -565,7 +588,6 @@ function renderVendors(filter){
           up.addEventListener('input',recalc);
           u.addEventListener('input',()=>{it.unit=u.value;it.qty=(parseFloat(q.value)||1)+(u.value||'式');});
           a.addEventListener('input',()=>{
-            // 手動覆寫小計：反推單價
             it.amount=parseFloat(a.value)||0;
             const qv=parseFloat(q.value)||1;
             it.unitPrice=qv?Math.round(it.amount/qv):it.amount;
@@ -575,7 +597,7 @@ function renderVendors(filter){
           mkF(q);
 
           const del=document.createElement('button');del.style.cssText='width:26px;height:26px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);cursor:pointer;font-size:.75rem;display:flex;align-items:center;justify-content:center';del.textContent='🗑';del.addEventListener('click',()=>{editItems.splice(i,1);renderVCardItems();updVCardTotal();});
-          row.appendChild(n);row.appendChild(q);row.appendChild(u);row.appendChild(up);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
+          row.appendChild(n);row.appendChild(q);row.appendChild(u);row.appendChild(up);row.appendChild(taxBtn);row.appendChild(a);row.appendChild(del);itmBody.appendChild(row);
         });
       }
       function updVCardTotal(){
@@ -689,8 +711,22 @@ function updatePunchGeoCard(){
   if(!proj||proj.lat==null||proj.lng==null){
     card.style.display='block';
     document.getElementById('punchDistVal').textContent='尚無座標';
-    document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場還沒有地址座標，請請老闆到案場總覽補上地址</span>';
-    document.getElementById('punchAccuracyVal').textContent='';
+    if(proj&&proj.address){
+      document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場有地址，但座標查詢還沒成功</span>';
+      const accEl=document.getElementById('punchAccuracyVal');
+      if(accEl){
+        accEl.innerHTML='<button class="btn bo bxs" id="punchRetryGeo" style="margin-top:6px">📍 立即查詢座標</button>';
+        document.getElementById('punchRetryGeo')?.addEventListener('click',async(ev)=>{
+          ev.target.textContent='查詢中…';ev.target.disabled=true;
+          await geocodeProjectAddress(proj._id,proj.address);
+          updatePunchGeoCard();
+          showToast('✅ 已重新查詢，若還是沒有座標，可能是地址格式問題，麻煩到案場總覽確認地址');
+        });
+      }
+    }else{
+      document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場還沒有地址，請老闆到案場總覽補上地址</span>';
+      const accEl=document.getElementById('punchAccuracyVal');if(accEl)accEl.textContent='';
+    }
     return;
   }
   const dist=haversineDist(punchCurPos.lat,punchCurPos.lng,proj.lat,proj.lng);

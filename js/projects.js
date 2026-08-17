@@ -846,7 +846,7 @@ function renderProjOverview(id,p,c){
   // 一筆錢被算了兩次：一次是「廠商報價本身」，一次是「付款時自動產生的內帳支出」。
   // 這裡改成內帳支出只算「跟廠商付款無關」的那些（沒有 vendorId 標記的），廠商的錢統一只透過 vendorCost 算一次。
   const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
-  const vendorCost=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  const vendorCost=vendors.reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
   const st=PROJECT_STATUS[p.status||'inquiry'];
 
@@ -854,7 +854,7 @@ function renderProjOverview(id,p,c){
     <div class="g3" style="margin-bottom:20px">
       <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">客戶收款</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${(cost+vendorCost)?'NT$'+(cost+vendorCost).toLocaleString():'NT$0'}</div><div class="sl">工程成本</div></div>
-      <div class="stat"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${(profit>=0?'+':'')}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利</div></div>
+      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
       ${[
@@ -1080,15 +1080,131 @@ function renderProjVendors(id,p,c){
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
     ${vendors.length?vendors.map(v=>`
-      <div class="card" style="margin-bottom:8px">
+      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="showProjVendorDetail(${v._id})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:700">${esc(v.vendor||'廠商')}</div>
-            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')} ${v.caseN?' · '+esc(v.caseN):''}</div>
+            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')}</div>
           </div>
           <div style="font-weight:900;color:var(--bad)">NT$${(v.amount||0).toLocaleString()}</div>
         </div>
       </div>`).join(''):'<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>'}`;
+}
+
+function showProjVendorDetail(vendorId){
+  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const items=v.items||[];
+  const itemRows=items.length
+    ? items.map(it=>'<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:.85rem;border-top:1px dashed var(--g100)">'+
+        '<span style="color:var(--g600)">'+esc(it.name||'（未命名）')+(it.taxType==='excl'?' <span style="font-size:.65rem;color:#8A6D1E">（未稅）</span>':'')+'</span>'+
+        '<span style="font-family:monospace;color:var(--g600)">NT$'+(it.amount||0).toLocaleString()+'</span>'+
+      '</div>').join('')
+    : '<div style="padding:8px 0;font-size:.82rem;color:var(--g400)">這筆沒有拆細項，只有總價</div>';
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:420px">'+
+    '<div class="mtit">'+esc(v.vendor||'廠商')+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin-bottom:10px">'+esc(v.cat||'')+'</div>'+
+    '<div style="background:var(--gold-pale);border-radius:var(--rs);padding:10px 14px;margin-bottom:12px;text-align:center">'+
+      '<div style="font-size:.7rem;color:var(--gold-d);font-weight:800">報價總額</div>'+
+      '<div style="font-family:monospace;font-weight:900;font-size:1.15rem;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+    '</div>'+
+    '<div style="max-height:40vh;overflow-y:auto">'+itemRows+'</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+}
+
+function showProjProfitDetail(projectId){
+  const items=DB.get('ledger').filter(l=>l.projectId===projectId);
+  const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
+  const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
+  const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
+  const income=incomeItems.reduce((s,l)=>s+(l.amount||0),0);
+  const cost=costItems.reduce((s,l)=>s+(l.amount||0),0);
+  const vendorCost=vendorList.reduce((s,v)=>s+getVendorTrueCost(v),0);
+  const profit=income-cost-vendorCost;
+
+  const section=(title,rows,total,color)=>{
+    const rowsHtml=rows.length
+      ? rows.map(r=>'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.82rem;border-top:1px dashed var(--g100)"><span style="color:var(--g600)">'+esc(r.name)+'</span><span style="font-family:monospace;color:var(--g600)">'+(r.amount||0).toLocaleString()+'</span></div>').join('')
+      : '<div style="padding:6px 0;font-size:.8rem;color:var(--g400)">沒有記錄</div>';
+    return '<div style="margin-bottom:14px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'+
+        '<span style="font-size:.85rem;font-weight:800;color:'+color+'">'+title+'</span>'+
+        '<span style="font-family:monospace;font-weight:800;color:'+color+'">NT$'+total.toLocaleString()+'</span>'+
+      '</div>'+rowsHtml+'</div>';
+  };
+
+  const vendorByCat={};
+  vendorList.forEach(v=>{
+    const k=v.cat||'其他';
+    vendorByCat[k]=(vendorByCat[k]||0)+getVendorTrueCost(v);
+  });
+  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
+  const clientByCat={};
+  quotes.forEach(q=>{
+    (q.sections||[]).forEach(sec=>{
+      const secTotal=typeof calcSec==='function'?calcSec(sec.items||[]):(sec.items||[]).reduce((s,it)=>s+((it.qty||0)*(it.price||0)),0);
+      const k=sec.name||'其他';
+      clientByCat[k]=(clientByCat[k]||0)+secTotal;
+    });
+  });
+  const allCats=[...new Set([...Object.keys(vendorByCat),...Object.keys(clientByCat)])];
+  const catRows=allCats.map(cat=>{
+    const vc=vendorByCat[cat]||0;
+    const cc=clientByCat[cat]||0;
+    return {cat,vc,cc,cp:cc-vc};
+  }).sort((a,b)=>b.vc-a.vc);
+  const catTotal=catRows.reduce((s,r)=>s+r.cp,0);
+
+  const catTableHtml=catRows.length?'<table style="width:100%;border-collapse:collapse;font-size:.82rem">'+
+    '<thead><tr style="border-bottom:1.5px solid var(--g200)"><th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">類別</th><th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商成本</th><th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">報價單分配</th><th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">毛利</th></tr></thead>'+
+    '<tbody>'+catRows.map(r=>'<tr style="border-bottom:1px dashed var(--g100)">'+
+      '<td style="padding:6px 4px;font-weight:700">'+esc(r.cat)+(r.cc===0?'<div style="font-size:.65rem;color:var(--g400);font-weight:400">報價單未列此類別</div>':'')+'</td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace">'+r.vc.toLocaleString()+'</td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace">'+r.cc.toLocaleString()+'</td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace;font-weight:800;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.cp>=0?'+':'')+r.cp.toLocaleString()+'</td>'+
+    '</tr>').join('')+
+    '</tbody></table>'
+    :'<div style="padding:10px 0;font-size:.82rem;color:var(--g400)">尚無廠商報價或客戶報價單資料，無法拆分類別</div>';
+
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:520px">'+
+    '<div class="mtit">毛利明細 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div class="segmented" style="display:flex;gap:6px;margin-bottom:14px">'+
+      '<button class="btn bg bsm" id="profitTabTx" style="flex:1">收支明細</button>'+
+      '<button class="btn bo bsm" id="profitTabCat" style="flex:1">依類別拆分</button>'+
+    '</div>'+
+    '<div id="profitPaneTx">'+
+      section('💰 外帳收入',incomeItems.map(l=>({name:l.desc||l.cat||'收入',amount:l.amount})),income,'var(--ok)')+
+      section('📤 內帳支出',costItems.map(l=>({name:l.desc||l.cat||'支出',amount:l.amount})),cost,'var(--bad)')+
+      section('🏗️ 廠商成本',vendorList.map(v=>({name:v.vendor+'（'+getVendorTrueCost(v).toLocaleString()+'）',amount:getVendorTrueCost(v)})),vendorCost,'var(--bad)')+
+      '<div style="padding:12px 16px;border-radius:var(--rs);background:'+(profit>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(profit>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-weight:800;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">毛利＝收入－內帳支出－廠商成本</span>'+
+        '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">'+(profit>=0?'+':'-')+'NT$'+Math.abs(profit).toLocaleString()+'</span>'+
+      '</div>'+
+    '</div>'+
+    '<div id="profitPaneCat" style="display:none">'+
+      '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 「報價單分配」抓的是客戶報價單裡，這個類別下所有工項的加總；如果某類別報價單沒有列，代表這筆廠商成本目前沒有對應到報價收入。</div>'+
+      catTableHtml+
+      '<div style="padding:12px 16px;margin-top:10px;border-radius:var(--rs);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(catTotal>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">各類別毛利合計</span>'+
+        '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+'NT$'+catTotal.toLocaleString()+'</span>'+
+      '</div>'+
+    '</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+  modal.querySelector('#profitTabTx').addEventListener('click',()=>{
+    modal.querySelector('#profitPaneTx').style.display='block';
+    modal.querySelector('#profitPaneCat').style.display='none';
+    modal.querySelector('#profitTabTx').className='btn bg bsm';
+    modal.querySelector('#profitTabCat').className='btn bo bsm';
+  });
+  modal.querySelector('#profitTabCat').addEventListener('click',()=>{
+    modal.querySelector('#profitPaneTx').style.display='none';
+    modal.querySelector('#profitPaneCat').style.display='block';
+    modal.querySelector('#profitTabTx').className='btn bo bsm';
+    modal.querySelector('#profitTabCat').className='btn bg bsm';
+  });
 }
 
 function openVendorForProject(projectId){
@@ -1179,7 +1295,7 @@ function renderProjLedger(id,p,c){
   // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
   // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
   // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
-  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+(v.amount||0),0);
+  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
 
   c.innerHTML=`
@@ -1187,7 +1303,7 @@ function renderProjLedger(id,p,c){
       <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">外帳收入</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'NT$0'}</div><div class="sl">內帳支出</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${vendorCost?'NT$'+vendorCost.toLocaleString():'NT$0'}</div><div class="sl">廠商成本</div></div>
-      <div class="stat"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${(profit>=0?'+':'')+'NT$'+Math.abs(profit).toLocaleString()}</div><div class="sl">毛利</div></div>
+      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
@@ -1341,6 +1457,15 @@ function deleteProgressEntry(id,projectId){
 // vendors 資料不變，新增 payments 陣列記錄付款歷史
 function getVendorPaid(v){
   return (v.payments||[]).reduce((s,p)=>s+(p.amount||0),0);
+}
+// 這筆廠商報價「實際會花公司多少錢」——每個工項各自判斷含稅／未稅，未稅的工項要多加5%營業稅
+function getVendorTrueCost(v){
+  const items=v.items||[];
+  if(!items.length)return v.amount||0;
+  return items.reduce((s,it)=>{
+    const amt=it.amount||0;
+    return s+(it.taxType==='excl'?Math.round(amt*1.05):amt);
+  },0);
 }
 function getVendorPayStatus(v){
   const paid=getVendorPaid(v);

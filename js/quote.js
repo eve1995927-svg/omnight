@@ -122,11 +122,11 @@ function renderPqsItems(secId,items,containerId,sections,opts){
 
     // ── 對客小計欄 ──
     const sellSub=document.createElement('div');
-    sellSub.style.cssText='font-family:monospace;font-size:.82rem;font-weight:800;text-align:right;padding:4px 2px;color:#1E7A58;white-space:nowrap';
+    sellSub.style.cssText='font-family:monospace;font-size:.8rem;font-weight:800;text-align:right;padding:4px 2px;color:#1E7A58;white-space:nowrap;overflow:hidden;text-overflow:ellipsis';
 
     // ── 毛利欄（客戶版隱藏）──
     const profitEl=document.createElement('div');
-    profitEl.style.cssText='font-family:monospace;font-size:.78rem;font-weight:700;text-align:right;padding:4px 2px;white-space:nowrap;line-height:1.5'+(isClientMode?';display:none':'');
+    profitEl.style.cssText='font-family:monospace;font-size:.74rem;font-weight:700;text-align:right;padding:4px 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.5'+(isClientMode?';display:none':'');
 
     // ── 更新計算 ──
     function updCalc(){
@@ -166,7 +166,11 @@ function renderPqsItems(secId,items,containerId,sections,opts){
   });
 }
 
-function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');}
+// 修正重點：這是全站防止 XSS（惡意內容注入）最關鍵的一個函式，被呼叫了 100 多次，
+// 但原本的寫法只轉義了 & 和雙引號，漏掉了 < 和 >——這兩個才是真正會讓瀏覽器把文字當成
+// HTML 標籤執行的關鍵字元。等於全站呼叫 esc() 的地方，這段時間都沒有真正擋下 <script> 這類注入，
+// 看起來像有做防護，實際上沒有。這裡補上完整的轉義規則。
+function esc(s){return(s===null||s===undefined?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');}
 
 function refreshSec(secId,items,containerId,sections,opts){
   const pqs=document.getElementById('pi-'+secId)?.closest('.pqs');
@@ -323,7 +327,7 @@ function renderAdVendorPicker(){
   if(empty)empty.style.display='none';
   vendors.forEach(v=>{
     const el=document.createElement('div');el.className='vp-item';el.dataset.id=v._id;
-    el.innerHTML='<div class="vp-chk"></div><div style="flex:1"><div class="vp-name">'+v.vendor+'</div><div style="font-size:.75rem;color:var(--g400)">'+v.caseN+'</div></div><div class="vp-cat">'+v.cat+'</div><div class="vp-amt">'+fmt(v.amount||0)+'</div>';
+    el.innerHTML='<div class="vp-chk"></div><div style="flex:1"><div class="vp-name">'+esc(v.vendor)+'</div><div style="font-size:.75rem;color:var(--g400)">'+esc(v.caseN||'')+'</div></div><div class="vp-cat">'+esc(v.cat||'')+'</div><div class="vp-amt">'+fmt(v.amount||0)+'</div>';
     el.addEventListener('click',()=>{
       if(selVendors.has(v._id)){selVendors.delete(v._id);el.classList.remove('sel');}
       else{selVendors.add(v._id);el.classList.add('sel');}
@@ -364,33 +368,10 @@ document.getElementById('importVendorBtn').addEventListener('click',()=>{
 
 // ── QUOTE TABLE ──
 
-// 報價單直接轉成合約：把報價單的客戶名稱、金額先帶進合約視窗，不用再打一次字，
-// 業主簽名的合約照片還是要手動拍照上傳（這個沒辦法用報價單資料自動生成）
-document.getElementById('qShowArchived')?.addEventListener('change',renderQTable);
-
-function convertQuoteToContract(quoteId){
-  const q=DB.get('quotes').find(r=>r._id===quoteId);if(!q)return;
-  curProjectId=q.projectId||curProjectId;
-  ctEditId=null;ctImgUrl=[];
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-  set('ctName',q.name?q.name+' 裝修合約':'');
-  set('ctClient',q.name||'');
-  set('ctAmt2',q.total||'');
-  set('ctNote','');
-  const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
-  const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
-  const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
-  openModal('contractModal');
-  showToast('📝 已帶入報價單資料，拍照上傳簽好的合約即可');
-}
-
 function renderQTable(){
   const list=document.getElementById('qList');if(!list)return;
   const showArchived=document.getElementById('qShowArchived')?.checked||false;
   const allQs=DB.get('quotes');
-  // 修正重點：新增「封存」功能——報價單一多，沒成交的、案子已經結束的舊報價混在現在正在跑的案子中間，
-  // 找起來很亂。封存不是刪除，資料完整保留，只是預設不顯示在主畫面，需要查歷史的時候勾選「顯示已封存」才會出現，
-  // 讓平常在用的畫面保持乾淨。
   const qs=showArchived?allQs:allQs.filter(q=>!q.archived);
   if(!allQs.length){list.innerHTML='<div class="empty-state"><div class="es-ic">📄</div><div class="es-t">尚無報價記錄</div><div class="es-s">點右上方「新建報價單」開始建立</div></div>';return;}
   if(!qs.length){list.innerHTML='<div class="empty-state"><div class="es-ic">📦</div><div class="es-t">目前沒有進行中的報價</div><div class="es-s">勾選上方「顯示已封存」可以看到歷史記錄</div></div>';return;}
@@ -452,10 +433,6 @@ function renderQTable(){
     document.getElementById('adAd').value=q.addr||'';
     document.getElementById('adQbClient').textContent=q.name||'—';
     document.getElementById('adQbAddr').textContent=q.addr||'—';
-    // 修正重點：原本點「編輯」進去，案場選單完全沒有被重新整理過，
-    // 對「未指定案場」的報價單來說，選單裡連可以選的案場清單都是空的，等於根本選不了；
-    // 就算是已經有案場的報價單，選單也不會自動選回原本那個案場。
-    // 改成每次點編輯，都先重新把目前所有案場填進選單，並且把這筆報價單原本對應的案場選好。
     if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),q.projectId);
     renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
     openAllSecs('adSections');
@@ -471,6 +448,23 @@ function renderQTable(){
     showToast(q.archived?'✅ 已從封存取出':'✅ 已封存，可勾選「顯示已封存」找回');
   });});
   list.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
+}
+document.getElementById('qShowArchived')?.addEventListener('change',renderQTable);
+
+function convertQuoteToContract(quoteId){
+  const q=DB.get('quotes').find(r=>r._id===quoteId);if(!q)return;
+  curProjectId=q.projectId||curProjectId;
+  ctEditId=null;ctImgUrl=[];
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  set('ctName',q.name?q.name+' 裝修合約':'');
+  set('ctClient',q.name||'');
+  set('ctAmt2',q.total||'');
+  set('ctNote','');
+  const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
+  const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
+  const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
+  openModal('contractModal');
+  showToast('📝 已帶入報價單資料，拍照上傳簽好的合約即可');
 }
 
 // ── EXCEL DOWNLOAD ──

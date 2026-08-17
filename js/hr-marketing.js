@@ -214,28 +214,48 @@ function renderEmployees(){
   const list=document.getElementById('empList');if(!list)return;
   const emps=DB.get('employees');
   if(!emps.length){list.innerHTML='<div class="empty-state"><div class="es-ic">👤</div><div class="es-t">尚無員工資料</div><div class="es-s">點右上方「新增員工」</div></div>';return;}
+  // 修正重點：原本每張卡片把完整薪資明細都攤開顯示，人一多畫面拉得很長。
+  // 改成小卡片＋格狀排列，一眼看到姓名、職稱、本月實領，薪資明細收起來，要看再點開。
+  list.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px';
   list.innerHTML='';
   emps.forEach(e=>{
-    const card=document.createElement('div');card.className='emp-card';
+    const card=document.createElement('div');
+    card.style.cssText='background:var(--w);border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden';
+    const detailId='emp-detail-'+e._id;
     card.innerHTML=
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'+
-        '<div class="emp-avatar">'+e.name.charAt(0)+'</div>'+
-        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+e.name+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+( e.title||'員工')+' ｜ 到職：'+e.startDate+'</div></div>'+
-        '<div style="display:flex;gap:5px">'+
-          '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️ 編輯</button>'+
-          '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:14px">'+
+        '<div class="emp-avatar" style="flex-shrink:0">'+esc(e.name.charAt(0))+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.9rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(e.name)+'</div>'+
+          '<div style="font-size:.74rem;color:var(--g400);margin-top:1px">'+esc(e.title||'員工')+'</div>'+
+        '</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-size:.68rem;color:var(--g400)">本月實領</div>'+
+          '<div style="font-size:.88rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(e.net||0).toLocaleString()+'</div>'+
         '</div>'+
       '</div>'+
-      '<div style="background:var(--g50);border-radius:var(--rs);padding:12px 14px">'+
-        '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+( e.salary||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+( (e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+( e.labor||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+( e.health||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+( e.retire||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+( e.net||0).toLocaleString()+'</span></div>'+
+      '<div style="display:flex;gap:6px;padding:0 14px 12px">'+
+        '<button class="btn bo bxs" data-etgl style="flex:1">▾ 詳細資料</button>'+
+        '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️</button>'+
+        '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
       '</div>'+
-      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'')+
-      (e.account?'<div style="font-size:.75rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'');
+      '<div id="'+detailId+'" style="display:none;padding:12px 14px;border-top:1px solid var(--g100);background:var(--g50)">'+
+        '<div style="font-size:.74rem;color:var(--g400);margin-bottom:8px">到職：'+esc(e.startDate||'—')+'</div>'+
+        '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+(e.salary||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+((e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+(e.labor||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+(e.health||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+(e.retire||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+(e.net||0).toLocaleString()+'</span></div>'+
+        (e.bank?'<div style="font-size:.72rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+esc(e.bank)+'</div>':'')+
+        (e.account?'<div style="font-size:.72rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'')+
+      '</div>';
+    card.querySelector('[data-etgl]').addEventListener('click',(ev)=>{
+      const detail=document.getElementById(detailId);
+      const open=detail.style.display==='none';
+      detail.style.display=open?'block':'none';
+      ev.target.textContent=open?'▴ 收起':'▾ 詳細資料';
+    });
     card.querySelector('[data-eedit]')?.addEventListener('click',()=>{
       empEditId=e._id;
       document.getElementById('empName').value=e.name||'';document.getElementById('empTitle').value=e.title||'';
@@ -246,7 +266,7 @@ function renderEmployees(){
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
       setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
-      document.getElementById('empModalTitle').innerHTML='編輯員工：'+e.name+' <button class="mcl" data-close="empModal">✕</button>';
+      document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
     });
     card.querySelector('[data-edel]')?.addEventListener('click',()=>{confirmAction('刪除員工「'+e.name+'」？歷史打卡和薪資記錄仍會保留。',()=>{DB.upd('employees',e._id,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW')});renderEmployees();updHRStats();showToast('✅ 員工已移除，歷史記錄保留');});});
@@ -286,21 +306,6 @@ function renderSalaryList(){
     return;
   }
 
-  // ── 建立6個月 + 額外月份 ──
-  const recentMonths=[];
-  for(let i=0;i<6;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    recentMonths.push(fmtMonth(d.getFullYear(),d.getMonth()));
-  }
-  // 也加未來2個月
-  for(let i=1;i<=2;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
-    recentMonths.unshift(fmtMonth(d.getFullYear(),d.getMonth()));
-  }
-
-  const allStoredMonths=JSON.parse(localStorage.getItem('zeju_salary_months')||'[]');
-  const extraMonths=allStoredMonths.filter(m=>!recentMonths.includes(m)).sort().reverse();
-
   const curMonthKey=localStorage.getItem('zeju_salary_cur_month')||fmtMonth(now.getFullYear(),now.getMonth());
 
   list.innerHTML='';
@@ -316,29 +321,25 @@ function renderSalaryList(){
     <span style="font-size:.78rem;color:var(--g400)">下次發薪：${now.getMonth()+1}月${payDate}日</span>`;
   list.appendChild(settingDiv);
 
-  // 月份選擇區：最近6個月 + 未來2個月（顯示為Tab列）
-  const tabDiv=document.createElement('div');
-  tabDiv.style.cssText='display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;align-items:center';
-
-  recentMonths.forEach(m=>{
-    const b=document.createElement('button');
-    b.className='btn '+(m===curMonthKey?'bg':'bo')+' bsm';
-    b.style.padding='6px 12px';b.style.fontSize='.78rem';
-    b.textContent=m.replace('-','年')+'月'+(m===fmtMonth(now.getFullYear(),now.getMonth())?' (本月)':m>fmtMonth(now.getFullYear(),now.getMonth())?' ▶':'');
-    b.addEventListener('click',()=>{localStorage.setItem('zeju_salary_cur_month',m);renderSalaryList();});
-    tabDiv.appendChild(b);
-  });
-
-  // 「其他月份」下拉
-  if(extraMonths.length){
-    const sep=document.createElement('span');sep.style.cssText='font-size:.75rem;color:var(--g400);margin:0 4px';sep.textContent='｜';tabDiv.appendChild(sep);
-    const sel=document.createElement('select');
-    sel.style.cssText='padding:6px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.78rem;font-family:inherit;outline:none;background:var(--w)';
-    sel.innerHTML='<option value="">📅 其他月份…</option>'+extraMonths.map(m=>`<option value="${m}" ${m===curMonthKey?'selected':''}>${m.replace('-','年')}月</option>`).join('');
-    sel.addEventListener('change',()=>{if(sel.value){localStorage.setItem('zeju_salary_cur_month',sel.value);renderSalaryList();}});
-    tabDiv.appendChild(sel);
-  }
-  list.appendChild(tabDiv);
+  // 修正重點：原本是把最近6個月＋未來2個月排成一整排按鈕，用久了（用滿兩年）舊的月份會被擠出這排按鈕，
+  // 只能從「其他月份」下拉選單裡找。改成標準的月份選擇器（點了直接跳出年/月選單），
+  // 不管用多久、要往回找哪個月都一樣快，左右箭頭可以快速切上一個月/下一個月。
+  const navDiv=document.createElement('div');
+  navDiv.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:14px';
+  const [curY,curM]=curMonthKey.split('-').map(Number);
+  navDiv.innerHTML=`
+    <button class="btn bo bxs" id="salMonthPrev" style="padding:8px 12px">◀</button>
+    <input type="month" id="salMonthPicker" value="${curMonthKey}" style="padding:8px 14px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.88rem;font-family:inherit;font-weight:800;color:var(--g700);outline:none;background:var(--w)">
+    <button class="btn bo bxs" id="salMonthNext" style="padding:8px 12px">▶</button>
+    <button class="btn bo bxs" id="salMonthToday" style="padding:8px 12px;margin-left:4px">回到本月</button>
+    ${curMonthKey===fmtMonth(now.getFullYear(),now.getMonth())?'<span style="font-size:.76rem;color:var(--gold-d);font-weight:800;margin-left:4px">● 本月</span>':''}
+  `;
+  list.appendChild(navDiv);
+  const setMonth=(key)=>{localStorage.setItem('zeju_salary_cur_month',key);renderSalaryList();};
+  navDiv.querySelector('#salMonthPicker').addEventListener('change',e=>{if(e.target.value)setMonth(e.target.value);});
+  navDiv.querySelector('#salMonthPrev').addEventListener('click',()=>{const d=new Date(curY,curM-2,1);setMonth(fmtMonth(d.getFullYear(),d.getMonth()));});
+  navDiv.querySelector('#salMonthNext').addEventListener('click',()=>{const d=new Date(curY,curM,1);setMonth(fmtMonth(d.getFullYear(),d.getMonth()));});
+  navDiv.querySelector('#salMonthToday').addEventListener('click',()=>setMonth(fmtMonth(now.getFullYear(),now.getMonth())));
 
   // 月份薪資表
   const tableDiv=document.createElement('div');tableDiv.id='monthSalaryTable';list.appendChild(tableDiv);
@@ -400,7 +401,7 @@ function renderMonthSalary(monthKey){
     '<button class="btn bo bsm" onclick="exportSalaryReport(\''+monthKey+'\')">📥 匯出本月薪資報表</button>';
   wrap.appendChild(title);
 
-  let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0;
+  let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0,totalOtPay=0;
   emps.forEach(e=>{
     const rec=getSalaryRecord(e._id,monthKey);if(!rec)return;
     const {gross,laborDeduct,healthDeduct,net,companyCost}=calcSalaryRecord(rec);
@@ -409,6 +410,11 @@ function renderMonthSalary(monthKey){
     const empPunchId=e._id?('emp_'+e._id):null;
     const monthRecs=DB.get('punch_recs').filter(r=>(r.user===empPunchId||r.userName===e.name)&&(r.date||'').startsWith(monthKey));
     const workDays=new Set(monthRecs.filter(r=>r.type==='in').map(r=>r.date)).size;
+
+    // 加班費試算：依台灣勞基法第24條自動算，晚上6點後才算加班，時薪=月薪÷240小時
+    const hourlyRate=(typeof monthlySalaryToHourlyRate==='function')?monthlySalaryToHourlyRate(rec.baseSalary||e.salary||0):0;
+    const otResult=(empPunchId&&typeof calcMonthlyOvertime==='function')?calcMonthlyOvertime(empPunchId,monthKey,hourlyRate):{totalOtHours:0,totalOtPay:0,dailyDetail:[]};
+    if(otResult.totalOtPay)totalOtPay=(totalOtPay||0)+otResult.totalOtPay;
 
     const card=document.createElement('div');
     card.style.cssText='background:var(--w);border:1.5px solid '+(rec.paid?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--rs);padding:14px 16px;margin-bottom:8px;transition:all var(--ease)';
@@ -437,6 +443,7 @@ function renderMonthSalary(monthKey){
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--g500)">津貼合計</span><span style="font-family:var(--mono)">NT$${((rec.meal||0)+(rec.transport||0)+(rec.other||0)).toLocaleString()}</span></div>
         ${rec.bonus?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--ok)">🎁 獎金</span><span style="font-family:var(--mono);color:var(--ok)">+NT$${rec.bonus.toLocaleString()}</span></div>`:''}
         ${rec.reimbursement?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--ok)">💵 代墊費歸還</span><span style="font-family:var(--mono);color:var(--ok)">+NT$${rec.reimbursement.toLocaleString()}</span></div>`:''}
+        ${otResult.totalOtPay?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#B8860B">🕐 加班費（試算，共 ${otResult.totalOtHours} 小時）</span><span style="font-family:var(--mono);color:#B8860B">+NT$${otResult.totalOtPay.toLocaleString()}</span></div>`:''}
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">勞保（員工）</span><span style="font-family:var(--mono);color:var(--bad)">-NT$${laborDeduct.toLocaleString()}</span></div>
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">健保（員工）</span><span style="font-family:var(--mono);color:var(--bad)">-NT$${healthDeduct.toLocaleString()}</span></div>
         ${rec.note?`<div style="padding-top:6px;margin-top:2px;border-top:1px solid var(--g200);color:var(--g500);font-size:.78rem">📝 ${esc(rec.note)}</div>`:''}
@@ -453,9 +460,10 @@ function renderMonthSalary(monthKey){
       <div><div style="font-size:.85rem;font-weight:800;color:var(--gold-d)">本月實領薪資合計</div></div>
       <div style="font-family:var(--mono);font-size:1.3rem;font-weight:900;color:var(--gold-d)">NT$${totalNet.toLocaleString()}</div>
     </div>
-    ${(totalBonus||totalReimb)?`<div style="display:flex;gap:16px;font-size:.76rem;color:var(--gold-d);margin-bottom:10px">
+    ${(totalBonus||totalReimb||totalOtPay)?`<div style="display:flex;gap:16px;font-size:.76rem;color:var(--gold-d);margin-bottom:10px;flex-wrap:wrap">
       ${totalBonus?`<span>🎁 獎金合計 NT$${totalBonus.toLocaleString()}</span>`:''}
       ${totalReimb?`<span>💵 代墊費合計 NT$${totalReimb.toLocaleString()}</span>`:''}
+      ${totalOtPay?`<span>🕐 加班費合計（試算）NT$${totalOtPay.toLocaleString()}</span>`:''}
     </div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--gold-l)">
       <span style="font-size:.8rem;color:var(--g500);font-weight:700">💼 本月人力成本總額（含勞健保公司負擔、勞退提撥）</span>
@@ -755,13 +763,101 @@ function renderAttendance(){
   });
 }
 
+// 台灣國定假日（依行政院人事行政總處公布之政府行政機關辦公日曆表，含補假）
+// ⚠️ 每年政府會重新公告日曆表，這份清單需要每年更新一次，目前只有 2026 年
+const TW_HOLIDAYS_2026=[
+  '2026-01-01', // 元旦
+  '2026-02-16', // 除夕
+  '2026-02-17','2026-02-18','2026-02-19', // 春節初一~初三
+  '2026-02-20', // 小年夜補假
+  '2026-02-27', // 和平紀念日補假
+  '2026-04-03', // 兒童節/清明節補假
+  '2026-05-01', // 勞動節
+  '2026-06-19', // 端午節
+  '2026-09-25', // 中秋節
+  '2026-09-28', // 教師節
+  '2026-10-09', // 國慶日補假
+  '2026-10-26', // 台灣光復節補假
+  '2026-12-25', // 行憲紀念日
+];
+const TW_HOLIDAYS=new Set([...TW_HOLIDAYS_2026]);
+function isTwHoliday(date){
+  const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0');
+  return TW_HOLIDAYS.has(y+'-'+m+'-'+d);
+}
+
 function getWorkDaysInMonth(year,month){
+  // 修正重點：原本只排除週六日，國定假日（元旦、春節、中秋這些）沒有排除，
+  // 導致這幾天員工本來就不用上班，卻被系統算成「沒打卡=缺勤」，出勤率因此被拉低、算錯。
   let count=0;const date=new Date(year,month,1);
   while(date.getMonth()===month&&date<=new Date()){
-    const day=date.getDay();if(day!==0&&day!==6)count++;
+    const day=date.getDay();
+    if(day!==0&&day!==6&&!isTwHoliday(date))count++;
     date.setDate(date.getDate()+1);
   }
   return count;
+}
+
+// ══ 加班費計算（依台灣勞基法第24條）══════════════════════════
+// 標準上班時間：早上9點～晚上6點。超過晚上6點才算加班：
+//   前2小時：時薪 x 1.34 倍（加給1/3以上）
+//   第3、4小時：時薪 x 1.67 倍（加給2/3以上）
+// 一天正常工時+加班最多12小時，最多只能算到4小時加班。
+// 時薪算法：月薪 ÷ 240小時（每月以30天、每天8小時計算，是勞動部認定的標準公式）。
+const WORK_END_HOUR=18;
+const OT_TIER1_HOURS=2;
+const OT_TIER2_HOURS=2;
+const OT_TIER1_RATE=1.34;
+const OT_TIER2_RATE=1.67;
+const MAX_OT_HOURS_PER_DAY=4;
+
+function monthlySalaryToHourlyRate(monthlySalary){
+  return (monthlySalary||0)/240;
+}
+
+function calcDailyOvertime(clockInTime,clockOutTime,hourlyRate){
+  if(!clockOutTime)return {otHours:0,tier1Hours:0,tier2Hours:0,otPay:0};
+  const scheduledEnd=new Date(clockOutTime);
+  scheduledEnd.setHours(WORK_END_HOUR,0,0,0);
+  if(clockOutTime<=scheduledEnd)return {otHours:0,tier1Hours:0,tier2Hours:0,otPay:0};
+  let otMinutes=(clockOutTime-scheduledEnd)/60000;
+  let otHours=Math.min(otMinutes/60,MAX_OT_HOURS_PER_DAY);
+  const tier1Hours=Math.min(otHours,OT_TIER1_HOURS);
+  const tier2Hours=Math.max(0,Math.min(otHours-OT_TIER1_HOURS,OT_TIER2_HOURS));
+  const otPay=Math.round(tier1Hours*hourlyRate*OT_TIER1_RATE+tier2Hours*hourlyRate*OT_TIER2_RATE);
+  return {otHours:+otHours.toFixed(2),tier1Hours:+tier1Hours.toFixed(2),tier2Hours:+tier2Hours.toFixed(2),otPay};
+}
+
+function normalizePunchDate(dateStr){
+  if(!dateStr)return null;
+  const parts=dateStr.split(/[\/-]/).map(s=>s.trim());
+  if(parts.length!==3)return null;
+  const [y,m,d]=parts;
+  return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+
+function calcMonthlyOvertime(empUserKey,monthKey,hourlyRate){
+  const byDate={};
+  DB.get('punch_recs').filter(r=>r.user===empUserKey&&r.date).forEach(r=>{
+    const norm=normalizePunchDate(r.date);
+    if(!norm||!norm.startsWith(monthKey))return;
+    if(!byDate[norm])byDate[norm]={in:null,out:null};
+    if(r.type==='in'&&(!byDate[norm].in||r.time<byDate[norm].in))byDate[norm].in=r.time;
+    if(r.type==='out'&&(!byDate[norm].out||r.time>byDate[norm].out))byDate[norm].out=r.time;
+  });
+  let totalOtHours=0,totalOtPay=0;
+  const dailyDetail=[];
+  Object.entries(byDate).forEach(([date,rec])=>{
+    if(!rec.out)return;
+    const outDate=new Date(date+'T'+rec.out);
+    if(isNaN(outDate.getTime()))return;
+    const {otHours,tier1Hours,tier2Hours,otPay}=calcDailyOvertime(null,outDate,hourlyRate);
+    if(otHours>0){
+      totalOtHours+=otHours;totalOtPay+=otPay;
+      dailyDetail.push({date,outTime:rec.out,otHours,tier1Hours,tier2Hours,otPay});
+    }
+  });
+  return {totalOtHours:+totalOtHours.toFixed(2),totalOtPay,dailyDetail};
 }
 
 // switchHRTab 覆寫加出缺勤
