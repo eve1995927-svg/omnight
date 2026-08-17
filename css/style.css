@@ -150,6 +150,10 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .card:hover{border-color:var(--g300)}
 .ct{font-size:.92rem;font-weight:900;color:var(--g600);margin-bottom:16px;display:flex;align-items:center;gap:8px}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+/* 報價單編輯頁：左邊表單固定較窄、右邊報價單預覽（欄位多、數字長）盡量吃滿剩下空間，
+   不用原本 1fr 1fr 對半分，不然報價單那 8 欄常常擠到數字被裁掉、看起來右邊完全沒空間 */
+.quote-editor-grid{grid-template-columns:380px 1fr}
+@media(max-width:980px){.quote-editor-grid{grid-template-columns:1fr}}
 .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .stat{background:var(--w);border:1px solid var(--g200);border-radius:var(--r);padding:18px 20px;box-shadow:none;position:relative;overflow:hidden;transition:border-color var(--ease)}
@@ -308,9 +312,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .pqs-toggle.open{transform:rotate(180deg)}
 .pqs-body{display:none;padding:0}
 .pqs-body.open{display:block;animation:slideUp .2s ease}
-.pqs-col-hd{display:grid;grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px;gap:6px;padding:8px 16px;background:var(--g100);border-bottom:1px solid var(--g200)}
+.pqs-col-hd{display:grid;grid-template-columns:minmax(90px,1fr) 38px 38px 96px 96px 118px 122px 26px;gap:6px;padding:8px 16px;background:var(--g100);border-bottom:1px solid var(--g200)}
 .pqs-col-hd span{font-size:.64rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em}
-.pqs-item{display:grid;grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px;gap:6px;align-items:center;padding:5px 16px;border-bottom:1px solid var(--g100)}
+.pqs-item{display:grid;grid-template-columns:minmax(90px,1fr) 38px 38px 96px 96px 118px 122px 26px;gap:6px;align-items:center;padding:5px 16px;border-bottom:1px solid var(--g100)}
 .pqs-item:last-child{border-bottom:none}
 .pqs-item input{padding:7px 10px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;color:var(--g800);background:transparent;outline:none;width:100%;transition:all var(--ease)}
 .pqs-item input:focus{border-color:var(--gold);background:var(--w);box-shadow:0 0 0 2px rgba(200,164,74,.12)}
@@ -692,8 +696,8 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 
 
 /* ── 雙價欄報價單 ── */
-.pqs-col-hd.dual{grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px}
-.pqs-item.dual{grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px}
+.pqs-col-hd.dual{grid-template-columns:minmax(90px,1fr) 38px 38px 96px 96px 118px 122px 26px}
+.pqs-item.dual{grid-template-columns:minmax(90px,1fr) 38px 38px 96px 96px 118px 122px 26px}
 /* .pqs-col-hd / .pqs-item 基本欄位定義已合併到最上面那組，這裡不用再重複一次，避免以後又出現兩組衝突的定義 */
 .cost-val{font-family:monospace;font-size:.8rem;font-weight:700;color:var(--bad);text-align:right;padding:4px 2px}
 .sell-val{font-family:monospace;font-size:.8rem;font-weight:700;color:var(--ok);text-align:right;padding:4px 2px}
