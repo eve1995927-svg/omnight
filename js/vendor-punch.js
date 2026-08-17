@@ -187,7 +187,7 @@ function renderVItems(){
   }
   // 表頭：工項名稱 | 數量 | 單位 | 單價 | 稅別 | 小計 | 備注 | 刪
   const hd=document.createElement('div');
-  hd.style.cssText='display:grid;grid-template-columns:1.6fr 46px 42px 76px 68px 76px 1fr 32px;padding:6px 12px;background:var(--g100);border-bottom:1px solid var(--g200);font-size:.68rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.03em;gap:4px';
+  hd.style.cssText='display:grid;grid-template-columns:minmax(120px,1.3fr) 46px 42px 92px 66px 100px minmax(80px,1fr) 32px;padding:6px 12px;background:var(--g100);border-bottom:1px solid var(--g200);font-size:.68rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.03em;gap:4px';
   hd.innerHTML=
     '<span>工項名稱</span>'+
     '<span style="text-align:center">數量</span>'+
@@ -201,7 +201,7 @@ function renderVItems(){
 
   vItems.forEach((it,i)=>{
     const row=document.createElement('div');
-    row.style.cssText='display:grid;grid-template-columns:1.6fr 46px 42px 76px 68px 76px 1fr 32px;padding:7px 12px;border-bottom:1px solid var(--g100);align-items:center;gap:4px;transition:background var(--ease)';
+    row.style.cssText='display:grid;grid-template-columns:minmax(120px,1.3fr) 46px 42px 92px 66px 100px minmax(80px,1fr) 32px;padding:7px 12px;border-bottom:1px solid var(--g100);align-items:center;gap:4px;transition:background var(--ease)';
     row.onmouseenter=()=>row.style.background='var(--g50)';
     row.onmouseleave=()=>row.style.background='';
 
@@ -496,7 +496,7 @@ function buildVendorCard(v){
     // 細項表格
     const itemWrap=document.createElement('div');
     const itmHd=document.createElement('div');
-    itmHd.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
+    itmHd.style.cssText='display:grid;grid-template-columns:minmax(140px,1fr) 46px 42px 92px 66px 100px 30px;gap:4px;padding:7px 14px;background:var(--g100);border-bottom:1px solid var(--g200);border-top:1px solid var(--g100)';
     itmHd.innerHTML='<span style="font-size:.62rem;font-weight:900;color:var(--g400)">工項名稱</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">數量</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">單位</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">單價</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:center">稅別</span><span style="font-size:.62rem;font-weight:900;color:var(--g400);text-align:right">小計</span><span></span>';
     const itmBody=document.createElement('div');itmBody.id='vi-body-'+v._id;
 
@@ -505,7 +505,7 @@ function buildVendorCard(v){
       if(!editItems.length){const em=document.createElement('div');em.style.cssText='padding:10px 16px;font-size:.82rem;color:var(--g400)';em.textContent='無細項';itmBody.appendChild(em);return;}
       editItems.forEach((it,i)=>{
         const row=document.createElement('div');
-        row.style.cssText='display:grid;grid-template-columns:1.6fr 44px 40px 68px 58px 68px 30px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
+        row.style.cssText='display:grid;grid-template-columns:minmax(140px,1fr) 46px 42px 92px 66px 100px 30px;gap:4px;padding:6px 14px;border-bottom:1px solid var(--g100);align-items:center;';
         const IS='padding:5px 6px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;background:transparent;outline:none;width:100%';
         const mkF=el=>{el.addEventListener('focus',()=>el.style.borderColor='var(--gold)');el.addEventListener('blur',()=>el.style.borderColor='transparent');};
 
