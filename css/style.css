@@ -212,6 +212,38 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .kb-card-amt{font-size:.75rem;font-weight:800;color:var(--ok);font-family:var(--mono)}
 .kb-empty{padding:20px 12px;text-align:center;color:var(--g300);font-size:.75rem}
 
+/* ── PROJECT CALENDAR（開工日行事曆）── */
+.proj-cal{background:var(--w);border:1px solid var(--g200);border-radius:var(--r);margin-top:16px;overflow:hidden}
+.cal-hd{padding:14px 18px;border-bottom:1px solid var(--g200);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+.cal-title{font-size:.92rem;font-weight:900;color:var(--ink)}
+.cal-nav{display:flex;align-items:center;gap:8px}
+.cal-nbtn{width:28px;height:28px;border-radius:50%;border:1px solid var(--g200);background:var(--w);color:var(--g600);font-size:1rem;font-weight:800;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all var(--ease)}
+.cal-nbtn:hover{background:var(--g100);border-color:var(--g300)}
+.cal-month{font-size:.85rem;font-weight:800;color:var(--ink);min-width:84px;text-align:center;font-family:var(--mono)}
+.cal-today{padding:5px 12px;border-radius:20px;border:1px solid var(--g200);background:var(--g50);color:var(--g600);font-size:.74rem;font-weight:800;cursor:pointer;transition:all var(--ease)}
+.cal-today:hover{background:var(--gold-pale);border-color:var(--gold-l);color:var(--gold-d)}
+.cal-weekdays{display:grid;grid-template-columns:repeat(7,1fr);padding:10px 10px 0;gap:6px}
+.cal-weekdays span{text-align:center;font-size:.72rem;font-weight:800;color:var(--g400)}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;padding:8px 10px 14px}
+.cal-day{aspect-ratio:1/1;border:1px solid var(--g200);border-radius:var(--rs);padding:6px;display:flex;flex-direction:column;gap:4px;background:var(--w);transition:all var(--ease);overflow:hidden}
+.cal-day.other-month{background:var(--g50);opacity:.5}
+.cal-day.today{border-color:var(--gold);background:var(--gold-pale)}
+.cal-day.drag-over{border-color:var(--gold-d);background:var(--gold-soft);box-shadow:0 0 0 2px var(--gold-l) inset}
+.cal-day-num{font-size:.74rem;font-weight:800;color:var(--g600);flex-shrink:0}
+.cal-day.today .cal-day-num{color:var(--gold-d)}
+.cal-day-chips{display:flex;flex-direction:column;gap:2px;overflow:hidden;flex:1;min-height:0}
+.cal-chip{font-size:.64rem;font-weight:700;padding:2px 5px;border-radius:4px;border-left:3px solid transparent;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;transition:transform var(--ease)}
+.cal-chip:hover{transform:translateX(1px)}
+.cal-chip.dragging{opacity:.4}
+.cal-day-more{font-size:.62rem;font-weight:800;color:var(--g400);cursor:pointer;padding:1px 5px}
+.cal-day-more:hover{color:var(--gold-d)}
+.cal-hint{padding:12px 18px;border-top:1px solid var(--g100);font-size:.74rem;color:var(--g400);background:var(--g50)}
+@media (max-width:640px){
+  .cal-day{padding:4px 3px}
+  .cal-day-num{font-size:.68rem}
+  .cal-chip{font-size:.58rem;padding:1px 3px}
+}
+
 .fl{font-size:.72rem;font-weight:900;color:var(--g500);letter-spacing:.1em;text-transform:uppercase;margin-bottom:6px;display:block}
 .fi,.fs,.ft{width:100%;padding:13px 16px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.95rem;font-family:inherit;color:var(--g800);background:var(--w);outline:none;transition:all var(--ease);-webkit-appearance:none}
 .fi:focus,.fs:focus,.ft:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(200,164,74,.12)}
@@ -276,9 +308,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .pqs-toggle.open{transform:rotate(180deg)}
 .pqs-body{display:none;padding:0}
 .pqs-body.open{display:block;animation:slideUp .2s ease}
-.pqs-col-hd{display:grid;grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px;gap:6px;padding:8px 16px;background:var(--g100);border-bottom:1px solid var(--g200)}
+.pqs-col-hd{display:grid;grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px;gap:6px;padding:8px 16px;background:var(--g100);border-bottom:1px solid var(--g200)}
 .pqs-col-hd span{font-size:.64rem;font-weight:900;color:var(--g400);text-transform:uppercase;letter-spacing:.08em}
-.pqs-item{display:grid;grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px;gap:6px;align-items:center;padding:5px 16px;border-bottom:1px solid var(--g100)}
+.pqs-item{display:grid;grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px;gap:6px;align-items:center;padding:5px 16px;border-bottom:1px solid var(--g100)}
 .pqs-item:last-child{border-bottom:none}
 .pqs-item input{padding:7px 10px;border:1.5px solid transparent;border-radius:var(--rxs);font-size:.84rem;font-family:inherit;color:var(--g800);background:transparent;outline:none;width:100%;transition:all var(--ease)}
 .pqs-item input:focus{border-color:var(--gold);background:var(--w);box-shadow:0 0 0 2px rgba(200,164,74,.12)}
@@ -660,8 +692,8 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 
 
 /* ── 雙價欄報價單 ── */
-.pqs-col-hd.dual{grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px}
-.pqs-item.dual{grid-template-columns:2fr 42px 42px 85px 85px 88px 95px 28px}
+.pqs-col-hd.dual{grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px}
+.pqs-item.dual{grid-template-columns:1.3fr 36px 36px 100px 100px 112px 115px 26px}
 /* .pqs-col-hd / .pqs-item 基本欄位定義已合併到最上面那組，這裡不用再重複一次，避免以後又出現兩組衝突的定義 */
 .cost-val{font-family:monospace;font-size:.8rem;font-weight:700;color:var(--bad);text-align:right;padding:4px 2px}
 .sell-val{font-family:monospace;font-size:.8rem;font-weight:700;color:var(--ok);text-align:right;padding:4px 2px}
