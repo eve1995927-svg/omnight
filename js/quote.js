@@ -21,6 +21,27 @@ function renderProQuote(containerId, sections, opts={}){
 
     const tog=document.createElement('span');tog.className='pqs-toggle';tog.textContent='▾';
 
+    // 大項稅別切換：廠商報價置入或手動新增分類時，不是每個大項都要課營業稅
+    // （比如場地保護、免稅材料這類），原本只有整份報價單底部一個 5% 稅金，沒辦法個別排除。
+    // 這裡讓每個大項自己標記要不要算進營業稅，預設「加稅」跟原本行為一致，不影響舊報價單。
+    let taxBtn=null;
+    if(opts.totIds&&opts.totIds.tax){
+      taxBtn=document.createElement('button');
+      const setTaxBtnStyle=()=>{
+        const taxed=sec.taxed!==false;
+        taxBtn.style.cssText='padding:4px 9px;border-radius:20px;font-size:.68rem;font-weight:800;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all var(--ease);border:1.5px solid '+(taxed?'var(--g200)':'var(--warn-bd)')+';background:'+(taxed?'var(--w)':'var(--warn-bg)')+';color:'+(taxed?'var(--g500)':'var(--warn)');
+        taxBtn.textContent=taxed?'🧾 加稅':'🚫 免稅';
+        taxBtn.title=taxed?'這個大項會算進最下面的營業稅5%，點一下可改成免稅':'這個大項不會被算進營業稅5%，點一下可改回加稅';
+      };
+      setTaxBtnStyle();
+      taxBtn.addEventListener('click',e=>{
+        e.stopPropagation();
+        sec.taxed=(sec.taxed===false)?true:false;
+        setTaxBtnStyle();
+        if(sections&&opts)updProTotals(sections,opts.totIds||{});
+      });
+    }
+
     // 刪除大項按鈕（右側明顯紅色）
     const delBtn=document.createElement('button');
     delBtn.style.cssText='margin-left:6px;padding:5px 10px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);font-size:.75rem;font-weight:800;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all var(--ease)';
@@ -34,6 +55,7 @@ function renderProQuote(containerId, sections, opts={}){
     });
 
     hd.appendChild(ico);hd.appendChild(nm);hd.appendChild(tot);hd.appendChild(tog);
+    if(taxBtn)hd.appendChild(taxBtn);
     hd.appendChild(delBtn);
     hd.addEventListener('click',()=>{body.classList.toggle('open');tog.classList.toggle('open');});
 
@@ -189,7 +211,10 @@ function refreshGlobalTotals(containerId){
 function calcQuoteTotals(sections){
   const subtotal=calcAll(sections);
   const mgmt=Math.round(subtotal*0.08);
-  const tax=Math.round((subtotal+mgmt)*0.05);
+  // 營業稅只算「有標記加稅」的大項（sec.taxed 沒設過的舊資料視同加稅，行為跟以前一樣），
+  // 管理費維持原本一起課稅的算法，不會因為某幾個大項免稅就連管理費也免了
+  const taxableSubtotal=sections.filter(s=>s.taxed!==false).reduce((s,sec)=>s+calcSec(sec.items),0);
+  const tax=Math.round((taxableSubtotal+mgmt)*0.05);
   const grand=subtotal+mgmt+tax;
   return {subtotal,mgmt,tax,grand};
 }
