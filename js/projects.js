@@ -1580,6 +1580,7 @@ function getVendorPaid(v){
 function getVendorTrueCost(v){
   const items=v.items||[];
   if(!items.length)return v.amount||0;
+  if(typeof calcItemsTax==='function')return calcItemsTax(items).total;
   return items.reduce((s,it)=>{
     const amt=it.amount||0;
     return s+(it.taxType==='excl'?Math.round(amt*1.05):amt);

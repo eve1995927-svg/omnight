@@ -243,7 +243,7 @@ function renderVItems(){
       taxBtn.title=isExcl?'未稅：算成本時會自動加5%':'含稅／無發票：報價金額就是實際成本';
     };
     setTaxBtnStyle();
-    taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();});
+    taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();if(typeof setBulkVTaxBtnStyle==='function')setBulkVTaxBtnStyle();});
 
     // 小計（自動計算，唯讀）
     const subEl=document.createElement('div');
@@ -285,12 +285,29 @@ function renderVItems(){
 
   // 合計列
   const totalRow=document.createElement('div');
-  totalRow.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--gold-pale);border-top:2px solid var(--gold-l)';
+  totalRow.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--gold-pale);border-top:2px solid var(--gold-l);gap:10px;flex-wrap:wrap';
   const totalLabel=document.createElement('span');totalLabel.style.cssText='font-size:.85rem;font-weight:900;color:var(--gold-d)';totalLabel.textContent='廠商報價合計';
-  const totalVal=document.createElement('span');totalVal.id='vTotalInline';totalVal.style.cssText='font-family:monospace;font-size:1rem;font-weight:900;color:var(--gold-d)';
-  const t=vItems.reduce((s,it)=>s+(it.amount||0),0);totalVal.textContent='NT$'+t.toLocaleString();
-  totalRow.appendChild(totalLabel);totalRow.appendChild(totalVal);
+  // 小計旁邊加一顆一鍵切換稅別的按鈕，不用每個工項自己點一次
+  const bulkVTaxBtn=document.createElement('button');
+  bulkVTaxBtn.id='bulkVTaxBtn';
+  bulkVTaxBtn.addEventListener('click',()=>{
+    const allExcl=vItems.length&&vItems.every(it=>it.taxType==='excl');
+    vItems.forEach(it=>it.taxType=allExcl?'incl':'excl');
+    renderVItems();updVTotal();
+  });
+  setBulkVTaxBtnStyle(bulkVTaxBtn);
+  const totalVal=document.createElement('div');totalVal.id='vTotalInline';
+  totalVal.innerHTML=buildTaxBreakdownHtml(vItems,'廠商報價合計');
+  totalRow.appendChild(totalLabel);totalRow.appendChild(bulkVTaxBtn);totalRow.appendChild(totalVal);
   c.appendChild(totalRow);
+}
+
+function setBulkVTaxBtnStyle(btn){
+  const el=btn||document.getElementById('bulkVTaxBtn');if(!el)return;
+  const allExcl=vItems.length&&vItems.every(it=>it.taxType==='excl');
+  el.style.cssText='padding:5px 12px;border-radius:20px;font-size:.7rem;font-weight:800;cursor:pointer;border:1.5px solid var(--gold-d);background:var(--w);color:var(--gold-d);font-family:inherit';
+  el.textContent=allExcl?'🔁 全部設為含稅':'🔁 全部設為未稅';
+  el.title='一次把上面所有工項的稅別都改成一樣，不用一筆一筆點';
 }
 
 function updVSub(el,it){
@@ -300,8 +317,9 @@ function updVSub(el,it){
 }
 
 function updVTotal(){
-  const t=vItems.reduce((s,x)=>s+(x.amount||0),0);
-  const el=document.getElementById('vTotal');if(el)el.textContent=fmt(t);
+  const {total}=calcItemsTax(vItems);
+  const el=document.getElementById('vTotal');if(el)el.textContent=fmt(total);
+  const tv=document.getElementById('vTotalInline');if(tv)tv.innerHTML=buildTaxBreakdownHtml(vItems,'廠商報價合計');
 }
 
 document.getElementById('vAddItem')?.addEventListener('click',()=>{vItems.push({name:'',qty:'1',unit:'式',unitPrice:0,amount:0});renderVItems();updVTotal();});
@@ -314,7 +332,7 @@ document.getElementById('addVBtn')?.addEventListener('click',()=>{
   const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
   const cs=proj?.name||'';
   curProjectId=parseInt(pid);
-  const total=vItems.reduce((s,it)=>s+(it.amount||0),0);
+  const total=calcItemsTax(vItems).total;
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
   DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||'',taxType:it.taxType||'incl'})),imgDataUrl:imgUrl});
   closeModal('vModal');refreshVendorViews();updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
@@ -449,6 +467,33 @@ function refreshVendorViews(){
   }
 }
 
+// 統一計算一份廠商報價（不管是新增中的 vItems 還是編輯中的 editItems）的未稅金額／稅金／含稅金額，
+// 逐筆四捨五入的方式跟 getVendorTrueCost() 完全一樣，確保畫面上顯示的合計、跟實際拿去算成本／工種毛利的數字不會兜不起來
+function calcItemsTax(items){
+  let exclSum=0,inclSum=0,total=0;
+  (items||[]).forEach(it=>{
+    const amt=it.amount||0;
+    if(it.taxType==='excl'){exclSum+=amt;total+=Math.round(amt*1.05);}
+    else{inclSum+=amt;total+=amt;}
+  });
+  const taxAmt=total-exclSum-inclSum;
+  return {exclSum,inclSum,taxAmt,total};
+}
+
+// 依 calcItemsTax 的結果組出「未稅金額／稅金／含稅金額」明細 HTML；沒有任何未稅項目時，稅金是 0，
+// 直接顯示合計就好，不用硬擠出三行讓畫面看起來很複雜
+function buildTaxBreakdownHtml(items,totalLabel){
+  const {exclSum,inclSum,taxAmt,total}=calcItemsTax(items);
+  if(taxAmt<=0){
+    return '<span style="font-size:.85rem;font-weight:900;color:var(--gold-d)">'+(totalLabel||'小計')+' NT$'+total.toLocaleString()+'</span>';
+  }
+  return '<div style="text-align:right;line-height:1.6">'+
+    '<div style="font-size:.72rem;color:var(--g500)">未稅金額　NT$'+exclSum.toLocaleString()+(inclSum?'　＋含稅／無發票 NT$'+inclSum.toLocaleString():'')+'</div>'+
+    '<div style="font-size:.72rem;color:var(--g500)">稅金（5%）　NT$'+taxAmt.toLocaleString()+'</div>'+
+    '<div style="font-size:.92rem;font-weight:900;color:var(--gold-d)">'+(totalLabel||'含稅金額')+'　NT$'+total.toLocaleString()+'</div>'+
+  '</div>';
+}
+
 function buildVendorCard(v){
     const editItems=v.items?v.items.map(it=>({...it})):[];
     const card=document.createElement('div');card.className='vcard';card.style.marginBottom='6px';
@@ -531,7 +576,7 @@ function buildVendorCard(v){
           taxBtn.title=isExcl?'未稅：算成本時會自動加5%':'含稅／無發票：報價金額就是實際成本';
         };
         setTaxBtnStyle();
-        taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();});
+        taxBtn.addEventListener('click',()=>{it.taxType=it.taxType==='excl'?'incl':'excl';setTaxBtnStyle();setBulkTaxBtnStyle();});
 
         function recalc(){
           const qv=parseFloat(q.value)||1, upv=parseFloat(up.value)||0;
@@ -557,12 +602,30 @@ function buildVendorCard(v){
       });
     }
     function updVCardTotal(){
-      const t=editItems.reduce((s,x)=>s+(x.amount||0),0);
-      subTotEl.textContent='小計 NT$'+t.toLocaleString();
-      hd.querySelector('[style*="gold"]')?.textContent&&(hd.querySelectorAll('div')[2].textContent='NT$'+t.toLocaleString());
+      const {total}=calcItemsTax(editItems);
+      subTotAmt.innerHTML=buildTaxBreakdownHtml(editItems,'小計');
+      setBulkTaxBtnStyle();
+      hd.querySelector('[style*="gold"]')?.textContent&&(hd.querySelectorAll('div')[2].textContent='NT$'+total.toLocaleString());
     }
     const addItmBtn=document.createElement('button');addItmBtn.style.cssText='display:block;width:100%;text-align:left;padding:8px 16px;font-size:.8rem;font-weight:700;color:var(--g400);background:none;border:none;cursor:pointer;font-family:inherit;border-top:1px dashed var(--g200)';addItmBtn.textContent='＋ 新增細項';addItmBtn.addEventListener('click',()=>{editItems.push({name:'',qty:1,unit:'式',unitPrice:0,amount:0});renderVCardItems();});
-    const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.textContent='小計 NT$'+(v.amount||0).toLocaleString();
+    // 小計旁邊加一顆一鍵切換稅別的按鈕：這家廠商的細項如果全部都是含稅、或全部都是未稅，
+    // 不用每一行自己點一次，這裡點一下就整批切換（細項稅別不一致時，按鈕固定顯示「全部設為未稅」）
+    function setBulkTaxBtnStyle(){
+      const allExcl=editItems.length&&editItems.every(it=>it.taxType==='excl');
+      bulkTaxBtn.style.cssText='padding:5px 12px;border-radius:20px;font-size:.7rem;font-weight:800;cursor:pointer;border:1.5px solid var(--gold-l);background:var(--w);color:var(--gold-d);font-family:inherit';
+      bulkTaxBtn.textContent=allExcl?'🔁 全部設為含稅':'🔁 全部設為未稅';
+      bulkTaxBtn.title='一次把上面所有工項的稅別都改成一樣，不用一筆一筆點';
+    }
+    const bulkTaxBtn=document.createElement('button');
+    bulkTaxBtn.addEventListener('click',()=>{
+      const allExcl=editItems.length&&editItems.every(it=>it.taxType==='excl');
+      editItems.forEach(it=>it.taxType=allExcl?'incl':'excl');
+      renderVCardItems();updVCardTotal();
+    });
+    const subTotAmt=document.createElement('div');subTotAmt.innerHTML=buildTaxBreakdownHtml(v.items||[],'小計');
+    const subTotEl=document.createElement('div');subTotEl.className='vc-sub-total';subTotEl.style.justifyContent='space-between';subTotEl.style.alignItems='center';
+    subTotEl.appendChild(bulkTaxBtn);subTotEl.appendChild(subTotAmt);
+    setBulkTaxBtnStyle();
 
     // 儲存列
     const saveBar=document.createElement('div');saveBar.style.cssText='padding:10px 16px;border-top:1px solid var(--g100);display:flex;gap:7px;background:var(--g50)';
@@ -571,7 +634,7 @@ function buildVendorCard(v){
       const nv=document.getElementById('ve-vendor-'+v._id)?.value.trim()||v.vendor;
       const nc=document.getElementById('ve-cat-'+v._id)?.value||v.cat;
       const nn=document.getElementById('ve-note-'+v._id)?.value.trim()||'';
-      const nt=editItems.reduce((s,x)=>s+(x.amount||0),0);
+      const nt=calcItemsTax(editItems).total;
       DB.upd('vendors',v._id,{vendor:nv,cat:nc,note:nn,amount:nt,items:editItems.map(x=>({...x})),caseN:v.caseN,summary:'廠商報價 '+nv+' '+nc+' NT$'+nt.toLocaleString()});
       refreshVendorViews();updStats();renderAdVendorPicker();showToast('✅ 已更新！');
     });
