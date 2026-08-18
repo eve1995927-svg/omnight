@@ -303,7 +303,7 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 /* Pro Quote Sections */
 .pqs{border-bottom:1px solid var(--g100)}
 .pqs:last-child{border-bottom:none}
-.pqs-hd{display:flex;align-items:center;gap:8px;padding:11px 16px;background:var(--g50);cursor:pointer;user-select:none;transition:background var(--ease);border-bottom:1px solid var(--g200)}
+.pqs-hd{display:flex;align-items:center;gap:8px;padding:11px 16px;background:var(--g50);cursor:pointer;user-select:none;transition:background var(--ease);border-bottom:1px solid var(--g200);flex-wrap:wrap}
 .pqs-hd:hover{background:var(--g100)}
 .pqs-icon{font-size:1rem;flex-shrink:0}
 .pqs-name{font-size:.9rem;font-weight:900;color:var(--g600);flex:1}
