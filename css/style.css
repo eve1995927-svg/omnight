@@ -97,6 +97,20 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .rtab:hover{background:var(--g100);color:var(--g600)}
 .rtab.on{background:var(--gold-pale);color:var(--gold-d)}
 .tright{display:flex;align-items:center;gap:10px;padding-left:16px;border-left:1px solid var(--g200);flex-shrink:0;margin-left:auto}
+.designEntry{
+  display:flex;align-items:center;gap:2px;position:relative;
+  padding:8px 14px;border-radius:var(--rs);
+  background:linear-gradient(135deg,var(--gold-d),var(--gold));
+  color:#fff;font-size:.82rem;font-weight:800;letter-spacing:.02em;
+  text-decoration:none;flex-shrink:0;transition:all var(--ease);
+  box-shadow:0 2px 8px rgba(200,164,74,.35);
+}
+.designEntry:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:0 4px 12px rgba(200,164,74,.45)}
+.designEntry-beta{
+  font-size:.6rem;font-weight:900;color:#fff;background:var(--bad);
+  padding:1px 5px;border-radius:8px;margin-left:4px;letter-spacing:.03em;
+  transform:translateY(-1px);
+}
 .udot{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:var(--w);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:.75rem}
 .uname{font-size:.85rem;font-weight:700;color:var(--g600)}
 .obtn{padding:8px 15px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g400);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:700;transition:all var(--ease)}
@@ -477,6 +491,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
   #app{height:100dvh;overflow:hidden}
   .tb{height:52px;padding:0 12px}
   .tlogo{font-size:1rem;padding-right:8px}
+  .designEntry span{display:none}
+  .designEntry{padding:8px 9px}
+  .designEntry-beta{position:absolute;top:-6px;right:-6px;margin-left:0}
   .rtabs{padding:0 2px;gap:1px}
   .rtab{padding:5px 8px;font-size:.7rem}
   .ml{grid-template-columns:1fr;height:calc(100dvh - 52px - 56px)}
