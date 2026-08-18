@@ -1069,25 +1069,49 @@ function newProjQuote(projectId){
   }, 300);
 }
 
+// 案場詳情「廠商報價」分頁目前選的工種篩選，每個案場各自記自己選到哪個工種（預設「全部」）
+const projVendorCatFilter={};
+
 // ── 案場廠商報價 Tab ──────────────────────────────────────
 function renderProjVendors(id,p,c){
-  const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const allVendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const curCat=projVendorCatFilter[id]||'all';
+  const vendors=curCat==='all'?allVendors:allVendors.filter(v=>(v.cat||'其他')===curCat);
   const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
   // 已付款總額：把這個案場底下每一筆廠商報價的付款紀錄加總，一眼看出付了多少、還欠多少
   const paidTotal=vendors.reduce((s,v)=>s+getVendorPaid(v),0);
+
+  // 同一個工種常常會有好幾家廠商在比價（例如平鎮案場水電就有三組），列表一長就很難一次比較。
+  // 這裡把這個案場實際出現過的工種都列成篩選頁籤，點哪個工種就只看那個工種底下的幾筆報價，方便互相比較。
+  const catCounts={};
+  allVendors.forEach(v=>{const k=v.cat||'其他';catCounts[k]=(catCounts[k]||0)+1;});
+  const cats=Object.keys(catCounts).sort((a,b)=>catCounts[b]-catCounts[a]);
+
   c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-weight:800;color:var(--g700)">廠商報價（${vendors.length} 筆）</div>
+        <div style="font-weight:800;color:var(--g700)">廠商報價（${allVendors.length} 筆${curCat!=='all'?'，目前篩選 '+vendors.length+' 筆':''}）</div>
         ${total?`<div style="font-size:.82rem;color:var(--bad);font-weight:700">合計成本：NT$${total.toLocaleString()}</div>`:''}
         ${paidTotal>0?`<div style="font-size:.78rem;color:var(--ok);font-weight:700;margin-top:2px">已付款：NT$${paidTotal.toLocaleString()}${paidTotal<total?'　尚欠：NT$'+(total-paidTotal).toLocaleString():'（已付清）'}</div>`:''}
       </div>
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
+    ${cats.length>1?`<div id="projVendorCatFilt" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn ${curCat==='all'?'bg':'bo'} bxs" data-pvcat="all">全部（${allVendors.length}）</button>
+      ${cats.map(cat=>`<button class="btn ${curCat===cat?'bg':'bo'} bxs" data-pvcat="${esc(cat)}">${VICO[cat]||'📦'} ${esc(cat)}（${catCounts[cat]}）</button>`).join('')}
+    </div>`:''}
     <div id="projVendorCards"></div>`;
+
+  c.querySelectorAll('[data-pvcat]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      projVendorCatFilter[id]=btn.dataset.pvcat;
+      renderProjVendors(id,p,c);
+    });
+  });
+
   const wrap=c.querySelector('#projVendorCards');
   if(!vendors.length){
-    wrap.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>';
+    wrap.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+(curCat==='all'?'尚無廠商報價':'這個工種底下還沒有廠商報價')+'</div></div>';
     return;
   }
   // 直接沿用「廠商報價整理」頁面同一套卡片（可展開看細項、改廠商名稱／類別／備注／工項、標記付款、刪除），
