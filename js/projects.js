@@ -881,7 +881,9 @@ function renderProjOverview(id,p,c){
         <option value="">更改狀態...</option>
         ${Object.entries(PROJECT_STATUS).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
       </select>
-    </div>`;
+      <button class="btn bo" id="catProfitToggleBtn" onclick="toggleProjCatProfit(${id})">🔧 工種毛利</button>
+    </div>
+    <div id="projCatProfitBox" style="display:none;margin-top:14px;padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r)"></div>`;
 }
 
 function updateProjectStatus(id,status){
@@ -1115,6 +1117,133 @@ function showProjVendorDetail(vendorId){
   document.body.appendChild(modal);
 }
 
+// 各工程類別（工種）的毛利拆分：廠商成本只算「已標記✅已採用」的那家（同工種可能有好幾家在比價，
+// 只有真正選定的那家才算數，不然同一個工種的成本會被好幾張報價單重複加總）；
+// 客戶報價則抓報價單各大項的對客小計（依 sec.name 對應工種名稱）。
+// 兩邊都支援手動覆寫（p.catProfitOverride），蓋掉自動算出來的數字，蓋過的欄位會一直沿用，
+// 直到使用者自己把輸入框清空為止，才會改回自動計算。
+// 「毛利明細」彈窗跟案場總覽的「工種毛利」卡片共用這套計算，避免兩個地方各寫一次，數字卻對不起來。
+function getProjCatProfitRows(projectId){
+  const p=DB.get('projects').find(x=>x._id===projectId)||{};
+  const overrides=p.catProfitOverride||{};
+  const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
+  const adoptedByCat={};
+  vendorList.filter(v=>v.adopted).forEach(v=>{
+    const k=v.cat||'其他';
+    if(!adoptedByCat[k])adoptedByCat[k]={vendor:v.vendor||'',cost:0};
+    adoptedByCat[k].cost+=getVendorTrueCost(v);
+    if(v.vendor&&!adoptedByCat[k].vendor.split('、').includes(v.vendor))adoptedByCat[k].vendor=adoptedByCat[k].vendor?adoptedByCat[k].vendor+'、'+v.vendor:v.vendor;
+  });
+  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
+  const clientByCat={};
+  quotes.forEach(q=>{
+    (q.sections||[]).forEach(sec=>{
+      const secTotal=typeof calcSec==='function'?calcSec(sec.items||[]):(sec.items||[]).reduce((s,it)=>s+((it.qty||0)*(it.price||0)),0);
+      const k=sec.name||'其他';
+      clientByCat[k]=(clientByCat[k]||0)+secTotal;
+    });
+  });
+  // 類別清單：把「所有出現過廠商報價的工種」＋「報價單裡的大項」＋「手動輸入過的類別」都列出來，
+  // 就算某個工種還沒標記採用的廠商，也看得到它躺在清單裡（廠商欄位會顯示「未標記採用」提醒你去選）
+  const allVendorCats=[...new Set(vendorList.map(v=>v.cat||'其他'))];
+  const allCats=[...new Set([...allVendorCats,...Object.keys(clientByCat),...Object.keys(overrides)])];
+  const catRows=allCats.map(cat=>{
+    const ov=overrides[cat]||{};
+    const vcAuto=(adoptedByCat[cat]&&adoptedByCat[cat].cost)||0;
+    const ccAuto=clientByCat[cat]||0;
+    const vcOverridden=typeof ov.vc==='number';
+    const ccOverridden=typeof ov.cc==='number';
+    const vc=vcOverridden?ov.vc:vcAuto;
+    const cc=ccOverridden?ov.cc:ccAuto;
+    const cp=cc-vc;
+    const margin=cc?Math.round(cp/cc*1000)/10:null;
+    return {cat,vendor:(adoptedByCat[cat]&&adoptedByCat[cat].vendor)||'',vc,cc,cp,margin,vcOverridden,ccOverridden};
+  }).sort((a,b)=>b.vc-a.vc);
+  const catTotal=catRows.reduce((s,r)=>s+r.cp,0);
+  return {catRows,catTotal};
+}
+
+function buildCatProfitHtml(projectId){
+  const {catRows,catTotal}=getProjCatProfitRows(projectId);
+  const inputStyle=overridden=>'width:92px;text-align:right;padding:4px 6px;border:1.5px solid '+(overridden?'var(--gold-l)':'var(--g200)')+';border-radius:var(--rxs);font-family:monospace;font-size:.8rem;background:'+(overridden?'var(--gold-pale)':'var(--w)')+';outline:none';
+  const catTableHtml=catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:600px">'+
+    '<thead><tr style="border-bottom:1.5px solid var(--g200)">'+
+      '<th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">工種</th>'+
+      '<th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商成本</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">客戶報價</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">工種毛利</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">毛利率</th>'+
+    '</tr></thead>'+
+    '<tbody>'+catRows.map(r=>'<tr style="border-bottom:1px dashed var(--g100)">'+
+      '<td style="padding:6px 4px;font-weight:700;white-space:nowrap">'+esc(r.cat)+'</td>'+
+      '<td style="padding:6px 4px;color:var(--g500);white-space:nowrap">'+(r.vendor?esc(r.vendor):'<span style="color:var(--g300)">未標記採用</span>')+'</td>'+
+      '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="vc" value="'+r.vc+'" inputmode="numeric" style="'+inputStyle(r.vcOverridden)+'"></td>'+
+      '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="cc" value="'+r.cc+'" inputmode="numeric" style="'+inputStyle(r.ccOverridden)+'"></td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace;font-weight:800;white-space:nowrap;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.cp>=0?'+':'')+r.cp.toLocaleString()+'</td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace;white-space:nowrap;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.margin===null?'－':r.margin+'%')+'</td>'+
+    '</tr>').join('')+
+    '</tbody></table></div>'
+    :'<div style="padding:10px 0;font-size:.82rem;color:var(--g400)">尚無廠商報價或客戶報價單資料，無法拆分工種</div>';
+  return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。</div>'+
+    catTableHtml+
+    '<div style="padding:12px 16px;margin-top:10px;border-radius:var(--rs);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(catTotal>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
+      '<span style="font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">各工種毛利合計</span>'+
+      '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+'NT$'+catTotal.toLocaleString()+'</span>'+
+    '</div>';
+}
+
+// 幫「工種毛利」表裡的手動輸入框接上事件：改完（欄位失焦或按 Enter）就存進案場資料，
+// 並且把目前畫面上看得到的（總覽卡片、毛利明細彈窗）都重新算一次刷新，兩邊才不會兜不起來
+function wireCatProfitInputs(container,projectId){
+  if(!container)return;
+  container.querySelectorAll('.catProfitInput').forEach(inp=>{
+    inp.addEventListener('change',()=>{
+      const cat=inp.dataset.cat,field=inp.dataset.field;
+      const p=DB.get('projects').find(x=>x._id===projectId);if(!p)return;
+      const overrides={};
+      Object.keys(p.catProfitOverride||{}).forEach(k=>{overrides[k]={...(p.catProfitOverride[k]||{})};});
+      const raw=inp.value.trim();
+      overrides[cat]=overrides[cat]||{};
+      if(raw===''){
+        delete overrides[cat][field];
+        if(Object.keys(overrides[cat]).length===0)delete overrides[cat];
+      }else{
+        const num=Number(raw.replace(/,/g,''));
+        if(!isNaN(num))overrides[cat][field]=num;
+      }
+      DB.upd('projects',projectId,{catProfitOverride:overrides});
+      showToast('✅ 已更新工種毛利');
+      const box=document.getElementById('projCatProfitBox');
+      if(box&&box.style.display!=='none'){
+        box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(projectId);
+        wireCatProfitInputs(box,projectId);
+      }
+      const modalPane=document.getElementById('profitPaneCat');
+      if(modalPane){
+        modalPane.innerHTML=buildCatProfitHtml(projectId);
+        wireCatProfitInputs(modalPane,projectId);
+      }
+    });
+  });
+}
+
+// 案場總覽頁的「🔧 工種毛利」按鈕：不開彈窗，直接在按鈕下方展開／收合明細，符合「明細放在下方」的需求
+function toggleProjCatProfit(id){
+  const box=document.getElementById('projCatProfitBox');if(!box)return;
+  const btn=document.getElementById('catProfitToggleBtn');
+  const opening=box.style.display==='none';
+  if(opening){
+    box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(id);
+    box.style.display='block';
+    wireCatProfitInputs(box,id);
+    if(btn){btn.style.background='var(--gold-pale)';btn.style.borderColor='var(--gold-l)';btn.style.color='var(--gold-d)';btn.textContent='🔧 工種毛利（收起 ▲）';}
+  }else{
+    box.style.display='none';
+    if(btn){btn.style.background='';btn.style.borderColor='';btn.style.color='';btn.textContent='🔧 工種毛利';}
+  }
+}
+
 function showProjProfitDetail(projectId){
   const items=DB.get('ledger').filter(l=>l.projectId===projectId);
   const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
@@ -1136,39 +1265,6 @@ function showProjProfitDetail(projectId){
       '</div>'+rowsHtml+'</div>';
   };
 
-  const vendorByCat={};
-  vendorList.forEach(v=>{
-    const k=v.cat||'其他';
-    vendorByCat[k]=(vendorByCat[k]||0)+getVendorTrueCost(v);
-  });
-  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
-  const clientByCat={};
-  quotes.forEach(q=>{
-    (q.sections||[]).forEach(sec=>{
-      const secTotal=typeof calcSec==='function'?calcSec(sec.items||[]):(sec.items||[]).reduce((s,it)=>s+((it.qty||0)*(it.price||0)),0);
-      const k=sec.name||'其他';
-      clientByCat[k]=(clientByCat[k]||0)+secTotal;
-    });
-  });
-  const allCats=[...new Set([...Object.keys(vendorByCat),...Object.keys(clientByCat)])];
-  const catRows=allCats.map(cat=>{
-    const vc=vendorByCat[cat]||0;
-    const cc=clientByCat[cat]||0;
-    return {cat,vc,cc,cp:cc-vc};
-  }).sort((a,b)=>b.vc-a.vc);
-  const catTotal=catRows.reduce((s,r)=>s+r.cp,0);
-
-  const catTableHtml=catRows.length?'<table style="width:100%;border-collapse:collapse;font-size:.82rem">'+
-    '<thead><tr style="border-bottom:1.5px solid var(--g200)"><th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">類別</th><th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商成本</th><th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">報價單分配</th><th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">毛利</th></tr></thead>'+
-    '<tbody>'+catRows.map(r=>'<tr style="border-bottom:1px dashed var(--g100)">'+
-      '<td style="padding:6px 4px;font-weight:700">'+esc(r.cat)+(r.cc===0?'<div style="font-size:.65rem;color:var(--g400);font-weight:400">報價單未列此類別</div>':'')+'</td>'+
-      '<td style="padding:6px 4px;text-align:right;font-family:monospace">'+r.vc.toLocaleString()+'</td>'+
-      '<td style="padding:6px 4px;text-align:right;font-family:monospace">'+r.cc.toLocaleString()+'</td>'+
-      '<td style="padding:6px 4px;text-align:right;font-family:monospace;font-weight:800;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.cp>=0?'+':'')+r.cp.toLocaleString()+'</td>'+
-    '</tr>').join('')+
-    '</tbody></table>'
-    :'<div style="padding:10px 0;font-size:.82rem;color:var(--g400)">尚無廠商報價或客戶報價單資料，無法拆分類別</div>';
-
   const modal=document.createElement('div');modal.className='mov show';
   modal.innerHTML='<div class="modal" style="max-width:520px">'+
     '<div class="mtit">毛利明細 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
@@ -1186,15 +1282,11 @@ function showProjProfitDetail(projectId){
       '</div>'+
     '</div>'+
     '<div id="profitPaneCat" style="display:none">'+
-      '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 「報價單分配」抓的是客戶報價單裡，這個類別下所有工項的加總；如果某類別報價單沒有列，代表這筆廠商成本目前沒有對應到報價收入。</div>'+
-      catTableHtml+
-      '<div style="padding:12px 16px;margin-top:10px;border-radius:var(--rs);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(catTotal>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
-        '<span style="font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">各類別毛利合計</span>'+
-        '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+'NT$'+catTotal.toLocaleString()+'</span>'+
-      '</div>'+
+      buildCatProfitHtml(projectId)+
     '</div>'+
     '</div>';
   document.body.appendChild(modal);
+  wireCatProfitInputs(modal.querySelector('#profitPaneCat'),projectId);
   modal.querySelector('#profitTabTx').addEventListener('click',()=>{
     modal.querySelector('#profitPaneTx').style.display='block';
     modal.querySelector('#profitPaneCat').style.display='none';

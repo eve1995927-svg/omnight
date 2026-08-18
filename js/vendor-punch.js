@@ -469,6 +469,7 @@ function buildVendorCard(v){
         (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
       '</div>'+
       '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
+        '<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'✅ 已採用':'☐ 標記採用')+'</button>'+
         '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
         '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
         '<button class="btn brd bxs" data-vdel>🗑</button>'+
@@ -583,6 +584,18 @@ function buildVendorCard(v){
     body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(saveBar);
     renderVCardItems();
 
+    hd.querySelector('[data-vadopt]').addEventListener('click',e=>{
+      e.stopPropagation();
+      const nowAdopted=!v.adopted;
+      DB.upd('vendors',v._id,{adopted:nowAdopted});
+      // 同一個案場、同一個工程類別下，一次只能有一家是「已採用」的報價（工種毛利要抓實際採用的那筆成本，
+      // 不能同一個工種被好幾家廠商的成本重複算進去），所以標記這家的同時，把同類別的其他家自動取消採用
+      if(nowAdopted&&v.projectId&&v.cat){
+        DB.get('vendors').filter(o=>o._id!==v._id&&o.projectId===v.projectId&&o.cat===v.cat&&!o.deleted&&o.adopted)
+          .forEach(o=>DB.upd('vendors',o._id,{adopted:false}));
+      }
+      refreshVendorViews();
+    });
     hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
     hd.querySelector('[data-vtgl]').addEventListener('click',e=>{e.stopPropagation();const open=body.classList.toggle('open');hd.querySelector('[data-vtgl]').textContent=open?'▴ 收起':'▾ 明細';});
     hd.querySelector('[data-vdel]').addEventListener('click',e=>{e.stopPropagation();confirmAction('刪除「'+v.vendor+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('vendors',v._id);refreshVendorViews();updStats();renderAdVendorPicker();showToast('✅ 已移至垃圾桶');});});
