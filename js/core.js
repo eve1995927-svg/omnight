@@ -664,9 +664,9 @@ function startCloudSync(){
 
       // 社群訊息（LINE/FB/IG）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
       if(k==='omnichannel_messages'&&newLen!==oldLen){
-        updateInboxBadge&&updateInboxBadge();
+        typeof updateInboxBadge==='function'&&updateInboxBadge();
         const ip=document.getElementById('p-inbox');
-        if(ip&&ip.classList.contains('on'))renderInboxPanel&&renderInboxPanel();
+        if(ip&&ip.classList.contains('on')&&typeof renderInboxPanel==='function')renderInboxPanel();
       }
       // 老闆端打卡有更新
       if(k==='punch_recs'&&newLen!==oldLen&&curRole==='owner'){
@@ -1334,7 +1334,7 @@ function buildSidebar(role, activeGrp){
   });
   nav.appendChild(sec);
   updateHRBadge();
-  updateInboxBadge&&updateInboxBadge();
+  typeof updateInboxBadge==='function'&&updateInboxBadge();
 }
 function buildBN(role){
   const bn=document.getElementById('bn');bn.innerHTML='';bn.className='bnav';
@@ -1358,7 +1358,7 @@ function buildBN(role){
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
   });
   updateHRBadge();
-  updateInboxBadge&&updateInboxBadge();
+  typeof updateInboxBadge==='function'&&updateInboxBadge();
 }
 
 // ── 老闆端：人資管理 待審核打卡申請 紅點通知 ──────────────
