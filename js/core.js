@@ -785,7 +785,7 @@ function confirmAction(msg,onConfirm,danger=true){
   const old=document.getElementById('_cfmBox');if(old)old.remove();
   const box=document.createElement('div');
   box.id='_cfmBox';
-  box.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--w);border:1.5px solid '+(danger?'var(--bad-bd)':'var(--g200)')+';border-radius:var(--r);padding:16px 20px;z-index:9000;box-shadow:0 4px 20px rgba(0,0,0,.18);min-width:260px;text-align:center;animation:slideUp .2s ease';
+  box.style.cssText='position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--w);border:1.5px solid '+(danger?'var(--bad-bd)':'var(--g200)')+';border-radius:var(--r);padding:16px 20px;z-index:99999;box-shadow:0 4px 20px rgba(0,0,0,.18);min-width:260px;text-align:center;animation:slideUp .2s ease';
   box.innerHTML='<div style="font-size:.88rem;font-weight:700;color:var(--g700);margin-bottom:12px">'+esc(msg)+'</div>'+
     '<div style="display:flex;gap:8px;justify-content:center">'+
     '<button class="_cfmNo" style="padding:7px 18px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.82rem;cursor:pointer;font-family:inherit">取消</button>'+
