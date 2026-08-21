@@ -396,7 +396,16 @@ function renderProjectCalendar(){
   // 這個月（含前後補位天）每一天要放哪些案場：用開工日 startDate 對應
   const projects=DB.get('projects').filter(p=>!p.archived&&p.startDate);
   const byDate={};
-  projects.forEach(p=>{ (byDate[p.startDate]=byDate[p.startDate]||[]).push(p); });
+  projects.forEach(p=>{ (byDate[p.startDate]=byDate[p.startDate]||[]).push({kind:'project',data:p}); });
+  // 自訂行程（像 Google 日曆一樣自己新增的，不綁案場）
+  const events=DB.get('calendar_events');
+  events.forEach(ev=>{ if(!ev.date)return; (byDate[ev.date]=byDate[ev.date]||[]).push({kind:'event',data:ev}); });
+  Object.values(byDate).forEach(list=>list.sort((a,b)=>{
+    // 有時間的行程照時間排在前面，案場卡片（沒有時間）排最後
+    const ta=a.kind==='event'?(a.data.time||'99:99'):'99:99';
+    const tb=b.kind==='event'?(b.data.time||'99:99'):'99:99';
+    return ta.localeCompare(tb);
+  }));
 
   const cells=[];
   // 補上個月尾巴
@@ -422,43 +431,73 @@ function renderProjectCalendar(){
     const el=document.createElement('div');
     el.className='cal-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
     el.dataset.date=cell.dateStr;
-    const dayProjects=byDate[cell.dateStr]||[];
+    const dayItems=byDate[cell.dateStr]||[];
     el.innerHTML='<div class="cal-day-num">'+cell.dnum+'</div><div class="cal-day-chips"></div>';
     const chipsWrap=el.querySelector('.cal-day-chips');
-    dayProjects.slice(0,MAX_CHIPS).forEach(p=>{
-      const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+    dayItems.slice(0,MAX_CHIPS).forEach(item=>{
       const chip=document.createElement('div');
       chip.className='cal-chip';
-      chip.draggable=true;
-      chip.dataset.id=p._id;
-      chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
-      chip.textContent=st.icon+' '+(p.name||p.client||'未命名案場');
-      chip.title=(p.name||'未命名案場')+'（點擊查看，拖曳可改開工日）';
-      chip.addEventListener('click',e=>{e.stopPropagation();openProject(p._id);});
-      chip.addEventListener('dragstart',e=>{
-        chip.classList.add('dragging');
-        e.dataTransfer.setData('text/plain',String(p._id));
-        e.dataTransfer.effectAllowed='move';
-      });
-      chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      if(item.kind==='project'){
+        const p=item.data;
+        const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+        chip.draggable=true;
+        chip.dataset.id=p._id;
+        chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
+        chip.textContent=st.icon+' '+(p.name||p.client||'未命名案場');
+        chip.title=(p.name||'未命名案場')+'（點擊查看，拖曳可改開工日）';
+        chip.addEventListener('click',e=>{e.stopPropagation();openProject(p._id);});
+        chip.addEventListener('dragstart',e=>{
+          chip.classList.add('dragging');
+          e.dataTransfer.setData('text/plain','project:'+p._id);
+          e.dataTransfer.effectAllowed='move';
+        });
+        chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      }else{
+        // 自訂行程：跟案場卡片長得不一樣（紫色系，跟 Google 日曆的一般行程做出區別），點擊可以編輯/刪除
+        const ev=item.data;
+        chip.draggable=true;
+        chip.dataset.evid=ev._id;
+        chip.style.cssText='background:#EDE9FE;color:#5B21B6;border-left-color:#7C3AED';
+        chip.textContent='📌 '+(ev.time?ev.time+' ':'')+(ev.title||'行程');
+        chip.title=(ev.title||'行程')+(ev.time?'（'+ev.time+'）':'')+'（點擊編輯，拖曳可改日期）';
+        chip.addEventListener('click',e=>{e.stopPropagation();openCalEventModal(cell.dateStr,ev);});
+        chip.addEventListener('dragstart',e=>{
+          chip.classList.add('dragging');
+          e.dataTransfer.setData('text/plain','event:'+ev._id);
+          e.dataTransfer.effectAllowed='move';
+        });
+        chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      }
       chipsWrap.appendChild(chip);
     });
-    if(dayProjects.length>MAX_CHIPS){
+    if(dayItems.length>MAX_CHIPS){
       const more=document.createElement('div');
       more.className='cal-day-more';
-      more.textContent='+'+(dayProjects.length-MAX_CHIPS)+' 更多';
-      more.addEventListener('click',e=>{e.stopPropagation();showDayProjectsPopover(cell.dateStr,dayProjects);});
+      more.textContent='+'+(dayItems.length-MAX_CHIPS)+' 更多';
+      more.addEventListener('click',e=>{e.stopPropagation();showDayItemsPopover(cell.dateStr,dayItems);});
       chipsWrap.appendChild(more);
     }
+    // 點格子空白處（不是點卡片）：直接在這天新增行程，跟 Google 日曆點空白格的行為一樣
+    el.addEventListener('click',()=>openCalEventModal(cell.dateStr));
     el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
     el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
     el.addEventListener('drop',e=>{
       e.preventDefault();
       el.classList.remove('drag-over');
-      const draggedId=parseInt(e.dataTransfer.getData('text/plain'));
+      const raw=e.dataTransfer.getData('text/plain');
+      const newDate=el.dataset.date;
+      if(raw.startsWith('event:')){
+        const evId=parseInt(raw.slice(6));
+        const ev=DB.get('calendar_events').find(x=>x._id===evId);
+        if(!ev||ev.date===newDate)return;
+        DB.upd('calendar_events',evId,{date:newDate});
+        renderProjectCalendar();
+        showToast('📅 已把「'+(ev.title||'行程')+'」改到 '+newDate);
+        return;
+      }
+      const draggedId=parseInt(raw.startsWith('project:')?raw.slice(8):raw);
       const proj=getProject(draggedId);
       if(!proj||!proj.startDate)return;
-      const newDate=el.dataset.date;
       if(proj.startDate===newDate)return;
       // 保留原本工期長度：完工日跟著開工日一起平移，不會因為拖曳而把工期拉長或縮短
       const patch={startDate:newDate};
@@ -491,33 +530,102 @@ document.getElementById('calTodayBtn')?.addEventListener('click',()=>{
   renderProjectCalendar();
 });
 
-// 正方形格子放不下太多案場時，點「+N 更多」跳出這個小視窗看當天全部案場
-function showDayProjectsPopover(dateStr,projects){
+// 正方形格子放不下太多時，點「+N 更多」跳出這個小視窗看當天全部案場／行程
+function showDayItemsPopover(dateStr,items){
   const old=document.getElementById('_dayPopover');if(old)old.remove();
   const box=document.createElement('div');
   box.id='_dayPopover';
   box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.35);z-index:9200;display:flex;align-items:center;justify-content:center;padding:20px';
-  const rows=projects.map(p=>{
-    const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
-    return '<div class="pc-pop-row" data-id="'+p._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
-      '<span style="font-size:1rem">'+st.icon+'</span>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name||'未命名案場')+'</div>'+
-      '<div style="font-size:.72rem;color:var(--g400)">'+esc(p.client||'業主未填')+'</div></div>'+
-      '<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+  const rows=items.map(item=>{
+    if(item.kind==='project'){
+      const p=item.data;
+      const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+      return '<div class="pc-pop-row" data-ptype="project" data-id="'+p._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
+        '<span style="font-size:1rem">'+st.icon+'</span>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name||'未命名案場')+'</div>'+
+        '<div style="font-size:.72rem;color:var(--g400)">'+esc(p.client||'業主未填')+'</div></div>'+
+        '<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+      '</div>';
+    }
+    const ev=item.data;
+    return '<div class="pc-pop-row" data-ptype="event" data-id="'+ev._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
+      '<span style="font-size:1rem">📌</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(ev.title||'行程')+'</div>'+
+      (ev.note?'<div style="font-size:.72rem;color:var(--g400)">'+esc(ev.note)+'</div>':'')+'</div>'+
+      (ev.time?'<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:#EDE9FE;color:#5B21B6">'+esc(ev.time)+'</span>':'')+
     '</div>';
   }).join('');
   box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:18px 20px;max-width:360px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
-    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
+    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+items.length+' 項）</div>'+
     rows+
     '</div>';
   box.addEventListener('click',()=>box.remove());
   box.querySelectorAll('.pc-pop-row').forEach(row=>{
     row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
     row.addEventListener('mouseleave',()=>row.style.background='');
-    row.addEventListener('click',()=>{box.remove();openProject(parseInt(row.dataset.id));});
+    row.addEventListener('click',()=>{
+      box.remove();
+      const id=parseInt(row.dataset.id);
+      if(row.dataset.ptype==='project')openProject(id);
+      else{
+        const ev=DB.get('calendar_events').find(x=>x._id===id);
+        if(ev)openCalEventModal(dateStr,ev);
+      }
+    });
   });
   document.body.appendChild(box);
 }
+
+// ── 自訂行程（像 Google 日曆一樣自己新增行程/時間，不用綁案場）─────────
+function openCalEventModal(dateStr,existingEvent){
+  const old=document.getElementById('_calEventModal');if(old)old.remove();
+  const ev=existingEvent||null;
+  const box=document.createElement('div');
+  box.id='_calEventModal';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9300;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:1rem;margin-bottom:16px;color:var(--g800)">'+(ev?'✏️ 編輯行程':'📌 新增行程')+'</div>'+
+    '<div class="field" style="margin-bottom:12px"><label class="fl">標題</label><input class="fi" id="calEvTitle" placeholder="例如：跟業主約看樣品" value="'+(ev?esc(ev.title||''):'')+'"></div>'+
+    '<div class="g2" style="margin-bottom:12px">'+
+      '<div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" type="date" id="calEvDate" value="'+(ev?ev.date:dateStr)+'"></div>'+
+      '<div class="field" style="margin:0"><label class="fl">時間（選填）</label><input class="fi" type="time" id="calEvTime" value="'+(ev&&ev.time?ev.time:'')+'"></div>'+
+    '</div>'+
+    '<div class="field" style="margin-bottom:16px"><label class="fl">備注</label><input class="fi" id="calEvNote" placeholder="選填" value="'+(ev?esc(ev.note||''):'')+'"></div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn bg" id="calEvSaveBtn" style="flex:1">💾 儲存</button>'+
+      (ev?'<button class="btn brd" id="calEvDelBtn">🗑 刪除</button>':'')+
+      '<button class="btn bo" id="calEvCancelBtn">取消</button>'+
+    '</div>'+
+  '</div>';
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  document.getElementById('calEvCancelBtn').addEventListener('click',()=>box.remove());
+  document.getElementById('calEvTitle').focus();
+  document.getElementById('calEvDelBtn')?.addEventListener('click',()=>{
+    confirmAction('刪除行程「'+(ev.title||'')+'」？',()=>{
+      DB.del('calendar_events',ev._id);
+      box.remove();
+      renderProjectCalendar();
+      showToast('✅ 已刪除行程');
+    });
+  });
+  document.getElementById('calEvSaveBtn').addEventListener('click',()=>{
+    const title=document.getElementById('calEvTitle').value.trim();
+    const date=document.getElementById('calEvDate').value;
+    const time=document.getElementById('calEvTime').value;
+    const note=document.getElementById('calEvNote').value.trim();
+    if(!title){showToast('⚠️ 請輸入行程標題');return;}
+    if(!date){showToast('⚠️ 請選擇日期');return;}
+    const data={title,date,time,note,summary:'行程 '+title};
+    if(ev)DB.upd('calendar_events',ev._id,data);
+    else DB.push('calendar_events',data);
+    box.remove();
+    renderProjectCalendar();
+    showToast('✅ 已儲存行程');
+  });
+}
+
+document.getElementById('calAddEventBtn')?.addEventListener('click',()=>openCalEventModal(ymd(new Date())));
 
 
 // ── 合併重複案場（因打錯字/命名不一致而分裂成好幾筆的同一個案場）─────────
@@ -1000,6 +1108,10 @@ function deleteSurvey(measureId,projectId){
 // 如果是有明細的報價單（用系統的報價編輯器建立的），才進去完整的編輯畫面。
 function openQuoteEdit(id){
   const q=DB.get('quotes').find(r=>r._id===id);if(!q)return;
+  // 這裡本來沒有設定 qEditId，導致從案場詳情的「報價」分頁點進來編輯、存檔時，
+  // 系統會誤判成「這是一份新報價」而另外新增一筆，不是更新原本這筆——
+  // 這就是為什麼案場詳情看到的金額改了，但「報價管理」列表那邊的舊記錄還是沒變、變成兩筆對不起來的真正原因。
+  qEditId=id;
   const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
   const fileUrls=q.fileUrls||[];
 

@@ -39,14 +39,14 @@ const GROUPS={
   owner:[
     {l:'儀表板',   items:[{id:'owner-dash',l:'今日總覽',ic:'📊'}]},
     {l:'案場',     items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'業務',     items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'業務',     items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
     {l:'工程',     items:[{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
     {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
     {l:'管理',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'},{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   staff:[
     {l:'案場',   _perm:'projects',   items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'業務',   _perm:'business',   items:[{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
+    {l:'業務',   _perm:'business',   items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
     {l:'工程',   _perm:'vendor',     items:[{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
     {l:'會計',   _perm:'accounting', items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
     {l:'管理',   _perm:'settings',   items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
@@ -58,7 +58,7 @@ const GROUPS={
 
 // 手機版簡化選單：現場常用的功能才留在手機上，複雜的（合約、會計細項、人資薪資、系統設定...）
 // 只在電腦版顯示。帳款總覽有留，是因為「標記廠商付款」這個現場常用的小動作剛好放在那一頁裡。
-const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','cs-quote','ad-quote','ad-progress','ac-overview'];
+const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','inbox','cs-quote','ad-quote','ad-progress','ac-overview'];
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
@@ -365,7 +365,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','memos','recurring_expenses'];
+               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','memos','recurring_expenses','calendar_events'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -645,7 +645,7 @@ function startCloudSync(){
   // Firebase 即時監聽所有資料
   _fbDB.ref('zeju_data').on('value', snap=>{
     const data=snap.val()||{};
-    let hasPunchChange=false, hasReqChange=false;
+    let hasPunchChange=false, hasReqChange=false, hasInboxChange=false;
     _KEYS.forEach(k=>{
       if(data[k]){
         const oldLen=Object.keys(_cache[k]||{}).length;
@@ -654,9 +654,16 @@ function startCloudSync(){
         _cache[k]=normalized;
         if(k==='punch_recs'&&newLen!==oldLen) hasPunchChange=true;
         if(k==='punch_requests'&&newLen!==oldLen) hasReqChange=true;
+        if(k==='omnichannel_messages'&&newLen!==oldLen) hasInboxChange=true;
       }
     });
     setSyncStatus&&setSyncStatus('ok');
+    // 社群訊息（LINE/FB/IG）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
+    if(hasInboxChange){
+      updateInboxBadge&&updateInboxBadge();
+      const ip=document.getElementById('p-inbox');
+      if(ip&&ip.classList.contains('on'))renderInboxPanel&&renderInboxPanel();
+    }
     // 老闆端打卡有更新
     if(hasPunchChange&&curRole==='owner'){
       const pb=document.getElementById('hrb-punch');
@@ -1322,6 +1329,7 @@ function buildSidebar(role, activeGrp){
   });
   nav.appendChild(sec);
   updateHRBadge();
+  updateInboxBadge&&updateInboxBadge();
 }
 function buildBN(role){
   const bn=document.getElementById('bn');bn.innerHTML='';bn.className='bnav';
@@ -1345,6 +1353,7 @@ function buildBN(role){
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
   });
   updateHRBadge();
+  updateInboxBadge&&updateInboxBadge();
 }
 
 // ── 老闆端：人資管理 待審核打卡申請 紅點通知 ──────────────
@@ -1368,6 +1377,7 @@ function updateHRBadge(){
 function switchRole(role){curRole=role;const a=ACCTS[role];document.getElementById('uDot').textContent=a.abbr;document.getElementById('uName').textContent=a.name;document.getElementById('aName').textContent=a.name;document.getElementById('aRole').textContent=a.role;buildTabs(role);buildSidebar(role,groupsFor(role)?.[0]?.l);buildBN(role);showPanel(groupsFor(role)?.[0]?.items[0]?.id||'owner-dash');}
 function showPanel(id){
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
+  if(id==='inbox') setTimeout(()=>renderInboxPanel(),50);
   // 切換到新建報價時重設按鈕綁定
   if(id==='ad-settings'){
     const btn=document.getElementById('adSave');
