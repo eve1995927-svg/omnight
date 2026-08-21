@@ -139,9 +139,9 @@
    <div class="sc-hd"><span class="sc-ic">🔑</span><div style="flex:1"><div class="sc-title">AI 金鑰設定</div><div class="sc-sub">輸入一次後永久記憶</div></div><div class="api-dot" id="apiDot">⚠️ 未設定</div></div>
    <div class="sc-row">
     <input type="password" class="sc-inp" id="apiInp" placeholder="sk-ant-api03-…" onkeydown="if(event.key==='Enter')apiSaveKey()">
-    <button class="btn bg bsm" onclick="apiSaveKey()">💾 儲存</button>
-    <button class="btn bo bsm" onclick="apiTestConn(event)">🔌 測試</button>
-    <button class="btn bo bsm" style="color:var(--bad)" onclick="apiClearKey()">🗑 清除</button>
+    <button class="btn bg bsm" onclick="apiSaveKey()">儲存</button>
+    <button class="btn bo bsm" onclick="apiTestConn(event)">測試</button>
+    <button class="btn bo bsm" style="color:var(--bad)" onclick="apiClearKey()">清除</button>
    </div>
   </div>
  </details>
@@ -153,10 +153,10 @@
   <div><div class="ptit">🏗️ 案場總覽</div><div class="psub">所有案場，點進去看完整資料</div></div>
   <div style="display:flex;gap:8px;align-items:center">
    <div class="view-toggle" id="projViewToggle">
-    <button class="vt-btn on" data-view="list" onclick="setProjView('list')">☰ 列表</button>
+    <button class="vt-btn on" data-view="list" onclick="setProjView('list')">列表</button>
     <button class="vt-btn" data-view="kanban" onclick="setProjView('kanban')">▦ 看板</button>
    </div>
-   <button class="btn bo bsm" onclick="openMergeProjectsModal()">🔀 合併重複案場</button>
+   <button class="btn bo bsm" onclick="openMergeProjectsModal()">合併重複案場</button>
    <button class="btn bg bsm" onclick="openAddProject()">＋ 新增案場</button>
   </div>
  </div>
@@ -203,7 +203,7 @@
 <div class="panel" id="p-inbox">
  <div class="ph">
   <div><div class="ptit">📥 社群訊息</div><div class="psub">LINE／Facebook／Instagram 私訊統一在這裡看、這裡回</div></div>
-  <button class="btn bo bsm" id="inboxSettingsBtn">⚙️ 連線設定</button>
+  <button class="btn bo bsm" id="inboxSettingsBtn">連線設定</button>
  </div>
  <div style="display:flex;gap:0;height:calc(100vh - 190px);min-height:460px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
 
@@ -267,7 +267,7 @@
     <div id="chatClientAvatar" style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:var(--w);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">？</div>
     <div><div id="chatClientName" style="font-size:.92rem;font-weight:900;color:var(--g800)">—</div><div style="font-size:.72rem;color:var(--g400);margin-top:1px">AI 客服對話中</div></div>
     <div style="margin-left:auto;display:flex;gap:6px">
-     <button class="btn bo bxs" id="clearCsBtn">🗑 清除對話</button>
+     <button class="btn bo bxs" id="clearCsBtn">清除對話</button>
     </div>
    </div>
    <div id="cs-chat" style="flex:1;min-height:0"></div>
@@ -276,15 +276,15 @@
  <div class="card" style="margin-top:14px">
   <div class="ct">📤 一鍵產出回覆格式</div>
   <div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px">
-   <button class="btn bg bsm" data-fmt="line">💬 LINE 訊息</button>
-   <button class="btn bo bsm" data-fmt="email">📧 Email</button>
-   <button class="btn bo bsm" data-fmt="sms">📱 簡訊</button>
-   <button class="btn bo bsm" data-fmt="quote-summary">📄 報價摘要</button>
+   <button class="btn bg bsm" data-fmt="line">LINE 訊息</button>
+   <button class="btn bo bsm" data-fmt="email">Email</button>
+   <button class="btn bo bsm" data-fmt="sms">簡訊</button>
+   <button class="btn bo bsm" data-fmt="quote-summary">報價摘要</button>
   </div>
   <div class="sp2" id="rplSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 整理中…</div>
   <div id="rplBox" style="display:none">
    <div class="reply-box" id="rplTxt" contenteditable="true"></div>
-   <div style="display:flex;gap:7px;margin-top:10px"><button class="btn bg bsm" id="cpRpl">📋 複製</button><button class="btn bo bsm" id="svRpl">💾 儲存</button></div>
+   <div style="display:flex;gap:7px;margin-top:10px"><button class="btn bg bsm" id="cpRpl">複製</button><button class="btn bo bsm" id="svRpl">儲存</button></div>
   </div>
  </div>
 </div>
@@ -322,7 +322,7 @@
      <div class="ai-chip" onclick="qChip('老屋翻新，屋齡30年，需要防水處理')">🏚️ 老屋翻新</div>
      <div class="ai-chip" onclick="qChip('只做廚房跟浴室，其他不動')">🍳 廚浴局部</div>
     </div>
-    <button class="btn bg bfull" id="genQBtn" style="padding:14px;font-size:.95rem">🤖 AI 產生報價</button>
+    <button class="btn bg bfull" id="genQBtn" style="padding:14px;font-size:.95rem">AI 產生報價</button>
     <div class="sp2" id="qSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 計算中…</div>
    </div>
   </div>
@@ -346,10 +346,10 @@
      <div class="pq-note">付款：簽約30%·開工30%·七成完工30%·驗收10%　有效期30天<br>03-2605199 ｜ LINE @zj8888 ｜ IG @zeju0923</div>
     </div>
     <div class="pq-actions">
-     <button class="btn bg bsm" id="qSave">💾 儲存</button>
-     <button class="btn bgn bsm" id="qXls">📥 Excel</button>
+     <button class="btn bg bsm" id="qSave">儲存</button>
+     <button class="btn bgn bsm" id="qXls">Excel</button>
      <button class="btn bo bsm" id="qAddSec">＋ 新增分類</button>
-     <button class="btn bo bsm" onclick="window.print()">🖨 列印</button>
+     <button class="btn bo bsm" onclick="window.print()">列印</button>
     </div>
    </div>
    <div class="empty-hint" id="qEmptyHint">
@@ -378,8 +378,8 @@
     <div class="field"><label class="fl">補充說明</label><textarea class="ft" id="mkNt" placeholder="例：大安區30坪完工，木質調…" rows="2"></textarea></div>
     <div class="field"><label class="fl">語氣風格</label><select class="fs" id="mkTn"><option>溫暖親切</option><option>專業質感</option><option>活潑有趣</option><option>高端奢華</option></select></div>
     <div style="display:flex;gap:8px">
-     <button class="btn bg" style="flex:1;padding:13px" id="genPst">✨ 生成貼文</button>
-     <button class="btn bo" style="flex:1;padding:13px" id="rgnPst">🔄 重新生成</button>
+     <button class="btn bg" style="flex:1;padding:13px" id="genPst">生成貼文</button>
+     <button class="btn bo" style="flex:1;padding:13px" id="rgnPst">重新生成</button>
     </div>
     <div class="sp2" id="mkSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 撰寫中…</div>
    </div>
@@ -402,7 +402,7 @@
      <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('warm')">🌿 溫暖自然</div>
      <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('modern')">🔷 現代幾何</div>
     </div>
-    <button class="btn bg bfull" id="genImgBtn" style="padding:13px">🎨 生成行銷圖片</button>
+    <button class="btn bg bfull" id="genImgBtn" style="padding:13px">生成行銷圖片</button>
     <div class="sp2" id="imgSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 設計中…</div>
    </div>
   </div>
@@ -423,14 +423,14 @@
    <div id="imgPreviewWrap" style="display:none;margin-top:12px">
     <div class="mk-img-canvas" id="mkImgCanvas"></div>
     <div style="display:flex;gap:7px;margin-top:10px">
-     <button class="btn bg bsm" id="dlImgBtn">📥 下載圖片</button>
-     <button class="btn bo bsm" id="regenImgBtn">🔄 重新生成</button>
+     <button class="btn bg bsm" id="dlImgBtn">下載圖片</button>
+     <button class="btn bo bsm" id="regenImgBtn">重新生成</button>
     </div>
    </div>
   </div>
  </div>
  <div class="card" style="margin-top:14px;display:none" id="postHistoryCard">
-  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="ct" style="margin:0">📋 發文記錄</div><button class="btn bo bxs" onclick="document.getElementById('postHistoryCard').style.display='none'">✕ 關閉</button></div>
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div class="ct" style="margin:0">📋 發文記錄</div><button class="btn bo bxs" onclick="document.getElementById('postHistoryCard').style.display='none'">關閉</button></div>
   <div id="postHistoryList"></div>
  </div>
 <div class="card" style="margin-top:14px">
@@ -486,21 +486,21 @@
     <div id="zejuQuoteList" style="max-height:180px;overflow-y:auto;border:1px solid var(--g200);border-radius:var(--rxs)">
      <div style="padding:16px;text-align:center;font-size:.82rem;color:var(--g400)">尚無儲存的報價<br>點「＋ 儲存報價」保存目前報價</div>
     </div>
-    <button class="btn bo bsm bfull" onclick="saveCurrentAsZejuQuote()" style="margin-top:8px">💾 儲存目前報價到報價庫</button>
+    <button class="btn bo bsm bfull" onclick="saveCurrentAsZejuQuote()" style="margin-top:8px">儲存目前報價到報價庫</button>
    </div>
 
    <!-- 快速新增工程分類 -->
    <div class="card" style="margin-bottom:12px">
     <div class="ct">⚡ 快速新增工程</div>
     <div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">
-     <button class="btn bo bxs" onclick="addZejuSection('🔨','拆除')">🔨 拆除</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🧱','泥作')">🧱 泥作</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🪵','木作')">🪵 木作</button>
-     <button class="btn bo bxs" onclick="addZejuSection('⚡','水電')">⚡ 水電</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🪟','系統傢俱')">🪟 系統</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🎨','油漆')">🎨 油漆</button>
-     <button class="btn bo bxs" onclick="addZejuSection('🚿','衛浴')">🚿 衛浴</button>
-     <button class="btn bo bxs" onclick="addZejuSection('💡','燈具')">💡 燈具</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🔨','拆除')">拆除</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🧱','泥作')">泥作</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🪵','木作')">木作</button>
+     <button class="btn bo bxs" onclick="addZejuSection('⚡','水電')">水電</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🪟','系統傢俱')">系統</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🎨','油漆')">油漆</button>
+     <button class="btn bo bxs" onclick="addZejuSection('🚿','衛浴')">衛浴</button>
+     <button class="btn bo bxs" onclick="addZejuSection('💡','燈具')">燈具</button>
     </div>
     <div style="display:flex;gap:6px">
      <input class="fi" id="customSecName" placeholder="自訂分類…" style="flex:1;padding:7px 10px;font-size:.82rem">
@@ -514,7 +514,7 @@
     <div class="vp-box" id="adVendorPicker">
      <div class="vp-empty" id="adVpEmpty">尚無廠商報價 · 請先到「廠商報價」頁面上傳</div>
     </div>
-    <button class="btn bg bsm bfull" id="importVendorBtn" style="margin-top:10px">📥 置入已選廠商報價到右側明細</button>
+    <button class="btn bg bsm bfull" id="importVendorBtn" style="margin-top:10px">置入已選廠商報價到右側明細</button>
    </div>
    <div class="card">
     <div class="ct">🤖 AI 整合分析</div>
@@ -526,7 +526,7 @@
     <input type="file" id="adFile" accept="image/*,.pdf,.xlsx,.xls" multiple style="display:none">
     <div class="ipg" id="adPrev"></div>
     <div class="field"><label class="fl">特殊需求</label><textarea class="ft" id="adNt" placeholder="例：加計管理費8%、含稅…" rows="2"></textarea></div>
-    <button class="btn bg bfull" id="genAdQ" style="padding:13px">🤖 AI 整合產生完整報價</button>
+    <button class="btn bg bfull" id="genAdQ" style="padding:13px">AI 整合產生完整報價</button>
     <div class="sp2" id="adSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 整合中…</div>
    </div>
   </div>
@@ -548,7 +548,7 @@
      <div class="pq-tot-row"><span>工程款小計</span><span class="pq-tot-val" id="adSub">NT$0</span></div>
      <div class="pq-tot-row" style="align-items:center">
        <span style="display:flex;align-items:center;gap:6px">管理費（<input type="number" id="adMgmtRate" value="8" min="0" max="100" step="0.5" style="width:46px;border:1.5px solid var(--g200);border-radius:6px;text-align:center;font-size:.85rem;padding:3px 2px;font-family:inherit">%）
-         <button type="button" id="adMgmtWaive" title="這筆報價不收管理費" style="padding:3px 10px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit">🎁 贈送</button>
+         <button type="button" id="adMgmtWaive" title="這筆報價不收管理費" style="padding:3px 10px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit">贈送</button>
        </span>
        <span class="pq-tot-val" id="adMgmt">NT$0</span>
      </div>
@@ -565,15 +565,15 @@
     </div>
     <div class="pq-actions">
      <div class="mode-toggle">
-      <button class="mode-btn on" id="modeInternal" onclick="setQuoteMode('internal')">🔒 內部版（含成本）</button>
-      <button class="mode-btn" id="modeClient" onclick="setQuoteMode('client')">📄 客戶版（報價單）</button>
+      <button class="mode-btn on" id="modeInternal" onclick="setQuoteMode('internal')">內部版（含成本）</button>
+      <button class="mode-btn" id="modeClient" onclick="setQuoteMode('client')">客戶版（報價單）</button>
      </div>
      <div style="display:flex;gap:7px;flex-wrap:wrap">
-      <button class="btn bg bsm" id="adSave">💾 儲存</button>
-      <button class="btn bgn bsm" id="adXls">📥 下載內部版</button>
-      <button class="btn bo bsm" id="adXlsClient">📄 下載客戶版</button>
+      <button class="btn bg bsm" id="adSave">儲存</button>
+      <button class="btn bgn bsm" id="adXls">下載內部版</button>
+      <button class="btn bo bsm" id="adXlsClient">下載客戶版</button>
       <button class="btn bo bsm" id="adAddSec">＋ 新增分類</button>
-      <button class="btn bo bsm" onclick="window.print()">🖨 列印</button>
+      <button class="btn bo bsm" onclick="window.print()">列印</button>
      </div>
     </div>
    </div>
@@ -583,7 +583,7 @@
 
 <!-- ══ AD VENDOR ══ -->
 <div class="panel" id="p-ad-vendor">
- <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">🔀 合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
+ <div class="ph"><div><div class="ptit">🏗️ 廠商報價整理</div><div class="psub">上傳任何格式，AI 自動辨識成固定報價單格式，細項全列出</div></div><div style="display:flex;gap:8px"><button class="btn bo bsm" onclick="openMergeVendorGroupsModal()">合併重複分組</button><button class="btn bg bsm" id="openV">＋ 新增廠商報價</button></div></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="vCnt">0</div><div class="sl">廠商報價件數</div></div>
   <div class="stat"><div class="sn" id="vCatCnt">0</div><div class="sl">工程分類</div></div>
@@ -671,8 +671,8 @@
  </div>
  <div style="display:flex;gap:7px;margin-bottom:14px;flex-wrap:wrap" id="ctFilt">
   <button class="btn bg bsm" data-cf="all">全部</button>
-  <button class="btn bo bsm" data-cf="pending">📋 未開始</button>
-  <button class="btn bo bsm" data-cf="signed">✅ 結案</button>
+  <button class="btn bo bsm" data-cf="pending">未開始</button>
+  <button class="btn bo bsm" data-cf="signed">結案</button>
  </div>
 
  <div id="contractList"></div>
@@ -685,7 +685,7 @@
   <div style="display:flex;gap:8px">
    <button class="btn bg bsm" onclick="openLedgerModal('in')">＋ 外帳收款</button>
    <button class="btn bo bsm" onclick="openLedgerModal('out')">＋ 內帳支出</button>
-   <button class="btn bo bsm" onclick="openRecurringExpenseModal()">🔁 每月固定支出</button>
+   <button class="btn bo bsm" onclick="openRecurringExpenseModal()">每月固定支出</button>
   </div>
  </div>
 
@@ -727,9 +727,9 @@
   <!-- 分類 tab -->
   <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
    <button class="ldir on" data-ldir="all" onclick="setLedgerDir2('all',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">全部</button>
-   <button class="ldir" data-ldir="in-in" onclick="setLedgerDir2('in-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">💰 外帳收入</button>
+   <button class="ldir" data-ldir="in-in" onclick="setLedgerDir2('in-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">外帳收入</button>
    <button class="ldir" data-ldir="in-out" onclick="setLedgerDir2('in-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">外帳支出</button>
-   <button class="ldir" data-ldir="out-out" onclick="setLedgerDir2('out-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">📤 內帳支出</button>
+   <button class="ldir" data-ldir="out-out" onclick="setLedgerDir2('out-out',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">內帳支出</button>
    <button class="ldir" data-ldir="out-in" onclick="setLedgerDir2('out-in',this)" style="padding:5px 14px;border-radius:20px;border:1.5px solid var(--g200);font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">內帳收入</button>
   </div>
   <div id="ledger-detail-list"></div>
@@ -771,16 +771,16 @@
 <div class="panel" id="p-ac-report">
  <div class="ph"><div><div class="ptit">📊 財務報表</div><div class="psub">一鍵產出，可列印或存 PDF</div></div></div>
  <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px">
-  <button class="btn bg" data-rpt="monthly" style="padding:15px;font-size:.9rem">📊 月度損益報表</button>
-  <button class="btn bo" data-rpt="profit" style="padding:15px;font-size:.9rem">💹 毛利分析</button>
-  <button class="btn bo" data-rpt="payable" style="padding:15px;font-size:.9rem">📤 廠商應付</button>
-  <button class="btn bo" data-rpt="receivable" style="padding:15px;font-size:.9rem">📥 客戶應收</button>
+  <button class="btn bg" data-rpt="monthly" style="padding:15px;font-size:.9rem">月度損益報表</button>
+  <button class="btn bo" data-rpt="profit" style="padding:15px;font-size:.9rem">毛利分析</button>
+  <button class="btn bo" data-rpt="payable" style="padding:15px;font-size:.9rem">廠商應付</button>
+  <button class="btn bo" data-rpt="receivable" style="padding:15px;font-size:.9rem">客戶應收</button>
  </div>
  <div class="sp2" id="rptSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> 產生中…</div>
  <div class="rpt-card" id="rptCard" style="display:none">
   <div class="rpt-hd"><div><div class="rpt-title" id="rptTit"></div><div id="rptMet" style="font-size:.75rem;color:var(--gray-400);margin-top:3px;font-family:'DM Mono',monospace"></div></div><div style="font-size:.75rem;color:var(--gray-400)">澤居室內裝修</div></div>
   <div id="rptBd"></div>
-  <div style="display:flex;gap:8px;margin-top:18px"><button class="btn bg bsm" onclick="window.print()">🖨 列印</button><button class="btn bg bsm" id="exportRpt">📥 匯出Excel</button><button class="btn bo bsm" id="svRpt">💾 儲存紀錄</button></div>
+  <div style="display:flex;gap:8px;margin-top:18px"><button class="btn bg bsm" onclick="window.print()">列印</button><button class="btn bg bsm" id="exportRpt">匯出Excel</button><button class="btn bo bsm" id="svRpt">儲存紀錄</button></div>
  </div>
 </div>
 
@@ -804,7 +804,7 @@
  <div style="margin:0 4px 16px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
    <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.06em">📍 今天在哪個案場？</div>
-   <button type="button" id="punchMapBtn" style="font-size:.72rem;font-weight:800;color:var(--gold-d);background:none;border:none;cursor:pointer">🗺️ 查看地圖</button>
+   <button type="button" id="punchMapBtn" style="font-size:.72rem;font-weight:800;color:var(--gold-d);background:none;border:none;cursor:pointer">查看地圖</button>
   </div>
   <select id="punchProjectSel" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
    <option value="">不指定案場</option>
@@ -828,7 +828,7 @@
 
  <!-- 拍照佐證 -->
  <div style="margin:0 4px 16px">
-  <button type="button" id="punchPhotoBtn" style="width:100%;padding:11px;border:1.5px dashed var(--g300);border-radius:var(--rs);background:var(--g50);color:var(--g500);font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">📷 拍照佐證（選填）</button>
+  <button type="button" id="punchPhotoBtn" style="width:100%;padding:11px;border:1.5px dashed var(--g300);border-radius:var(--rs);background:var(--g50);color:var(--g500);font-size:.85rem;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">拍照佐證（選填）</button>
   <input type="file" id="punchPhotoFile" accept="image/*" capture="environment" style="display:none">
   <div id="punchPhotoPreview" style="display:none;margin-top:8px;position:relative;max-width:120px">
    <img id="punchPhotoImg" style="width:100%;border-radius:10px;border:1.5px solid var(--g200)">
@@ -896,7 +896,7 @@
 
  <!-- 申請修改 -->
  <div style="margin:14px 4px 0">
-  <button class="btn bo bfull" onclick="openPunchRequest()" style="padding:14px;font-size:.9rem;border-radius:12px">✏️ 申請補打卡 / 修改記錄</button>
+  <button class="btn bo bfull" onclick="openPunchRequest()" style="padding:14px;font-size:.9rem;border-radius:12px">申請補打卡 / 修改記錄</button>
  </div>
 
  <!-- 休假 -->
@@ -915,7 +915,7 @@
    </div>
   </div>
   <div style="padding:12px 16px">
-   <button class="btn bg bfull" onclick="openLeaveRequestBox()" style="padding:12px;font-size:.88rem">🙋 申請休假</button>
+   <button class="btn bg bfull" onclick="openLeaveRequestBox()" style="padding:12px;font-size:.88rem">申請休假</button>
   </div>
   <div id="myLeaveList" style="padding:0 16px 14px"></div>
  </div>
@@ -1022,7 +1022,7 @@
    <div class="field" style="margin:0"><label class="fl">管理費率</label><input class="fi" id="cpMgmtFee" placeholder="8%"></div>
    <div class="field" style="margin:0"><label class="fl">AI 客服助理名稱</label><input class="fi" id="cpAiName" placeholder="例：小澤"></div>
   </div>
-  <button class="btn bg bsm" onclick="saveCompanyProfileForm()">💾 儲存公司資料</button>
+  <button class="btn bg bsm" onclick="saveCompanyProfileForm()">儲存公司資料</button>
  </div>
 
  <!-- 報價分類設定 -->
@@ -1075,7 +1075,7 @@
   </div>
   <div class="field"><label class="fl">收款帳號（請填入後儲存）</label><input class="fi" id="bankAcct" placeholder="請輸入公司帳號…"></div>
   <div class="field"><label class="fl">月費基本金額</label><input class="fi" value="NT$9,000" readonly style="background:var(--g50)"></div>
-  <button class="btn bg bsm" onclick="saveBankAcct()">💾 儲存帳號</button>
+  <button class="btn bg bsm" onclick="saveBankAcct()">儲存帳號</button>
  </div>
 
  <!-- 垃圾桶 -->
@@ -1183,7 +1183,7 @@
    </div>
    <div style="display:flex;gap:8px;margin-bottom:12px">
     <button class="btn bo bsm" id="vAddItem">＋ 新增細項</button>
-    <button class="btn bo bsm" id="vSupplementBtn">📷 補充上傳（多頁報價單）</button>
+    <button class="btn bo bsm" id="vSupplementBtn">補充上傳（多頁報價單）</button>
     <input type="file" id="vSupplementFile" accept="image/*" multiple style="display:none">
    </div>
    <!-- 合計 -->
@@ -1194,13 +1194,13 @@
    <div class="field" style="margin-bottom:8px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
      <label class="fl" style="margin:0">備注</label>
-     <button onclick="document.getElementById('vNt').value=''" style="font-size:.72rem;color:var(--bad);background:none;border:none;cursor:pointer;font-weight:700;padding:2px 6px">🗑 清除</button>
+     <button onclick="document.getElementById('vNt').value=''" style="font-size:.72rem;color:var(--bad);background:none;border:none;cursor:pointer;font-weight:700;padding:2px 6px">清除</button>
     </div>
     <input class="fi" id="vNt" placeholder="例：含安裝、不含稅、含運費…">
    </div>
   </div>
   <div style="display:flex;gap:8px">
-   <button class="btn bg bfull" id="addVBtn" style="padding:13px;font-size:.92rem">💾 確認儲存廠商報價</button>
+   <button class="btn bg bfull" id="addVBtn" style="padding:13px;font-size:.92rem">確認儲存廠商報價</button>
   </div>
  </div>
 </div>
@@ -1218,7 +1218,7 @@
    <div class="field"><label class="fl">報價金額</label><input class="fi" id="veAmt" type="number"></div>
   </div>
   <div class="field"><label class="fl">備注</label><input class="fi" id="veNt"></div>
-  <button class="btn bg bfull" id="veBtn" style="padding:14px;margin-top:4px">💾 儲存修改</button>
+  <button class="btn bg bfull" id="veBtn" style="padding:14px;margin-top:4px">儲存修改</button>
  </div>
 </div>
 
@@ -1248,7 +1248,7 @@
     <span style="font-size:.9rem;font-weight:800;color:var(--info)" id="invBatchSummary">共 0 張</span>
     <span style="font-family:var(--mono);font-size:1.2rem;font-weight:900;color:var(--info)" id="invBatchTotal">NT$0</span>
    </div>
-   <button class="btn bg bfull" id="addInvBtn" style="padding:14px;font-size:.95rem">💾 全部確認並儲存</button>
+   <button class="btn bg bfull" id="addInvBtn" style="padding:14px;font-size:.95rem">全部確認並儲存</button>
   </div>
 
  </div>
@@ -1267,7 +1267,7 @@
    <div class="field"><label class="fl">支出類別</label><select class="fi" id="ieCat"><option>材料費</option><option>工資</option><option>設備費</option><option>管理費</option><option>其他</option></select></div>
   </div>
   <div class="field"><label class="fl">說明</label><input class="fi" id="ieDesc"></div>
-  <button class="btn bg bfull" id="ieBtn" style="padding:14px;margin-top:4px">💾 儲存修改</button>
+  <button class="btn bg bfull" id="ieBtn" style="padding:14px;margin-top:4px">儲存修改</button>
  </div>
 </div>
 
@@ -1358,7 +1358,7 @@
   <div class="field"><label class="fl">備注</label><textarea class="fi" id="projNote" rows="2" placeholder="案場說明、特殊需求…" style="resize:none"></textarea></div>
   <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
    <button class="btn bo" data-close="projModal">取消</button>
-   <button class="btn bg" onclick="saveProject()">💾 儲存案場</button>
+   <button class="btn bg" onclick="saveProject()">儲存案場</button>
   </div>
  </div>
 </div>
@@ -1378,7 +1378,7 @@
     <div id="ctFileCard" style="display:none;margin-bottom:12px">
    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <div style="font-size:.82rem;font-weight:700;color:var(--g600)" id="ctFileCount">已上傳 0 張</div>
-    <button class="btn brd bxs" id="ctDelFile">🗑 清除全部</button>
+    <button class="btn brd bxs" id="ctDelFile">清除全部</button>
    </div>
    <div id="ctPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px"></div>
   </div>
@@ -1398,7 +1398,7 @@
   </div>
   <div class="field" style="margin-bottom:14px"><label class="fl">備注</label><input class="fi" id="ctNote" placeholder="例：含拆除工程、不含系統傢俱…"></div>
 
-  <button class="btn bg bfull" id="addCtBtn" style="padding:14px;font-size:.95rem">💾 儲存合約</button>
+  <button class="btn bg bfull" id="addCtBtn" style="padding:14px;font-size:.95rem">儲存合約</button>
   <div id="ctEditNote" style="display:none;font-size:.78rem;color:var(--g400);margin-top:8px;text-align:center">
    💡 儲存後可在合約列表點「✏️ 編輯」修改任何欄位
   </div>
@@ -1463,7 +1463,7 @@
    <div id="svPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px"></div>
   </div>
 
-  <button class="btn bg bfull" id="svSaveBtn" style="padding:13px;font-size:.92rem;margin-top:6px">💾 儲存丈量記錄</button>
+  <button class="btn bg bfull" id="svSaveBtn" style="padding:13px;font-size:.92rem;margin-top:6px">儲存丈量記錄</button>
  </div>
 </div>
 
@@ -1499,14 +1499,14 @@
   <div id="qfFileCard" style="display:none;margin:12px 0">
    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <div style="font-size:.82rem;font-weight:700;color:var(--g600)" id="qfFileCount">已上傳 0 張</div>
-    <button class="btn brd bxs" id="qfDelFile">🗑 清除全部</button>
+    <button class="btn brd bxs" id="qfDelFile">清除全部</button>
    </div>
    <div id="qfPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:8px"></div>
   </div>
 
   <div class="field" style="margin:12px 0"><label class="fl">報價單名稱</label><input class="fi" id="qfName" placeholder="例：景平路案 2026/07 報價"></div>
 
-  <button class="btn bg bfull" id="qfSaveBtn" style="padding:13px;font-size:.92rem">💾 儲存報價單</button>
+  <button class="btn bg bfull" id="qfSaveBtn" style="padding:13px;font-size:.92rem">儲存報價單</button>
  </div>
 </div>
 
@@ -1540,7 +1540,7 @@
    <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--g50);border:1.5px solid var(--g200);border-radius:var(--rs)">
     <img id="ldThumb" src="" style="width:48px;height:48px;object-fit:cover;border-radius:var(--rxs);border:1px solid var(--g200);cursor:pointer" onclick="if(this.src)openLB(this.src)">
     <div style="flex:1"><div style="font-size:.85rem;font-weight:700" id="ldFileName">—</div><div style="font-size:.75rem;color:var(--g400)" id="ldFileStatus">已上傳</div></div>
-    <button class="btn brd bxs" id="ldDelFile">🗑 移除</button>
+    <button class="btn brd bxs" id="ldDelFile">移除</button>
    </div>
   </div>
   <div class="ocrp" id="ldOcr" style="margin-bottom:10px"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 辨識中…</div>
@@ -1564,7 +1564,7 @@
    <div id="ldItemsTable"></div>
   </div>
 
-  <button class="btn bg bfull" id="addLedgerBtn" style="padding:14px;font-size:.95rem">💾 儲存記錄</button>
+  <button class="btn bg bfull" id="addLedgerBtn" style="padding:14px;font-size:.95rem">儲存記錄</button>
  </div>
 </div>
 
@@ -1596,7 +1596,7 @@
     <label class="fl">支出分類</label>
     <select class="fi" id="recExpCat"></select>
    </div>
-   <button class="btn bg bfull" id="addRecurringExpBtn" style="padding:12px">💾 新增固定支出</button>
+   <button class="btn bg bfull" id="addRecurringExpBtn" style="padding:12px">新增固定支出</button>
   </div>
  </div>
 </div>
@@ -1623,7 +1623,7 @@
    </div>
    <div id="progItemsTable"></div>
   </div>
-  <button class="btn bg bfull" id="saveProgressBtn" style="padding:14px">💾 儲存進度</button>
+  <button class="btn bg bfull" id="saveProgressBtn" style="padding:14px">儲存進度</button>
  </div>
 </div>
 
@@ -1686,7 +1686,7 @@
     <div class="salary-row"><span class="sl-label" style="font-weight:700" id="empNetLabel">實領薪資</span><span class="sl-val total" id="empNet">-</span></div>
    </div>
   </div>
-  <button class="btn bg bfull" id="saveEmpBtn" style="padding:14px">💾 儲存員工資料</button>
+  <button class="btn bg bfull" id="saveEmpBtn" style="padding:14px">儲存員工資料</button>
  </div>
 </div>
 
@@ -1700,7 +1700,7 @@
    <input class="fi" id="newClientPhone" placeholder="0912-345-678" type="tel"></div>
   <div class="field"><label class="fl">案場地址</label>
    <input class="fi" id="newClientAddr" placeholder="例：台北市信義區某路某號"></div>
-  <button class="btn bg bfull" id="confirmAddClient" style="padding:14px;font-size:1rem;margin-top:4px">✅ 建立客戶</button>
+  <button class="btn bg bfull" id="confirmAddClient" style="padding:14px;font-size:1rem;margin-top:4px">建立客戶</button>
  </div>
 </div>
 
@@ -1711,7 +1711,7 @@
   <div class="field"><label class="fl">報價名稱</label><input class="fi" id="zqName" placeholder="例：景平路案 全室翻新報價"></div>
   <div class="field"><label class="fl">案場名稱</label><select class="fi" id="zqCase"></select></div>
   <div class="field"><label class="fl">備注</label><input class="fi" id="zqNote" placeholder="例：含系統廚具，不含燈具"></div>
-  <button class="btn bg bfull" id="saveZejuQuoteBtn" style="padding:14px;font-size:.95rem">💾 儲存到報價庫</button>
+  <button class="btn bg bfull" id="saveZejuQuoteBtn" style="padding:14px;font-size:.95rem">儲存到報價庫</button>
  </div>
 </div>
 
