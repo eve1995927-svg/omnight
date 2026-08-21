@@ -61,9 +61,6 @@
   <div class="tlogo"><span class="tlogo-mark"></span><span id="tlogoText">澤居</span></div>
   <div class="rtabs" id="rTabs"></div>
   <div class="tright">
-   <a href="/floorplan.html" target="_blank" rel="noopener" class="designEntry">
-    <span>🖊️ 進入設計</span><sup class="designEntry-beta">測試版</sup>
-   </a>
    <div id="syncDot" onclick="showFirebaseStatus()" title="點擊查看同步詳情"
      style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
             font-size:.75rem;font-weight:700;cursor:pointer;margin-right:6px;
@@ -176,22 +173,23 @@
  <div id="projectList"></div>
  <div id="projectKanban" style="display:none"></div>
 
- <!-- 日行事曆：案場開工日排程，卡片可以直接拖到別的日期上換開工日 -->
+ <!-- 日行事曆：開工日排程＋可自訂行程（像 Google 日曆一樣自己加行程、時間），卡片可以直接拖到別的日期改日期 -->
  <div class="proj-cal" id="projCalendar">
   <div class="cal-hd">
-   <div class="cal-title">📅 開工日行事曆</div>
+   <div class="cal-title">📅 行事曆</div>
    <div class="cal-nav">
     <button type="button" class="cal-nbtn" id="calPrevM">‹</button>
     <div class="cal-month" id="calMonthLabel">—</div>
     <button type="button" class="cal-nbtn" id="calNextM">›</button>
     <button type="button" class="cal-today" id="calTodayBtn">今天</button>
+    <button type="button" class="btn bg bxs" id="calAddEventBtn" style="margin-left:6px">＋ 新增行程</button>
    </div>
   </div>
   <div class="cal-weekdays">
    <span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span>
   </div>
   <div class="cal-grid" id="calGrid"></div>
-  <div class="cal-hint">💡 把案場卡片拖到別的日期，可以直接改開工日</div>
+  <div class="cal-hint">💡 點空白處新增行程、把卡片拖到別的日期可以直接改日期</div>
  </div>
 </div>
 
@@ -200,6 +198,34 @@
  <div id="projDetailHeader" style="margin-bottom:16px"></div>
  <div class="ledger-tab" id="projDetailTabs" style="margin-bottom:16px"></div>
  <div id="projDetailContent"></div>
+</div>
+
+<div class="panel" id="p-inbox">
+ <div class="ph">
+  <div><div class="ptit">📥 社群訊息</div><div class="psub">LINE／Facebook／Instagram 私訊統一在這裡看、這裡回</div></div>
+  <button class="btn bo bsm" id="inboxSettingsBtn">⚙️ 連線設定</button>
+ </div>
+ <div style="display:flex;gap:0;height:calc(100vh - 190px);min-height:460px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
+
+  <!-- 左側：對話串列表 -->
+  <div style="width:230px;flex-shrink:0;border-right:1px solid var(--g200);display:flex;flex-direction:column;background:var(--g50)">
+   <div style="padding:14px 16px;border-bottom:1px solid var(--g200);background:linear-gradient(135deg,#1A1A1A,#2C2C2C)">
+    <div style="font-size:.88rem;font-weight:900;color:var(--gold);letter-spacing:.05em">社群訊息</div>
+    <div style="font-size:.68rem;color:rgba(255,255,255,.4);margin-top:2px" id="inboxThreadCount">0 個對話</div>
+   </div>
+   <div id="inboxThreadList" style="flex:1;overflow-y:auto"></div>
+  </div>
+
+  <!-- 右側：對話內容 -->
+  <div style="flex:1;display:flex;flex-direction:column;min-width:0;background:var(--w)">
+   <div id="inboxChatHeader" style="padding:12px 18px;border-bottom:1px solid var(--g200);display:none;align-items:center;gap:10px;background:var(--w)"></div>
+   <div id="inboxMsgList" style="flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:10px"></div>
+   <div id="inboxReplyBar" style="display:none;padding:12px 16px;border-top:1px solid var(--g200);background:var(--g50);gap:8px;align-items:flex-end">
+    <textarea id="inboxReplyInp" placeholder="輸入回覆…" style="flex:1;resize:none;border:1.5px solid var(--g200);border-radius:var(--rs);padding:10px 12px;font-size:.85rem;font-family:inherit;outline:none;min-height:44px;max-height:120px"></textarea>
+    <button class="btn bg" id="inboxSendBtn">送出</button>
+   </div>
+  </div>
+ </div>
 </div>
 
 <div class="panel" id="p-cs-chat">
@@ -1647,12 +1673,17 @@
     <div class="field" style="margin:0"><label class="fl">交通津貼</label><input class="fi" id="empTransport" type="number" placeholder="1000" value="0"></div>
     <div class="field" style="margin:0"><label class="fl">其他津貼</label><input class="fi" id="empOther" type="number" placeholder="0" value="0"></div>
    </div>
+   <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--w);border-radius:var(--rs);margin-bottom:10px;cursor:pointer;font-size:.82rem;color:var(--g600)">
+    <input type="checkbox" id="empAbsorbInsurance" style="width:16px;height:16px;cursor:pointer">
+    🏢 勞健保由公司吸收（不從員工薪水扣，上面填的底薪就是員工實拿的金額）
+   </label>
    <div style="background:var(--w);border-radius:var(--rs);padding:12px 14px;font-size:.82rem">
     <div style="font-size:.75rem;font-weight:800;color:var(--info);margin-bottom:8px">📊 勞健保自動計算（2024年標準）</div>
-    <div class="salary-row"><span class="sl-label">勞保費（員工負擔 20%）</span><span class="sl-val" id="empLabor">-</span></div>
-    <div class="salary-row"><span class="sl-label">健保費（員工負擔 30%）</span><span class="sl-val" id="empHealth">-</span></div>
+    <div class="salary-row"><span class="sl-label" id="empLaborLabel">勞保費（員工負擔 20%）</span><span class="sl-val" id="empLabor">-</span></div>
+    <div class="salary-row"><span class="sl-label" id="empHealthLabel">健保費（員工負擔 30%）</span><span class="sl-val" id="empHealth">-</span></div>
     <div class="salary-row"><span class="sl-label">勞退（雇主提撥 6%）</span><span class="sl-val" id="empRetire">-</span></div>
-    <div class="salary-row"><span class="sl-label" style="font-weight:700">實領薪資</span><span class="sl-val total" id="empNet">-</span></div>
+    <div class="salary-row" id="empAbsorbRow" style="display:none"><span class="sl-label" style="color:var(--warn)">公司額外吸收（勞健保員工那份）</span><span class="sl-val" id="empAbsorbAmt" style="color:var(--warn)">-</span></div>
+    <div class="salary-row"><span class="sl-label" style="font-weight:700" id="empNetLabel">實領薪資</span><span class="sl-val total" id="empNet">-</span></div>
    </div>
   </div>
   <button class="btn bg bfull" id="saveEmpBtn" style="padding:14px">💾 儲存員工資料</button>
