@@ -634,7 +634,16 @@ function renderTrashBin(){
   if(cnt)cnt.textContent=total>0?('('+total+')'):'';
 }
 
-// ── 輪詢同步（每30秒從雲端重新載入，確保多裝置同步）──
+// ── 即時同步（每個資料表各自監聽，不要整包 zeju_data 一起訂閱）──
+// 【重要修正】原本這裡是用同一個監聽器盯著整個資料庫最上層（zeju_data 整包），
+// 代表任何一個地方只要有變動（哪怕只是打一次卡、改一個字），Firebase 就會把「整個資料庫」
+// 重新整包傳一次給每一台正在連線的裝置。案場、報價、廠商報價、薪資記錄這些資料疊起來後，
+// 這種用法會讓下載流量暴衝，很快就把 Firebase 免費方案每月 10GB 的額度用光。
+// 額度用完之後，Firebase 還是會顯示「已連線／已同步」，但實際上不會再把資料傳下來，
+// 結果就是畫面看起來正常、但所有列表跟統計數字都變成空的或 0，很容易誤以為資料不見了
+// （其實資料都還在 Firebase 裡，只是傳不下來而已）。
+// 拆成每個資料表各自訂閱之後，改一筆打卡記錄就只會重傳打卡記錄那一小塊，
+// 不會牽動到案場、報價這些完全沒變動的資料表，流量會大幅下降。
 function startCloudSync(){
   if(!_fbDB||!_fbReady){
     console.log('Firebase not ready, skip sync');
@@ -642,41 +651,37 @@ function startCloudSync(){
     return;
   }
   setSyncStatus('syncing');
-  // Firebase 即時監聽所有資料
-  _fbDB.ref('zeju_data').on('value', snap=>{
-    const data=snap.val()||{};
-    let hasPunchChange=false, hasReqChange=false, hasInboxChange=false;
-    _KEYS.forEach(k=>{
-      if(data[k]){
-        const oldLen=Object.keys(_cache[k]||{}).length;
-        const normalized=_normalizeToKeyedObj(data[k]);
-        const newLen=Object.keys(normalized).length;
-        _cache[k]=normalized;
-        if(k==='punch_recs'&&newLen!==oldLen) hasPunchChange=true;
-        if(k==='punch_requests'&&newLen!==oldLen) hasReqChange=true;
-        if(k==='omnichannel_messages'&&newLen!==oldLen) hasInboxChange=true;
+  let anySynced=false;
+  _KEYS.forEach(k=>{
+    _fbDB.ref('zeju_data/'+k).on('value', snap=>{
+      const oldLen=Object.keys(_cache[k]||{}).length;
+      const normalized=_normalizeToKeyedObj(snap.val()||{});
+      const newLen=Object.keys(normalized).length;
+      _cache[k]=normalized;
+
+      if(!anySynced){anySynced=true;}
+      setSyncStatus&&setSyncStatus('ok');
+
+      // 社群訊息（LINE/FB/IG）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
+      if(k==='omnichannel_messages'&&newLen!==oldLen){
+        updateInboxBadge&&updateInboxBadge();
+        const ip=document.getElementById('p-inbox');
+        if(ip&&ip.classList.contains('on'))renderInboxPanel&&renderInboxPanel();
       }
-    });
-    setSyncStatus&&setSyncStatus('ok');
-    // 社群訊息（LINE/FB/IG）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
-    if(hasInboxChange){
-      updateInboxBadge&&updateInboxBadge();
-      const ip=document.getElementById('p-inbox');
-      if(ip&&ip.classList.contains('on'))renderInboxPanel&&renderInboxPanel();
-    }
-    // 老闆端打卡有更新
-    if(hasPunchChange&&curRole==='owner'){
-      const pb=document.getElementById('hrb-punch');
-      if(pb&&pb.classList.contains('on')){renderHRPanel();updHRStats&&updHRStats();}
-      else updHRStats&&updHRStats();
-    }
-    if(hasReqChange&&curRole==='owner'){
-      updateHRBadge();
-      const hp=document.getElementById('p-hr-settings');
-      if(hp&&hp.classList.contains('show'))renderHRPanel();
-    }
-  }, ()=>setSyncStatus&&setSyncStatus('error'));
-  console.log('✅ Firebase realtime listener started');
+      // 老闆端打卡有更新
+      if(k==='punch_recs'&&newLen!==oldLen&&curRole==='owner'){
+        const pb=document.getElementById('hrb-punch');
+        if(pb&&pb.classList.contains('on')){renderHRPanel();updHRStats&&updHRStats();}
+        else updHRStats&&updHRStats();
+      }
+      if(k==='punch_requests'&&newLen!==oldLen&&curRole==='owner'){
+        updateHRBadge();
+        const hp=document.getElementById('p-hr-settings');
+        if(hp&&hp.classList.contains('show'))renderHRPanel();
+      }
+    }, ()=>setSyncStatus&&setSyncStatus('error'));
+  });
+  console.log('✅ Firebase realtime listener started（每個資料表獨立監聽，降低流量用量）');
 }
 
 // ── 備份/還原也寫入雲端 ──
