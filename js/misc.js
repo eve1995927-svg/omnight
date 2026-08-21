@@ -85,7 +85,7 @@ function initContractListeners(){
     const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
     const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';
     const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
-    const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='💾 儲存合約';
+    const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='儲存合約';
     const nte=document.getElementById('ctEditNote');if(nte)nte.style.display='none';
     openModal('contractModal');
   });
@@ -106,7 +106,7 @@ function initContractListeners(){
       showToast('✅ 合約已儲存！');
     }
     closeModal('contractModal');renderContracts();updContractStats();
-    const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='💾 儲存合約';
+    const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='儲存合約';
   });
 }
 
@@ -174,7 +174,7 @@ function renderInvBatchList(){
         </select>
       </div>
       <input placeholder="開立單位／說明" value="${esc(item.desc)}" data-f="desc" data-id="${item.id}" style="width:100%;margin-top:8px;padding:8px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.82rem;font-family:inherit;box-sizing:border-box">
-      ${!item.clear?'<button class="inv-reshoot-btn" data-reshoot="'+item.id+'">📋 複製提醒訊息，請業主重拍</button>':''}
+      ${!item.clear?'<button class="inv-reshoot-btn" data-reshoot="'+item.id+'">複製提醒訊息，請業主重拍</button>':''}
     `;
     list.appendChild(card);
   });
@@ -450,7 +450,7 @@ function showPunchDayDetail(dateStr,recs){
     (outRec?'<div style="flex:1;min-width:100px;background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--info);margin-bottom:4px">🔵 下班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+outRec.time+'</div>'+(outAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+outAddr+'</div>':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打下班卡</div>')+
     '</div>'+
     (workHours?'<div style="padding:6px 16px 12px"><div style="background:var(--gold-pale);border-radius:var(--rs);padding:8px 12px;font-size:.82rem;font-weight:700;color:var(--gold-d)">'+workHours+'</div></div>':'')+
-    '<div style="padding:0 16px 12px;text-align:right"><button class="btn bo bxs" onclick="openPunchRequest()">✏️ 申請修改</button></div>';
+    '<div style="padding:0 16px 12px;text-align:right"><button class="btn bo bxs" onclick="openPunchRequest()">申請修改</button></div>';
   detail.style.display='block';
 }
 
@@ -520,7 +520,7 @@ function openPunchRequest(){
           <label class="fl">申請原因</label>
           <textarea class="fi" id="prReason" rows="3" placeholder="請說明原因，例如：忘記打卡、手機沒訊號等"></textarea>
         </div>
-        <button class="btn bg bfull" id="prSubmit" style="padding:14px;font-size:.95rem">📨 送出申請</button>
+        <button class="btn bg bfull" id="prSubmit" style="padding:14px;font-size:.95rem">送出申請</button>
       </div>`;
     document.body.appendChild(modal);
     // 綁定送出
@@ -746,4 +746,158 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
 // Enter 鍵送出
 document.getElementById('newClientName')?.addEventListener('keydown',e=>{
   if(e.key==='Enter') document.getElementById('confirmAddClient')?.click();
+});
+// ══ 社群訊息（LINE／FB／IG 統一收件匣）═══════════════════════
+// 訊息本體是後端的 Netlify Functions（line-webhook / meta-webhook）收到後直接寫進
+// Firebase 的 omnichannel_messages 集合，前端這裡只負責讀出來排版、跟呼叫 send-reply 送出回覆。
+// 因為 core.js 的 Firebase 即時監聽本來就有訂閱這個集合，後端一寫進去，這裡幾乎是秒讀到。
+
+const INBOX_PLATFORM_META={
+  line:{label:'LINE',icon:'💬',color:'#06C755'},
+  messenger:{label:'Messenger',icon:'📘',color:'#0084FF'},
+  instagram:{label:'Instagram',icon:'📸',color:'#E1306C'},
+};
+
+let curInboxThreadId=null;
+
+function updateInboxBadge(){
+  let count=0;
+  try{count=DB.get('omnichannel_messages').filter(m=>m.direction==='in'&&!m.read).length;}catch{}
+  ['nav-inbox','bn-inbox'].forEach(id=>{
+    const el=document.getElementById(id);if(!el)return;
+    let badge=el.querySelector?el.querySelector('.hr-badge'):null;
+    if(count>0){
+      if(!badge){
+        badge=document.createElement('span');badge.className='hr-badge';
+        badge.style.cssText='background:var(--bad,#E04848);color:#fff;font-size:.65rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle';
+        el.appendChild(badge);
+      }
+      badge.textContent=count;
+    } else if(badge){badge.remove();}
+  });
+}
+
+function getInboxThreads(){
+  const msgs=DB.get('omnichannel_messages');
+  const byThread={};
+  msgs.forEach(m=>{
+    if(!m.threadId)return;
+    if(!byThread[m.threadId])byThread[m.threadId]={threadId:m.threadId,platform:m.platform,senderId:m.senderId,senderName:m.senderName,msgs:[]};
+    byThread[m.threadId].msgs.push(m);
+  });
+  return Object.values(byThread).map(t=>{
+    t.msgs.sort((a,b)=>a._id-b._id);
+    t.last=t.msgs[t.msgs.length-1];
+    t.unread=t.msgs.filter(m=>m.direction==='in'&&!m.read).length;
+    // 顯示名稱、平台可能後來的訊息才拿得到（例如第一則抓不到 LINE 顯示名稱），用最新一筆有值的蓋過去
+    const withName=[...t.msgs].reverse().find(m=>m.senderName);
+    if(withName)t.senderName=withName.senderName;
+    return t;
+  }).sort((a,b)=>b.last._id-a.last._id);
+}
+
+function renderInboxPanel(){
+  const list=document.getElementById('inboxThreadList');if(!list)return;
+  const threads=getInboxThreads();
+  document.getElementById('inboxThreadCount').textContent=threads.length+' 個對話';
+  list.innerHTML='';
+  if(!threads.length){
+    list.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.8rem">尚無社群訊息<br><span style="font-size:.72rem">按右上角「連線設定」確認後端已接上 LINE／FB／IG</span></div>';
+  }
+  threads.forEach(t=>{
+    const meta=INBOX_PLATFORM_META[t.platform]||{label:t.platform,icon:'💬',color:'var(--g400)'};
+    const row=document.createElement('div');
+    row.style.cssText='padding:12px 14px;border-bottom:1px solid var(--g200);cursor:pointer;transition:background var(--ease)'+(t.threadId===curInboxThreadId?';background:var(--gold-pale)':'');
+    row.addEventListener('mouseenter',()=>{if(t.threadId!==curInboxThreadId)row.style.background='var(--g100)';});
+    row.addEventListener('mouseleave',()=>{if(t.threadId!==curInboxThreadId)row.style.background='';});
+    row.innerHTML=
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'+
+        '<span style="font-size:.82rem;font-weight:800;color:var(--g700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+meta.icon+' '+esc(t.senderName||'訪客')+'</span>'+
+        (t.unread?'<span style="background:var(--bad);color:#fff;font-size:.62rem;font-weight:800;border-radius:10px;padding:1px 6px;flex-shrink:0">'+t.unread+'</span>':'')+
+      '</div>'+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(t.last.direction==='out'?'你：':'')+esc(t.last.text||'')+'</div>'+
+      '<div style="font-size:.64rem;color:var(--g300);margin-top:2px">'+esc(meta.label)+' ・ '+esc((t.last._ts||'').split(' ').slice(0,2).join(' '))+'</div>';
+    row.addEventListener('click',()=>openInboxThread(t.threadId));
+    list.appendChild(row);
+  });
+}
+
+function openInboxThread(threadId){
+  curInboxThreadId=threadId;
+  const threads=getInboxThreads();
+  const t=threads.find(x=>x.threadId===threadId);
+  renderInboxPanel(); // 重畫左側列表，讓選中的那筆反白
+  const header=document.getElementById('inboxChatHeader');
+  const msgList=document.getElementById('inboxMsgList');
+  const replyBar=document.getElementById('inboxReplyBar');
+  if(!t){header.style.display='none';msgList.innerHTML='';replyBar.style.display='none';return;}
+
+  const meta=INBOX_PLATFORM_META[t.platform]||{label:t.platform,icon:'💬',color:'var(--g400)'};
+  header.style.display='flex';
+  header.innerHTML=
+    '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">'+meta.icon+'</div>'+
+    '<div><div style="font-size:.92rem;font-weight:900;color:var(--g800)">'+esc(t.senderName||'訪客')+'</div><div style="font-size:.72rem;color:var(--g400);margin-top:1px">'+esc(meta.label)+'</div></div>';
+
+  msgList.innerHTML='';
+  t.msgs.forEach(m=>{
+    const isOut=m.direction==='out';
+    const bubble=document.createElement('div');
+    bubble.style.cssText='max-width:70%;align-self:'+(isOut?'flex-end':'flex-start')+';display:flex;flex-direction:column;gap:2px';
+    bubble.innerHTML=
+      '<div style="padding:9px 13px;border-radius:14px;font-size:.85rem;line-height:1.5;white-space:pre-wrap;word-break:break-word;'+
+        (isOut?'background:var(--gold);color:#fff;border-bottom-right-radius:4px':'background:var(--g100);color:var(--g700);border-bottom-left-radius:4px')+'">'+esc(m.text||'')+'</div>'+
+      '<div style="font-size:.62rem;color:var(--g300);padding:0 4px;text-align:'+(isOut?'right':'left')+'">'+esc((m.senderName&&isOut)?m.senderName:'')+' '+esc((m._ts||'').split(' ').slice(0,2).join(' '))+'</div>';
+    msgList.appendChild(bubble);
+  });
+  msgList.scrollTop=msgList.scrollHeight;
+
+  // 打開對話就視為已讀，把這個 thread 裡還沒讀的訊息一筆一筆標記掉
+  t.msgs.filter(m=>m.direction==='in'&&!m.read).forEach(m=>DB.upd('omnichannel_messages',m._id,{read:true}));
+  updateInboxBadge();
+
+  replyBar.style.display='flex';
+  replyBar.dataset.platform=t.platform;
+  replyBar.dataset.recipientId=t.senderId;
+}
+
+async function sendInboxReply(){
+  const replyBar=document.getElementById('inboxReplyBar');
+  const inp=document.getElementById('inboxReplyInp');
+  const text=(inp.value||'').trim();
+  if(!text||!curInboxThreadId)return;
+  const platform=replyBar.dataset.platform;
+  const recipientId=replyBar.dataset.recipientId;
+  const secret=localStorage.getItem('zeju_inbox_secret')||'';
+  const sendBtn=document.getElementById('inboxSendBtn');
+  sendBtn.disabled=true;sendBtn.textContent='送出中…';
+  try{
+    const res=await fetch('/.netlify/functions/send-reply',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({platform,recipientId,text,secret}),
+    });
+    const data=await res.json().catch(()=>({}));
+    if(!res.ok)throw new Error(data.error||'送出失敗');
+    inp.value='';
+    // send-reply 那支已經把這則回覆寫進 Firebase 了，即時監聽會自動把畫面刷新，
+    // 但保險起見這裡也手動刷新一次，不用等監聽事件觸發
+    openInboxThread(curInboxThreadId);
+    showToast('✅ 已送出');
+  }catch(e){
+    showToast('⚠️ 送出失敗：'+e.message);
+  }finally{
+    sendBtn.disabled=false;sendBtn.textContent='送出';
+  }
+}
+
+document.getElementById('inboxSendBtn')?.addEventListener('click',sendInboxReply);
+document.getElementById('inboxReplyInp')?.addEventListener('keydown',e=>{
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendInboxReply();}
+});
+document.getElementById('inboxSettingsBtn')?.addEventListener('click',()=>{
+  const cur=localStorage.getItem('zeju_inbox_secret')||'';
+  const v=prompt('請輸入後端 API 的共用密碼（跟 Netlify 環境變數 APP_SHARED_SECRET 要一樣，用來避免別人亂打這支 API）：\n\n這組密碼只會存在這台瀏覽器裡，不會上傳。',cur);
+  if(v===null)return;
+  localStorage.setItem('zeju_inbox_secret',v.trim());
+  showToast('✅ 已儲存連線密碼');
 });

@@ -603,7 +603,7 @@ function renderInvoices(filter){
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">'+
         '<div style="font-size:1rem;font-weight:900;font-family:monospace">'+fmt(v.amount||0)+'</div>'+
         '<div style="display:flex;gap:5px">'+
-          '<button class="btn bo bxs" data-iedit="'+v._id+'">✏️ 編輯</button>'+
+          '<button class="btn bo bxs" data-iedit="'+v._id+'">編輯</button>'+
           '<button class="btn brd bxs" data-idel="'+v._id+'">🗑</button>'+
         '</div>'+
       '</div>';
@@ -646,10 +646,10 @@ function renderContracts(){
           (c.note?'<div style="font-size:.75rem;color:var(--g400);margin-top:2px">📌 '+c.note+'</div>':'')+
         '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">'+
-          ((c.fileUrl||( c.fileUrls&&c.fileUrls.length))?'<button class="btn bg bsm" data-cprev="'+c._id+'">👁 查看</button>':'')+
+          ((c.fileUrl||( c.fileUrls&&c.fileUrls.length))?'<button class="btn bg bsm" data-cprev="'+c._id+'">查看</button>':'')+
           '<div style="display:flex;gap:5px">'+
             '<button class="btn bo bxs" data-cedit="'+c._id+'">✏️</button>'+
-            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'↩ 未開始':'✅ 結案')+'</button>'+
+            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'未開始':'結案')+'</button>'+
             '<button class="btn brd bxs" data-cdel="'+c._id+'">🗑</button>'+
           '</div>'+
         '</div>'+
@@ -748,7 +748,7 @@ function editContract(id){
     const fc=document.getElementById('ctFileCard');if(fc)fc.style.display='block';
     const fn=document.getElementById('ctFileName');if(fn)fn.textContent=c.name;
   }
-  const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='💾 儲存修改';
+  const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='儲存修改';
   openModal('contractModal');
 }
 function delContract(id){

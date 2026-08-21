@@ -105,8 +105,8 @@ function ensureProjectSelected(selectEl,onReady){
     (projects.length?'<div class="field"><label class="fl">選擇既有案場</label><select class="fi" id="_epsSelect"><option value="">請選擇…</option>'+
       projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.client?'（'+esc(p.client)+'）':'')+'</option>').join('')+'</select></div>':
       '<div style="font-size:.82rem;color:var(--g400);margin-bottom:12px">目前還沒有任何案場。</div>')+
-    '<button class="btn bg bfull" id="_epsConfirm" style="padding:12px;margin-top:6px">✅ 使用這個案場</button>'+
-    '<button class="btn bo bfull" id="_epsNew" style="padding:12px;margin-top:8px">➕ 新增一個案場</button>'+
+    '<button class="btn bg bfull" id="_epsConfirm" style="padding:12px;margin-top:6px">使用這個案場</button>'+
+    '<button class="btn bo bfull" id="_epsNew" style="padding:12px;margin-top:8px">新增一個案場</button>'+
     '</div>';
   document.body.appendChild(box);
 
@@ -614,7 +614,7 @@ function renderTrashBin(){
         if(k==='ledger'&&typeof renderLedger==='function'){renderLedger();updLedgerStats();}
       });
       const permaBtn=document.createElement('button');
-      permaBtn.className='btn bo bsm';permaBtn.style.color='var(--bad)';permaBtn.textContent='🗑️ 永久刪除';
+      permaBtn.className='btn bo bsm';permaBtn.style.color='var(--bad)';permaBtn.textContent='永久刪除';
       permaBtn.addEventListener('click',()=>{
         confirmAction('永久刪除「'+meta.name(item)+'」？此動作無法復原！',()=>{
           DB.del(k,item._id);
@@ -704,7 +704,7 @@ function apiSaveKey(){
   localStorage.setItem('zeju_apikey', v);
   // 更新狀態點
   const dot = document.getElementById('apiDot');
-  if(dot){ dot.textContent='✅ 已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)'; }
+  if(dot){ dot.textContent='已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)'; }
   showToast('✅ API Key 已儲存！AI 功能全面啟用');
 }
 
@@ -714,7 +714,7 @@ function apiClearKey(){
     localStorage.removeItem('zeju_apikey');
     const inp = document.getElementById('apiInp'); if(inp) inp.value = '';
     const dot = document.getElementById('apiDot');
-    if(dot){ dot.textContent='⚠️ 未設定'; dot.style.background='var(--warn-bg)'; dot.style.color='var(--warn)'; }
+    if(dot){ dot.textContent='未設定'; dot.style.background='var(--warn-bg)'; dot.style.color='var(--warn)'; }
     const res = document.getElementById('apiTestResult'); if(res) res.style.display='none';
     showToast('✅ API Key 已清除');
   },false);
@@ -889,7 +889,7 @@ function openPhotoGallery(title, files){
   });
 
   const dlAllBtn=document.getElementById('galDownloadAllBtn');
-  dlAllBtn.textContent='⬇️ 下載全部（打包）';
+  dlAllBtn.textContent='下載全部（打包）';
   dlAllBtn.disabled=false;
   dlAllBtn.onclick=async()=>{
     dlAllBtn.disabled=true;dlAllBtn.textContent='打包中…';
@@ -912,7 +912,7 @@ function openPhotoGallery(title, files){
       console.error(e);
       showToast('⚠️ 打包下載失敗，請檢查網路連線');
     }finally{
-      dlAllBtn.disabled=false;dlAllBtn.textContent='⬇️ 下載全部（打包）';
+      dlAllBtn.disabled=false;dlAllBtn.textContent='下載全部（打包）';
     }
   };
 

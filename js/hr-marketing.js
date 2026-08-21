@@ -53,7 +53,7 @@ function renderProgress(){
     const fixBar=document.createElement('div');
     fixBar.style.cssText='background:var(--warn-bg,#FFF3D6);border:1.5px solid var(--warn-bd,#E8CE8E);border-radius:var(--rs);padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap';
     fixBar.innerHTML='<span style="font-size:.85rem;font-weight:700;color:#8A6D1E">⚠️ 有 '+brokenRecs.length+' 筆進度記錄的案場名稱異常（顯示成一串數字）</span>'+
-      '<button class="btn bg bsm" id="fixBrokenProgBtn">🔧 一鍵修復</button>';
+      '<button class="btn bg bsm" id="fixBrokenProgBtn">一鍵修復</button>';
     list.appendChild(fixBar);
     document.getElementById('fixBrokenProgBtn').addEventListener('click',()=>{
       let fixed=0,skipped=0;
@@ -89,7 +89,7 @@ function renderProgress(){
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
         '<div style="display:flex;gap:5px;margin-left:8px">'+
-          '<button class="btn bo bxs" data-pedit="'+p._id+'">✏️ 編輯</button>'+
+          '<button class="btn bo bxs" data-pedit="'+p._id+'">編輯</button>'+
           '<button class="btn brd bxs" data-pdel="'+p._id+'">🗑</button>'+
         '</div>'+
       '</div>'+
@@ -416,7 +416,7 @@ function renderMonthSalary(monthKey){
   const title=document.createElement('div');
   title.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:10px 0;border-bottom:2px solid var(--g200)';
   title.innerHTML='<span style="font-size:.9rem;font-weight:900;color:var(--g700)">'+monthKey.replace('-','年')+'月 薪資表</span>'+
-    '<button class="btn bo bsm" onclick="exportSalaryReport(\''+monthKey+'\')">📥 匯出本月薪資報表</button>';
+    '<button class="btn bo bsm" onclick="exportSalaryReport(\''+monthKey+'\')">匯出本月薪資報表</button>';
   wrap.appendChild(title);
 
   let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0,totalOtPay=0;
@@ -445,7 +445,7 @@ function renderMonthSalary(monthKey){
     card.innerHTML=`
       ${salaryDrift?`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--rxs);padding:8px 12px;margin-bottom:10px">
         <span style="font-size:.76rem;color:var(--warn);font-weight:700">⚠️ 員工資料的底薪／津貼已經改過了，這個月的薪資記錄還是舊的</span>
-        <button onclick="syncSalaryFromEmployee('${e._id}','${monthKey}')" class="btn bo bxs" style="flex-shrink:0;white-space:nowrap">🔄 同步最新資料</button>
+        <button onclick="syncSalaryFromEmployee('${e._id}','${monthKey}')" class="btn bo bxs" style="flex-shrink:0;white-space:nowrap">同步最新資料</button>
       </div>`:''}
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
@@ -463,7 +463,7 @@ function renderMonthSalary(monthKey){
           style="padding:8px 16px;border-radius:var(--rs);font-size:.82rem;font-weight:800;cursor:pointer;font-family:inherit;
           background:${rec.paid?'var(--ok-bg)':'var(--gold)'};color:${rec.paid?'var(--ok)':'#fff'};
           border:1.5px solid ${rec.paid?'var(--ok-bd)':'var(--gold-d)'};flex-shrink:0">
-          ${rec.paid?'✅ 已匯款':'💳 標記匯款'}
+          ${rec.paid?'已匯款':'標記匯款'}
         </button>
       </div>
       <div style="background:var(--g50);border-radius:var(--rxs);padding:10px 12px;font-size:.82rem">
@@ -501,7 +501,7 @@ function renderMonthSalary(monthKey){
 
   const printBtn=document.createElement('button');
   printBtn.className='btn bo bsm';printBtn.style.cssText='width:100%;margin-top:10px';
-  printBtn.textContent='🖨 列印薪資表';
+  printBtn.textContent='列印薪資表';
   printBtn.addEventListener('click',()=>window.print());
   wrap.appendChild(printBtn);
 }
@@ -542,7 +542,7 @@ function openSalaryEditBox(empId,monthKey){
 
     <div style="display:flex;gap:8px">
       <button id="_salCancel" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.86rem;cursor:pointer;font-family:inherit">取消</button>
-      <button id="_salSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
+      <button id="_salSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">儲存</button>
     </div>
   </div>`;
   box.addEventListener('click',e2=>{if(e2.target===box)box.remove();});
@@ -979,7 +979,7 @@ setTimeout(()=>{
   if(inp && API_KEY) inp.value = API_KEY;
   const dot = document.getElementById('apiDot');
   if(dot && API_KEY){
-    dot.textContent='✅ 已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)';
+    dot.textContent='已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)';
   }
 }, 500);
 

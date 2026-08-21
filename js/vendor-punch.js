@@ -306,7 +306,7 @@ function setBulkVTaxBtnStyle(btn){
   const el=btn||document.getElementById('bulkVTaxBtn');if(!el)return;
   const allExcl=vItems.length&&vItems.every(it=>it.taxType==='excl');
   el.style.cssText='padding:5px 12px;border-radius:20px;font-size:.7rem;font-weight:800;cursor:pointer;border:1.5px solid var(--gold-d);background:var(--w);color:var(--gold-d);font-family:inherit';
-  el.textContent=allExcl?'🔁 全部設為含稅':'🔁 全部設為未稅';
+  el.textContent=allExcl?'全部設為含稅':'全部設為未稅';
   el.title='一次把上面所有工項的稅別都改成一樣，不用一筆一筆點';
 }
 
@@ -350,7 +350,7 @@ function renderVendorCatFilters(){
   const compareRow=document.getElementById('vCompareRow');
   if(compareRow){
     compareRow.innerHTML='<span style="font-size:.78rem;font-weight:700;color:var(--g400)">⚖️ 廠商比價：</span>'+
-      tags.map(t=>'<button class="btn bo bsm" data-cmpcat="'+esc(t)+'">'+(VICO[t]||'📦')+' '+esc(t)+'</button>').join('');
+      tags.map(t=>'<button class="btn bo bsm" data-cmpcat="'+esc(t)+'">'+esc(t)+'</button>').join('');
     compareRow.querySelectorAll('[data-cmpcat]').forEach(b=>{
       b.addEventListener('click',()=>compareVendorsByCat(b.dataset.cmpcat));
     });
@@ -360,7 +360,7 @@ function renderVendorCatFilters(){
   if(filt){
     const curFilter=(typeof vCurrentFilter!=='undefined')?vCurrentFilter:'all';
     filt.innerHTML='<button class="btn '+(curFilter==='all'?'bg':'bo')+' bsm" data-cat="all">全部</button>'+
-      tags.map(t=>'<button class="btn '+(curFilter===t?'bg':'bo')+' bsm" data-cat="'+esc(t)+'">'+(VICO[t]||'📦')+' '+esc(t)+'</button>').join('')+
+      tags.map(t=>'<button class="btn '+(curFilter===t?'bg':'bo')+' bsm" data-cat="'+esc(t)+'">'+esc(t)+'</button>').join('')+
       '<button class="btn bo bsm" id="vFiltAddCat" style="border-style:dashed">＋ 新增類別</button>';
     filt.querySelectorAll('[data-cat]').forEach(btn=>{
       btn.addEventListener('click',()=>{
@@ -428,7 +428,7 @@ function updateMergeVGroupUI(){
   if(targetWrap)targetWrap.style.display='block';
   // 目標一定要是既有案場（延續「一定要先建案場」的規則），不能自己打一個新名字
   if(targetSel&&typeof buildProjectSelect==='function')buildProjectSelect(targetSel,null);
-  if(btn){btn.disabled=false;btn.textContent='🔀 合併這 '+names.length+' 個分組';}
+  if(btn){btn.disabled=false;btn.textContent='合併這'+names.length+' 個分組';}
 }
 
 document.getElementById('mergeVGroupBtn')?.addEventListener('click',()=>{
@@ -514,8 +514,8 @@ function buildVendorCard(v){
         (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
       '</div>'+
       '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
-        '<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'✅ 已採用':'☐ 標記採用')+'</button>'+
-        '<button class="btn bg bxs" data-vpay style="background:var(--gold)">💳 付款</button>'+
+        '<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'標記採用')+'</button>'+
+        '<button class="btn bg bxs" data-vpay style="background:var(--gold)">付款</button>'+
         '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
         '<button class="btn brd bxs" data-vdel>🗑</button>'+
       '</div>';
@@ -613,7 +613,7 @@ function buildVendorCard(v){
     function setBulkTaxBtnStyle(){
       const allExcl=editItems.length&&editItems.every(it=>it.taxType==='excl');
       bulkTaxBtn.style.cssText='padding:5px 12px;border-radius:20px;font-size:.7rem;font-weight:800;cursor:pointer;border:1.5px solid var(--gold-l);background:var(--w);color:var(--gold-d);font-family:inherit';
-      bulkTaxBtn.textContent=allExcl?'🔁 全部設為含稅':'🔁 全部設為未稅';
+      bulkTaxBtn.textContent=allExcl?'全部設為含稅':'全部設為未稅';
       bulkTaxBtn.title='一次把上面所有工項的稅別都改成一樣，不用一筆一筆點';
     }
     const bulkTaxBtn=document.createElement('button');
@@ -629,7 +629,7 @@ function buildVendorCard(v){
 
     // 儲存列
     const saveBar=document.createElement('div');saveBar.style.cssText='padding:10px 16px;border-top:1px solid var(--g100);display:flex;gap:7px;background:var(--g50)';
-    const saveBtn=document.createElement('button');saveBtn.className='btn bg bsm';saveBtn.textContent='💾 儲存修改';
+    const saveBtn=document.createElement('button');saveBtn.className='btn bg bsm';saveBtn.textContent='儲存修改';
     saveBtn.addEventListener('click',()=>{
       const nv=document.getElementById('ve-vendor-'+v._id)?.value.trim()||v.vendor;
       const nc=document.getElementById('ve-cat-'+v._id)?.value||v.cat;
@@ -806,7 +806,7 @@ function updatePunchGeoCard(){
       document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場有地址，但座標查詢還沒成功</span>';
       const accEl=document.getElementById('punchAccuracyVal');
       if(accEl){
-        accEl.innerHTML='<button class="btn bo bxs" id="punchRetryGeo" style="margin-top:6px">📍 立即查詢座標</button>';
+        accEl.innerHTML='<button class="btn bo bxs" id="punchRetryGeo" style="margin-top:6px">立即查詢座標</button>';
         document.getElementById('punchRetryGeo')?.addEventListener('click',async(ev)=>{
           ev.target.textContent='查詢中…';ev.target.disabled=true;
           await geocodeProjectAddress(proj._id,proj.address);
@@ -1080,8 +1080,8 @@ function renderHRPanel(){
       '<div style="font-size:.88rem;font-weight:800">'+r.date+' · '+(r.userName||r.user||'員工')+'</div>'+
       '<div style="font-size:.82rem;color:var(--g600);margin:6px 0 10px">申請原因：'+r.reason+'</div>'+
       '<div style="display:flex;gap:7px">'+
-        '<button class="btn bgn bsm" onclick="approveReq('+r._id+')">✅ 核准</button>'+
-        '<button class="btn brd bsm" onclick="rejectReq('+r._id+')">❌ 拒絕</button>'+
+        '<button class="btn bgn bsm" onclick="approveReq('+r._id+')">核准</button>'+
+        '<button class="btn brd bsm" onclick="rejectReq('+r._id+')">拒絕</button>'+
       '</div>';
     reqList.appendChild(card);
   });
@@ -1123,7 +1123,7 @@ document.getElementById('ldFile').addEventListener('change',async e=>{
       if(dat.amount)document.getElementById('ldAmt').value=dat.amount;
       if(dat.desc)document.getElementById('ldDesc').value=dat.desc;
       if(dat.items&&dat.items.length){ldItems=dat.items;renderLdItems();}
-      document.getElementById('ldFileStatus').textContent='✅ AI 辨識完成';
+      document.getElementById('ldFileStatus').textContent='AI 辨識完成';
     }catch(err){document.getElementById('ldFileStatus').textContent='AI辨識失敗，請手動填寫（'+friendlyAIError(err).replace('⚠️ ','')+'）';}
     ocr.classList.remove('show');
   };rd.readAsDataURL(f);

@@ -5,6 +5,10 @@ function renderProQuote(containerId, sections, opts={}){
     c.innerHTML='<div style="padding:20px;text-align:center;color:var(--g400);font-size:.85rem">尚無工程項目<br><span style="font-size:.8rem">從左側選擇工程分類，或點「＋ 新增分類」</span></div>';
     updProTotals(sections,opts.totIds||{});return;
   }
+  // 抓出這份報價單裡「名稱重複」的大項（同一個分類被匯入或新增了兩次以上），
+  // 待會在標題上加個小提示，方便直接找到、點刪除，不用自己一個個對名字
+  const nameCounts={};
+  sections.forEach(s=>{nameCounts[s.name]=(nameCounts[s.name]||0)+1;});
   sections.forEach(sec=>{
     const div=document.createElement('div');div.className='pqs';
 
@@ -16,6 +20,16 @@ function renderProQuote(containerId, sections, opts={}){
     const nm=document.createElement('span');nm.className='pqs-name';nm.contentEditable='true';nm.textContent=sec.name;
     nm.addEventListener('click',e=>e.stopPropagation());
     nm.addEventListener('blur',()=>{sec.name=nm.textContent.trim()||sec.name;});
+
+    if(nameCounts[sec.name]>1){
+      const dupTag=document.createElement('span');
+      dupTag.textContent='重複';
+      dupTag.title='報價單裡有 '+nameCounts[sec.name]+' 個大項名稱都叫「'+sec.name+'」，確認一下是不是多匯入了，不需要的話可以直接刪除';
+      dupTag.style.cssText='font-size:.66rem;font-weight:800;color:var(--bad);background:var(--bad-bg);border:1px solid var(--bad-bd);padding:2px 7px;border-radius:20px;flex-shrink:0';
+      hd.appendChild(ico);hd.appendChild(nm);hd.appendChild(dupTag);
+    }else{
+      hd.appendChild(ico);hd.appendChild(nm);
+    }
 
     const tot=document.createElement('span');tot.className='pqs-total';tot.textContent=fmt(calcSec(sec.items));
 
@@ -30,7 +44,7 @@ function renderProQuote(containerId, sections, opts={}){
       const setTaxBtnStyle=()=>{
         const taxed=sec.taxed!==false;
         taxBtn.style.cssText='padding:4px 9px;border-radius:20px;font-size:.68rem;font-weight:800;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all var(--ease);border:1.5px solid '+(taxed?'var(--g200)':'var(--warn-bd)')+';background:'+(taxed?'var(--w)':'var(--warn-bg)')+';color:'+(taxed?'var(--g500)':'var(--warn)');
-        taxBtn.textContent=taxed?'🧾 加稅':'🚫 免稅';
+        taxBtn.textContent=taxed?'加稅':'免稅';
         taxBtn.title=taxed?'這個大項會算進最下面的營業稅5%，點一下可改成免稅':'這個大項不會被算進營業稅5%，點一下可改回加稅';
       };
       setTaxBtnStyle();
@@ -45,7 +59,7 @@ function renderProQuote(containerId, sections, opts={}){
     // 刪除大項按鈕（右側明顯紅色）
     const delBtn=document.createElement('button');
     delBtn.style.cssText='margin-left:6px;padding:5px 10px;background:var(--bad-bg);border:1.5px solid var(--bad-bd);color:var(--bad);border-radius:var(--rxs);font-size:.75rem;font-weight:800;cursor:pointer;flex-shrink:0;white-space:nowrap;transition:all var(--ease)';
-    delBtn.textContent='🗑 刪除';
+    delBtn.textContent='刪除';
     delBtn.addEventListener('click',e=>{
       e.stopPropagation();
       confirmAction('刪除「'+sec.name+'」整個分類與所有細項？',()=>{
@@ -54,7 +68,7 @@ function renderProQuote(containerId, sections, opts={}){
       });
     });
 
-    hd.appendChild(ico);hd.appendChild(nm);hd.appendChild(tot);hd.appendChild(tog);
+    hd.appendChild(tot);hd.appendChild(tog);
     if(taxBtn)hd.appendChild(taxBtn);
     hd.appendChild(delBtn);
     hd.addEventListener('click',()=>{body.classList.toggle('open');tog.classList.toggle('open');});
@@ -364,7 +378,8 @@ function renderAdVendorPicker(){
 document.getElementById('importVendorBtn').addEventListener('click',()=>{
   if(!selVendors.size){showToast('⚠️ 請先勾選廠商報價');return;}
   const vendors=DB.get('vendors').filter(v=>selVendors.has(v._id));
-  vendors.forEach(v=>{
+
+  const buildSec=v=>{
     const icon={系統櫃:'🪵',廚具:'🍳',玻璃:'🪟',水電:'⚡',泥作:'🧱',油漆:'🎨',鐵件:'🔩'}[v.cat]||'🔧';
     const sec={id:mkSecId(),icon,name:v.vendor+' ／ '+v.cat,items:[]};
     if(v.items&&v.items.length){
@@ -382,13 +397,31 @@ document.getElementById('importVendorBtn').addEventListener('click',()=>{
     }else{
       sec.items.push({name:v.cat+'工程',unit:'式',qty:1,cost:v.amount||0,price:0});
     }
-    adSections.push(sec);
-  });
-  renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
-  updProfitBar&&updProfitBar();
-  showToast('✅ 已置入廠商報價，廠商金額已填入成本欄，請填入對客報價！');
-  selVendors.clear();
-  renderAdVendorPicker();
+    return sec;
+  };
+
+  const finishImport=list=>{
+    list.forEach(v=>adSections.push(buildSec(v)));
+    renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+    updProfitBar&&updProfitBar();
+    showToast('✅ 已置入廠商報價，廠商金額已填入成本欄，請填入對客報價！');
+    selVendors.clear();
+    renderAdVendorPicker();
+  };
+
+  // 避免同一個「廠商／類別」被匯入兩次，變成報價單裡兩筆內容一樣的重複大項
+  // （最常見是不小心按了兩次匯入，或上次匯入完忘記已經匯入過）。
+  // 這裡先檢查目前報價單裡已經有的大項名稱，撞名的話先問清楚，確認要重複匯入才繼續。
+  const existingNames=new Set(adSections.map(s=>s.name));
+  const dupVendors=vendors.filter(v=>existingNames.has(v.vendor+' ／ '+v.cat));
+  if(dupVendors.length){
+    const names=dupVendors.map(v=>v.vendor+'／'+v.cat).join('、');
+    confirmAction('「'+names+'」這個分類已經在報價單裡了，要再匯入一次、變成兩筆重複的嗎？',()=>{
+      finishImport(vendors);
+    },false);
+    return;
+  }
+  finishImport(vendors);
 });
 
 // ── QUOTE TABLE ──
@@ -424,10 +457,10 @@ function renderQTable(){
         </div>
         <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
         <div style="display:flex;gap:5px;flex-shrink:0">
-          <button class="btn bo bxs" data-qid="${q._id}">✏️ 編輯</button>
-          <button class="btn bo bxs" data-qct="${q._id}" title="把這份報價單的客戶、金額帶進合約，不用重打">📝 轉合約</button>
-          <button class="btn bgn bxs" data-qxls="${q._id}">📥 Excel</button>
-          <button class="btn bo bxs" data-qarch="${q._id}" title="${q.archived?'從封存中取出':'封存這筆報價，不會刪除，只是先收起來'}">${q.archived?'📤 取消封存':'📦 封存'}</button>
+          <button class="btn bo bxs" data-qid="${q._id}">編輯</button>
+          <button class="btn bo bxs" data-qct="${q._id}" title="把這份報價單的客戶、金額帶進合約，不用重打">轉合約</button>
+          <button class="btn bgn bxs" data-qxls="${q._id}">Excel</button>
+          <button class="btn bo bxs" data-qarch="${q._id}" title="${q.archived?'從封存中取出':'封存這筆報價，不會刪除，只是先收起來'}">${q.archived?'取消封存':'封存'}</button>
           <button class="btn brd bxs" data-qdel="${q._id}">🗑</button>
         </div>
       </div>`).join('');

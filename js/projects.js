@@ -592,8 +592,8 @@ function openCalEventModal(dateStr,existingEvent){
     '</div>'+
     '<div class="field" style="margin-bottom:16px"><label class="fl">備注</label><input class="fi" id="calEvNote" placeholder="選填" value="'+(ev?esc(ev.note||''):'')+'"></div>'+
     '<div style="display:flex;gap:8px">'+
-      '<button class="btn bg" id="calEvSaveBtn" style="flex:1">💾 儲存</button>'+
-      (ev?'<button class="btn brd" id="calEvDelBtn">🗑 刪除</button>':'')+
+      '<button class="btn bg" id="calEvSaveBtn" style="flex:1">儲存</button>'+
+      (ev?'<button class="btn brd" id="calEvDelBtn">刪除</button>':'')+
       '<button class="btn bo" id="calEvCancelBtn">取消</button>'+
     '</div>'+
   '</div>';
@@ -680,7 +680,7 @@ function updateMergeProjectUI(){
     primarySel.innerHTML=projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名')+'</option>').join('');
     if(ids.includes(parseInt(prevVal)))primarySel.value=prevVal;
   }
-  if(btn){btn.disabled=false;btn.textContent='🔀 合併這 '+ids.length+' 筆案場';}
+  if(btn){btn.disabled=false;btn.textContent='合併這'+ids.length+' 筆案場';}
 }
 
 document.getElementById('mergeProjBtn')?.addEventListener('click',()=>{
@@ -983,13 +983,13 @@ function renderProjOverview(id,p,c){
         </div>`).join('')}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn bg" onclick="shareProjectToClient(${id})" style="background:var(--ok);color:#fff">📱 分享給業主</button>
-      <button class="btn bo" onclick="openAddProject(${id})">✏️ 編輯案場資料</button>
+      <button class="btn bg" onclick="shareProjectToClient(${id})" style="background:var(--ok);color:#fff">分享給業主</button>
+      <button class="btn bo" onclick="openAddProject(${id})">編輯案場資料</button>
       <select onchange="if(this.value)updateProjectStatus(${id},this.value)" style="padding:8px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
         <option value="">更改狀態...</option>
         ${Object.entries(PROJECT_STATUS).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
       </select>
-      <button class="btn bo" id="catProfitToggleBtn" onclick="toggleProjCatProfit(${id})">🔧 工種毛利</button>
+      <button class="btn bo" id="catProfitToggleBtn" onclick="toggleProjCatProfit(${id})">工種毛利</button>
     </div>
     <div id="projCatProfitBox" style="display:none;margin-top:14px;padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r)"></div>`;
 }
@@ -1019,7 +1019,7 @@ function renderProjQuotes(id,p,c){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
       <div style="display:flex;gap:8px">
-        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">📎 上傳報價單檔案</button>
+        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">上傳報價單檔案</button>
         <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
       </div>
     </div>
@@ -1153,7 +1153,7 @@ function openQuoteEdit(id){
   const waiveBtn=document.getElementById('adMgmtWaive');
   if(waiveBtn){
     if(curMgmtRate===0){waiveBtn.textContent='↩️ 取消贈送';waiveBtn.style.background='var(--ok-bg)';waiveBtn.style.color='var(--ok)';waiveBtn.style.borderColor='var(--ok-bd)';}
-    else{waiveBtn.textContent='🎁 贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
+    else{waiveBtn.textContent='贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
   }
   const adN=document.getElementById('adN');if(adN)adN.value=q.name||'';
   const adAd=document.getElementById('adAd');if(adAd)adAd.value=q.addr||'';
@@ -1210,7 +1210,7 @@ function renderProjVendors(id,p,c){
     </div>
     ${cats.length>1?`<div id="projVendorCatFilt" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn ${curCat==='all'?'bg':'bo'} bxs" data-pvcat="all">全部（${allVendors.length}）</button>
-      ${cats.map(cat=>`<button class="btn ${curCat===cat?'bg':'bo'} bxs" data-pvcat="${esc(cat)}">${VICO[cat]||'📦'} ${esc(cat)}（${catCounts[cat]}）</button>`).join('')}
+      ${cats.map(cat=>`<button class="btn ${curCat===cat?'bg':'bo'} bxs" data-pvcat="${esc(cat)}">${esc(cat)}（${catCounts[cat]}）</button>`).join('')}
     </div>`:''}
     <div id="projVendorCards"></div>`;
 
@@ -1373,10 +1373,10 @@ function toggleProjCatProfit(id){
     box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(id);
     box.style.display='block';
     wireCatProfitInputs(box,id);
-    if(btn){btn.style.background='var(--gold-pale)';btn.style.borderColor='var(--gold-l)';btn.style.color='var(--gold-d)';btn.textContent='🔧 工種毛利（收起 ▲）';}
+    if(btn){btn.style.background='var(--gold-pale)';btn.style.borderColor='var(--gold-l)';btn.style.color='var(--gold-d)';btn.textContent='工種毛利（收起 ▲）';}
   }else{
     box.style.display='none';
-    if(btn){btn.style.background='';btn.style.borderColor='';btn.style.color='';btn.textContent='🔧 工種毛利';}
+    if(btn){btn.style.background='';btn.style.borderColor='';btn.style.color='';btn.textContent='工種毛利';}
   }
 }
 
@@ -1494,7 +1494,7 @@ function openContractForProject(projectId){
   const gridEl=document.getElementById('ctPhotoGrid');if(gridEl)gridEl.innerHTML='';
   const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
   const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
-  const btnEl=document.getElementById('addCtBtn');if(btnEl)btnEl.textContent='💾 儲存合約';
+  const btnEl=document.getElementById('addCtBtn');if(btnEl)btnEl.textContent='儲存合約';
   ['ctName','ctClient','ctAmt2','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   if(p){
     const ctN=document.getElementById('ctName');if(ctN)ctN.value=p.name||'';
@@ -1568,7 +1568,7 @@ function renderProjProgress(id,p,c){
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">工程進度</div>
-      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">📷 新增進度</button>
+      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">新增進度</button>
     </div>
     ${nextItem?`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);margin-bottom:18px">
       <span style="font-size:1.4rem">👉</span>
@@ -1637,7 +1637,7 @@ function openAddProgressEntry(projectId, editId){
 
     <div style="display:flex;gap:8px">
       <button id="_progCancel" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.86rem;cursor:pointer;font-family:inherit">取消</button>
-      <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
+      <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">儲存</button>
     </div>
   </div>`;
   box.addEventListener('click',()=>box.remove());
@@ -1740,7 +1740,7 @@ function openVendorPay(vendorId){
 
     <div style="display:flex;gap:8px">
      <button onclick="document.getElementById('_payBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
-     <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">✅ 確認付款並記帳</button>
+     <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">確認付款並記帳</button>
     </div>
    </div>`;
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
@@ -1795,7 +1795,7 @@ function quickExpense(cat){
     </select>
     <div style="display:flex;gap:8px">
      <button onclick="document.getElementById('_qeBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
-     <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">💾 記帳</button>
+     <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">記帳</button>
     </div>
    </div>`;
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
@@ -1852,7 +1852,7 @@ function renderShareBox(id){
       <input id="_shareUrl" readonly value="${url}" style="flex:1;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:monospace;background:var(--g50);color:var(--g600);min-width:0">
       <button onclick="navigator.clipboard.writeText('${url}').then(()=>showToast('✅ 已複製連結'))" style="padding:10px 14px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">複製</button>
     </div>
-    <button id="_shareRegenBtn" style="width:100%;padding:9px;border:1.5px solid var(--bad-bd);border-radius:var(--rs);background:var(--bad-bg);color:var(--bad);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">🔄 重新產生連結（舊連結會立刻失效）</button>
+    <button id="_shareRegenBtn" style="width:100%;padding:9px;border:1.5px solid var(--bad-bd);border-radius:var(--rs);background:var(--bad-bg);color:var(--bad);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">重新產生連結（舊連結會立刻失效）</button>
     <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 業主打開連結就能看到：施工進度、收款紀錄、合約摘要。<br>看不到你的成本內帳，安全放心。</div>
     <button onclick="document.getElementById('_shareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
    </div>`;
