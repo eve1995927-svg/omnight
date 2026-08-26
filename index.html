@@ -1673,15 +1673,21 @@
     <div class="field" style="margin:0"><label class="fl">交通津貼</label><input class="fi" id="empTransport" type="number" placeholder="1000" value="0"></div>
     <div class="field" style="margin:0"><label class="fl">其他津貼</label><input class="fi" id="empOther" type="number" placeholder="0" value="0"></div>
    </div>
+   <div class="field" style="margin-bottom:10px">
+    <label class="fl">投保金額（勞保局／健保局的投保級距金額，可能跟底薪不一樣）</label>
+    <input class="fi" id="empInsuredSalary" type="number" placeholder="留空預設用底薪">
+   </div>
    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--w);border-radius:var(--rs);margin-bottom:10px;cursor:pointer;font-size:.82rem;color:var(--g600)">
     <input type="checkbox" id="empAbsorbInsurance" style="width:16px;height:16px;cursor:pointer">
     🏢 勞健保由公司吸收（不從員工薪水扣，上面填的底薪就是員工實拿的金額）
    </label>
    <div style="background:var(--w);border-radius:var(--rs);padding:12px 14px;font-size:.82rem">
-    <div style="font-size:.75rem;font-weight:800;color:var(--info);margin-bottom:8px">📊 勞健保自動計算（2024年標準）</div>
-    <div class="salary-row"><span class="sl-label" id="empLaborLabel">勞保費（員工負擔 20%）</span><span class="sl-val" id="empLabor">-</span></div>
-    <div class="salary-row"><span class="sl-label" id="empHealthLabel">健保費（員工負擔 30%）</span><span class="sl-val" id="empHealth">-</span></div>
-    <div class="salary-row"><span class="sl-label">勞退（雇主提撥 6%）</span><span class="sl-val" id="empRetire">-</span></div>
+    <div style="font-size:.75rem;font-weight:800;color:var(--info);margin-bottom:8px">📊 勞健保費用（依勞保局／健保局實際帳單金額填寫，因為有投保級距，不是單純比例）</div>
+    <div class="g2" style="margin-bottom:10px">
+     <div class="field" style="margin:0"><label class="fl" id="empLaborLabel">勞保費（員工負擔）</label><input class="fi" id="empLaborInput" type="number" placeholder="0"></div>
+     <div class="field" style="margin:0"><label class="fl" id="empHealthLabel">健保費（員工負擔）</label><input class="fi" id="empHealthInput" type="number" placeholder="0"></div>
+    </div>
+    <div class="salary-row"><span class="sl-label">勞退（雇主提撥 6%，依投保金額計算）</span><span class="sl-val" id="empRetire">-</span></div>
     <div class="salary-row" id="empAbsorbRow" style="display:none"><span class="sl-label" style="color:var(--warn)">公司額外吸收（勞健保員工那份）</span><span class="sl-val" id="empAbsorbAmt" style="color:var(--warn)">-</span></div>
     <div class="salary-row"><span class="sl-label" style="font-weight:700" id="empNetLabel">實領薪資</span><span class="sl-val total" id="empNet">-</span></div>
    </div>
