@@ -124,35 +124,37 @@ function renderProgress(){
 // ══ 員工管理 ══════════════════════════════════════════════
 let empEditId=null;
 
-// 勞健保自動計算
+// 勞健保：改成直接讀使用者填的實際金額（勞健保有投保級距，不是單純比例，
+// 自動用百分比算出來的數字常常跟勞保局／健保局寄來的帳單對不上，所以這裡不再自動算，
+// 勞保費／健保費都是使用者依實際帳單填入的固定數字；只有勞退還是用投保金額×6%自動算
+// （勞退提繳工資分級表雖然也是級距，但誤差通常比勞健保小很多，先維持自動算）
 function calcSalaryInsurance(){
   const salary=parseFloat(document.getElementById('empSalary')?.value)||0;
   const meal=parseFloat(document.getElementById('empMeal')?.value)||0;
   const transport=parseFloat(document.getElementById('empTransport')?.value)||0;
   const other=parseFloat(document.getElementById('empOther')?.value)||0;
+  const insuredSalary=parseFloat(document.getElementById('empInsuredSalary')?.value)||salary;
+  const labor=parseFloat(document.getElementById('empLaborInput')?.value)||0;
+  const health=parseFloat(document.getElementById('empHealthInput')?.value)||0;
   const absorb=document.getElementById('empAbsorbInsurance')?.checked||false;
   const gross=salary+meal+transport+other;
-  // 勞保：級距約 salary*0.105，員工負擔 20%
-  const labor=Math.round(salary*0.105*0.2);
-  // 健保：(salary+meal)*0.0517*0.3（員工負擔30%）
-  const health=Math.round((salary+meal)*0.0517*0.3);
-  // 勞退：雇主提撥6%（員工不扣，由公司付）
-  const retire=Math.round(salary*0.06);
+  // 勞退：雇主提撥6%，用投保金額算（沒填投保金額就退回用底薪）
+  const retire=Math.round(insuredSalary*0.06);
   // 勞健保由公司吸收時，員工薪水不倒扣這筆錢，上面填的金額就是實拿金額；
   // 沒勾的話維持原本行為：底薪扣掉員工自己那份勞健保才是實領
   const net=absorb?gross:(gross-labor-health);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent='NT$'+v.toLocaleString();};
-  set('empLabor',labor);set('empHealth',health);set('empRetire',retire);set('empNet',net);
+  set('empRetire',retire);set('empNet',net);
   const absorbRow=document.getElementById('empAbsorbRow');
   if(absorbRow){
     absorbRow.style.display=absorb?'flex':'none';
     if(absorb)set('empAbsorbAmt',labor+health);
   }
-  const laborLabel=document.getElementById('empLaborLabel');if(laborLabel)laborLabel.textContent=absorb?'勞保費（公司吸收）':'勞保費（員工負擔 20%）';
-  const healthLabel=document.getElementById('empHealthLabel');if(healthLabel)healthLabel.textContent=absorb?'健保費（公司吸收）':'健保費（員工負擔 30%）';
+  const laborLabel=document.getElementById('empLaborLabel');if(laborLabel)laborLabel.textContent=absorb?'勞保費（公司吸收）':'勞保費（員工負擔）';
+  const healthLabel=document.getElementById('empHealthLabel');if(healthLabel)healthLabel.textContent=absorb?'健保費（公司吸收）':'健保費（員工負擔）';
   const netLabel=document.getElementById('empNetLabel');if(netLabel)netLabel.textContent=absorb?'實領薪資（＝上面填的底薪＋津貼）':'實領薪資';
 }
-['empSalary','empMeal','empTransport','empOther','empAbsorbInsurance'].forEach(id=>{
+['empSalary','empMeal','empTransport','empOther','empInsuredSalary','empLaborInput','empHealthInput','empAbsorbInsurance'].forEach(id=>{
   document.getElementById(id)?.addEventListener('input',calcSalaryInsurance);
   document.getElementById(id)?.addEventListener('change',calcSalaryInsurance);
 });
@@ -164,6 +166,9 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   document.getElementById('empMeal').value='2400';
   document.getElementById('empTransport').value='0';
   document.getElementById('empOther').value='0';
+  const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value='';
+  const laborInEl=document.getElementById('empLaborInput');if(laborInEl)laborInEl.value='';
+  const healthInEl=document.getElementById('empHealthInput');if(healthInEl)healthInEl.value='';
   const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=false;
   document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
   document.getElementById('empModalTitle').innerHTML='新增員工 <button class="mcl" data-close="empModal">✕</button>';
@@ -193,10 +198,11 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   const meal=parseFloat(document.getElementById('empMeal').value)||0;
   const transport=parseFloat(document.getElementById('empTransport').value)||0;
   const other=parseFloat(document.getElementById('empOther').value)||0;
+  const insuredSalary=parseFloat(document.getElementById('empInsuredSalary')?.value)||salary;
   const absorbInsurance=document.getElementById('empAbsorbInsurance')?.checked||false;
-  const labor=Math.round(salary*0.105*0.2);
-  const health=Math.round((salary+meal)*0.0517*0.3);
-  const retire=Math.round(salary*0.06);
+  const labor=parseFloat(document.getElementById('empLaborInput')?.value)||0;
+  const health=parseFloat(document.getElementById('empHealthInput')?.value)||0;
+  const retire=Math.round(insuredSalary*0.06);
   const net=absorbInsurance?(salary+meal+transport+other):(salary+meal+transport+other-labor-health);
   const account=(document.getElementById('empAccount')?.value||'').trim();
   const password=(document.getElementById('empPassword')?.value||'').trim();
@@ -207,7 +213,7 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
     if(!password){showToast('⚠️ 設定了帳號就需要設定密碼');return;}
   }
   const permissions=readEmpPermCheckboxes();
-  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,labor,health,retire,net,absorbInsurance,account,password,permissions,summary:'員工 '+name};
+  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,retire,net,absorbInsurance,account,password,permissions,summary:'員工 '+name};
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
@@ -277,6 +283,9 @@ function renderEmployees(){
       document.getElementById('empBank').value=e.bank||'';document.getElementById('empStartDate').value=e.startDate||'';
       document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||2400;
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
+      const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value=e.insuredSalary||'';
+      const laborInEl=document.getElementById('empLaborInput');if(laborInEl)laborInEl.value=e.labor||'';
+      const healthInEl=document.getElementById('empHealthInput');if(healthInEl)healthInEl.value=e.health||'';
       const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=!!e.absorbInsurance;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
@@ -445,7 +454,7 @@ function renderMonthSalary(monthKey){
     card.innerHTML=`
       ${salaryDrift?`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--rxs);padding:8px 12px;margin-bottom:10px">
         <span style="font-size:.76rem;color:var(--warn);font-weight:700">⚠️ 員工資料的底薪／津貼已經改過了，這個月的薪資記錄還是舊的</span>
-        <button onclick="syncSalaryFromEmployee('${e._id}','${monthKey}')" class="btn bo bxs" style="flex-shrink:0;white-space:nowrap">同步最新資料</button>
+        <button onclick="syncSalaryFromEmployee(${e._id},'${monthKey}')" class="btn bo bxs" style="flex-shrink:0;white-space:nowrap">同步最新資料</button>
       </div>`:''}
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
@@ -457,9 +466,9 @@ function renderMonthSalary(monthKey){
           <div style="font-size:.75rem;color:var(--g400)">實領薪資</div>
           <div style="font-family:var(--mono);font-weight:900;font-size:1rem;color:var(--gold-d)">NT$${net.toLocaleString()}</div>
         </div>
-        <button onclick="openSalaryEditBox('${e._id}','${monthKey}')" title="調整獎金/代墊費"
+        <button onclick="openSalaryEditBox(${e._id},'${monthKey}')" title="調整獎金/代墊費"
           style="width:32px;height:32px;border-radius:var(--rxs);border:1.5px solid var(--g200);background:var(--w);color:var(--g500);cursor:pointer;font-size:.85rem;flex-shrink:0">✏️</button>
-        <button onclick="togglePayStatus('${e._id}','${monthKey}')" 
+        <button onclick="togglePayStatus(${e._id},'${monthKey}')" 
           style="padding:8px 16px;border-radius:var(--rs);font-size:.82rem;font-weight:800;cursor:pointer;font-family:inherit;
           background:${rec.paid?'var(--ok-bg)':'var(--gold)'};color:${rec.paid?'var(--ok)':'#fff'};
           border:1.5px solid ${rec.paid?'var(--ok-bd)':'var(--gold-d)'};flex-shrink:0">
@@ -511,8 +520,9 @@ function renderMonthSalary(monthKey){
 // 已經標記匯款的月份不會被這個功能動到（已核發的薪資不該被追溯改動）
 function syncSalaryFromEmployee(empId,monthKey){
   const e=DB.get('employees').find(x=>x._id===empId);
-  const rec=DB.get('salary_records').find(r=>r.empId===empId&&r.monthKey===monthKey);
-  if(!e||!rec)return;
+  if(!e){showToast('⚠️ 找不到這位員工的資料');return;}
+  const rec=getSalaryRecord(empId,monthKey);
+  if(!rec){showToast('⚠️ 找不到這個月的薪資記錄');return;}
   if(rec.paid){showToast('⚠️ 這個月已經標記匯款，不會自動改動');return;}
   DB.upd('salary_records',rec._id,{baseSalary:e.salary||0,meal:e.meal||0,transport:e.transport||0,other:e.other||0});
   renderMonthSalary(monthKey);

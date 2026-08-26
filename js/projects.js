@@ -1259,9 +1259,10 @@ function showProjVendorDetail(vendorId){
 // 兩邊都支援手動覆寫（p.catProfitOverride），蓋掉自動算出來的數字，蓋過的欄位會一直沿用，
 // 直到使用者自己把輸入框清空為止，才會改回自動計算。
 // 「毛利明細」彈窗跟案場總覽的「工種毛利」卡片共用這套計算，避免兩個地方各寫一次，數字卻對不起來。
-function getProjCatProfitRows(projectId){
+function getProjCatProfitRows(projectId,includeHidden){
   const p=DB.get('projects').find(x=>x._id===projectId)||{};
   const overrides=p.catProfitOverride||{};
+  const hidden=p.catProfitHidden||[];
   const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
   const adoptedByCat={};
   vendorList.filter(v=>v.adopted).forEach(v=>{
@@ -1280,9 +1281,11 @@ function getProjCatProfitRows(projectId){
     });
   });
   // 類別清單：把「所有出現過廠商報價的工種」＋「報價單裡的大項」＋「手動輸入過的類別」都列出來，
-  // 就算某個工種還沒標記採用的廠商，也看得到它躺在清單裡（廠商欄位會顯示「未標記採用」提醒你去選）
+  // 就算某個工種還沒標記採用的廠商，也看得到它躺在清單裡（廠商欄位會顯示「未標記採用」提醒你去選）。
+  // 使用者手動隱藏過的類別（用不到的空類別），預設不顯示，除非明確要求包含隱藏的（給「顯示已隱藏」用）
   const allVendorCats=[...new Set(vendorList.map(v=>v.cat||'其他'))];
-  const allCats=[...new Set([...allVendorCats,...Object.keys(clientByCat),...Object.keys(overrides)])];
+  const allCats=[...new Set([...allVendorCats,...Object.keys(clientByCat),...Object.keys(overrides)])]
+    .filter(cat=>includeHidden||!hidden.includes(cat));
   const catRows=allCats.map(cat=>{
     const ov=overrides[cat]||{};
     const vcAuto=(adoptedByCat[cat]&&adoptedByCat[cat].cost)||0;
@@ -1296,13 +1299,42 @@ function getProjCatProfitRows(projectId){
     return {cat,vendor:(adoptedByCat[cat]&&adoptedByCat[cat].vendor)||'',vc,cc,cp,margin,vcOverridden,ccOverridden};
   }).sort((a,b)=>b.vc-a.vc);
   const catTotal=catRows.reduce((s,r)=>s+r.cp,0);
-  return {catRows,catTotal};
+  return {catRows,catTotal,hiddenCount:hidden.length};
+}
+
+// 把用不到的空類別（廠商成本、客戶報價都是 0 的那種）從「工種毛利」表裡藏起來，
+// 存在案場資料的 catProfitHidden 清單裡，不是真的刪掉任何交易紀錄，隨時可以「顯示已隱藏」復原
+function hideCatProfitRow(projectId,cat){
+  const p=DB.get('projects').find(x=>x._id===projectId);if(!p)return;
+  const hidden=[...(p.catProfitHidden||[])];
+  if(!hidden.includes(cat))hidden.push(cat);
+  DB.upd('projects',projectId,{catProfitHidden:hidden});
+  refreshCatProfitViews(projectId);
+  showToast('已隱藏「'+cat+'」，不想看到它了可以放心，隨時能按「顯示已隱藏」復原');
+}
+function unhideAllCatProfitRows(projectId){
+  DB.upd('projects',projectId,{catProfitHidden:[]});
+  refreshCatProfitViews(projectId);
+}
+// 工種毛利現在有兩個地方會顯示（案場總覽的展開卡片、毛利明細彈窗），
+// 隱藏／復原／改手動輸入之後兩邊都要一起更新，而且重畫過的輸入框要重新接上事件才會繼續能改
+function refreshCatProfitViews(projectId){
+  const box=document.getElementById('projCatProfitBox');
+  if(box&&box.style.display!=='none'){
+    box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(projectId);
+    wireCatProfitInputs(box,projectId);
+  }
+  const pane=document.getElementById('profitPaneCat');
+  if(pane){
+    pane.innerHTML=buildCatProfitHtml(projectId);
+    wireCatProfitInputs(pane,projectId);
+  }
 }
 
 function buildCatProfitHtml(projectId){
-  const {catRows,catTotal}=getProjCatProfitRows(projectId);
+  const {catRows,catTotal,hiddenCount}=getProjCatProfitRows(projectId);
   const inputStyle=overridden=>'width:92px;text-align:right;padding:4px 6px;border:1.5px solid '+(overridden?'var(--gold-l)':'var(--g200)')+';border-radius:var(--rxs);font-family:monospace;font-size:.8rem;background:'+(overridden?'var(--gold-pale)':'var(--w)')+';outline:none';
-  const catTableHtml=catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:600px">'+
+  const catTableHtml=catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px">'+
     '<thead><tr style="border-bottom:1.5px solid var(--g200)">'+
       '<th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">工種</th>'+
       '<th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商</th>'+
@@ -1310,6 +1342,7 @@ function buildCatProfitHtml(projectId){
       '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">客戶報價</th>'+
       '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">工種毛利</th>'+
       '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">毛利率</th>'+
+      '<th style="width:26px"></th>'+
     '</tr></thead>'+
     '<tbody>'+catRows.map(r=>'<tr style="border-bottom:1px dashed var(--g100)">'+
       '<td style="padding:6px 4px;font-weight:700;white-space:nowrap">'+esc(r.cat)+'</td>'+
@@ -1318,11 +1351,14 @@ function buildCatProfitHtml(projectId){
       '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="cc" value="'+r.cc+'" inputmode="numeric" style="'+inputStyle(r.ccOverridden)+'"></td>'+
       '<td style="padding:6px 4px;text-align:right;font-family:monospace;font-weight:800;white-space:nowrap;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.cp>=0?'+':'')+r.cp.toLocaleString()+'</td>'+
       '<td style="padding:6px 4px;text-align:right;font-family:monospace;white-space:nowrap;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.margin===null?'－':r.margin+'%')+'</td>'+
+      '<td style="padding:6px 4px;text-align:center"><button onclick="hideCatProfitRow('+projectId+',\''+esc(r.cat).replace(/'/g,"\\'")+'\')" title="用不到這個類別，從表裡藏起來（不會刪掉任何交易紀錄，可以復原）" style="width:22px;height:22px;border:1px solid var(--g200);background:var(--w);border-radius:50%;color:var(--g400);cursor:pointer;font-size:.68rem;line-height:1;padding:0">✕</button></td>'+
     '</tr>').join('')+
     '</tbody></table></div>'
     :'<div style="padding:10px 0;font-size:.82rem;color:var(--g400)">尚無廠商報價或客戶報價單資料，無法拆分工種</div>';
-  return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。</div>'+
+  const hiddenLink=hiddenCount?'<div style="text-align:right;margin-top:6px"><span style="font-size:.72rem;color:var(--g400)">已隱藏 '+hiddenCount+' 個類別　</span><button onclick="unhideAllCatProfitRows('+projectId+')" style="background:none;border:none;color:var(--gold-d);font-size:.72rem;font-weight:700;cursor:pointer;text-decoration:underline;padding:0">全部顯示</button></div>':'';
+  return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。用不到的類別可以點右邊 ✕ 藏起來。</div>'+
     catTableHtml+
+    hiddenLink+
     '<div style="padding:12px 16px;margin-top:10px;border-radius:var(--rs);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(catTotal>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
       '<span style="font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">各工種毛利合計</span>'+
       '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+'NT$'+catTotal.toLocaleString()+'</span>'+
@@ -1350,16 +1386,7 @@ function wireCatProfitInputs(container,projectId){
       }
       DB.upd('projects',projectId,{catProfitOverride:overrides});
       showToast('✅ 已更新工種毛利');
-      const box=document.getElementById('projCatProfitBox');
-      if(box&&box.style.display!=='none'){
-        box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(projectId);
-        wireCatProfitInputs(box,projectId);
-      }
-      const modalPane=document.getElementById('profitPaneCat');
-      if(modalPane){
-        modalPane.innerHTML=buildCatProfitHtml(projectId);
-        wireCatProfitInputs(modalPane,projectId);
-      }
+      refreshCatProfitViews(projectId);
     });
   });
 }
@@ -1515,7 +1542,9 @@ function openContractForProject(projectId){
 
 // ── 案場帳款 Tab ──────────────────────────────────────────
 function renderProjLedger(id,p,c){
-  const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>b._id-a._id);
+  // 改成用「交易日期」排序而不是建立順序：付款日期現在可以自己選（例如補登之前的付款），
+  // 用建立順序排會讓補登的舊款項跑到最上面，跟月份分組對不起來
+  const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
   const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
   // 修正重點：標記廠商付款時，系統會自動在這裡多記一筆內帳支出方便對帳，
   // 但那筆錢已經算在下面的「廠商成本」裡了，兩個一起加會把同一筆錢算兩次。
@@ -1527,6 +1556,28 @@ function renderProjLedger(id,p,c){
   // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
   const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
+
+  // 依月份分組，方便案場拖得比較久（跨好幾個月）的時候不用滑一長串才找到某一筆
+  const groups={};
+  items.forEach(l=>{
+    const key=(l.date||'').slice(0,7)||'未填日期'; // "YYYY-MM"
+    (groups[key]=groups[key]||[]).push(l);
+  });
+  const monthKeys=Object.keys(groups).sort((a,b)=>b.localeCompare(a));
+  const monthLabel=key=>{
+    if(key==='未填日期')return key;
+    const [y,m]=key.split('-');
+    return y+'年'+parseInt(m)+'月';
+  };
+  const rowHtml=l=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
+        <div style="width:36px;height:36px;border-radius:8px;background:${l.type==='in'?'var(--ok-bg)':'var(--bad-bg)'};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">${l.type==='in'?'💰':'📤'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${esc(l.desc||l.cat||'記錄')}</div>
+          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}</div>
+        </div>
+        <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
+      </div>`;
 
   c.innerHTML=`
     <div class="g4" style="margin-bottom:16px">
@@ -1540,15 +1591,17 @@ function renderProjLedger(id,p,c){
       <button class="btn bo bsm" onclick="openProjLedgerModal(${id},'out')">＋ 新增支出</button>
     </div>
     <div id="projLedgerList">
-    ${items.length?items.map(l=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
-        <div style="width:36px;height:36px;border-radius:8px;background:${l.type==='in'?'var(--ok-bg)':'var(--bad-bg)'};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">${l.type==='in'?'💰':'📤'}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${esc(l.desc||l.cat||'記錄')}</div>
-          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}</div>
+    ${items.length?monthKeys.map(key=>{
+      const monthItems=groups[key];
+      const monthSum=monthItems.reduce((s,l)=>s+(l.type==='in'?(l.amount||0):-(l.amount||0)),0);
+      return `<div style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px;margin-bottom:2px;border-bottom:1.5px solid var(--g200)">
+          <span style="font-size:.8rem;font-weight:900;color:var(--g600)">${monthLabel(key)}</span>
+          <span style="font-size:.76rem;font-weight:800;color:${monthSum>=0?'var(--ok)':'var(--bad)'}">${monthSum>=0?'+':'-'}NT$${Math.abs(monthSum).toLocaleString()}</span>
         </div>
-        <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">尚無帳款紀錄</div></div>'}
+        ${monthItems.map(rowHtml).join('')}
+      </div>`;
+    }).join(''):'<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">尚無帳款紀錄</div></div>'}
     </div>`;
 }
 
@@ -1736,6 +1789,8 @@ function openVendorPay(vendorId){
      <button onclick="document.getElementById('_payAmt').value=${remain}" style="padding:6px 12px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:800">付清 NT$${remain.toLocaleString()}</button>
     </div>
     <input type="number" id="_payAmt" placeholder="輸入金額" value="${remain}" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
+    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:6px">付款日期</div>
+    <input type="date" id="_payDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
     <input type="text" id="_payNote" placeholder="備注（例：第二期款）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
 
     <div style="display:flex;gap:8px">
@@ -1753,9 +1808,11 @@ function confirmVendorPay(){
   if(amt<=0){showToast('⚠️ 請輸入付款金額');return;}
   const note=document.getElementById('_payNote')?.value?.trim()||'';
   const today=new Date().toISOString().split('T')[0];
+  // 付款日期可以自己選，不一定是今天（常見情況：補登之前已經付過的款項）
+  const payDate=document.getElementById('_payDate')?.value||today;
 
   // 1. 記錄到廠商付款歷史
-  const payments=[...(v.payments||[]),{amount:amt,date:today,note}];
+  const payments=[...(v.payments||[]),{amount:amt,date:payDate,note}];
   const totalPaid=payments.reduce((s,p)=>s+(p.amount||0),0);
   DB.upd('vendors',v._id,{payments,paid:totalPaid>=(v.amount||0)});
 
@@ -1764,7 +1821,7 @@ function confirmVendorPay(){
     summary:'內帳支出 付款給'+(v.vendor||'廠商')+' '+fmt(amt),
     book:'out',type:'out',amount:amt,
     desc:'付款給 '+(v.vendor||'廠商')+(note?'（'+note+'）':''),
-    cat:'廠商費用',date:today,
+    cat:'廠商費用',date:payDate,
     caseN:v.caseN||'',projectId:v.projectId||null,
     vendorId:v._id,
   });
