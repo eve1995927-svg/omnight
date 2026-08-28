@@ -560,10 +560,18 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
-function openLedgerModal(book){
+function openLedgerModal(book, projectId){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['ldAmt','ldDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  // 修正重點：這個「案場」下拉選單本來從來沒有被填過任何選項，永遠是空的、選不了案場，
+  // 導致不管從哪個案場點「新增支出／收入」，存進去的紀錄都沒有掛到任何案場，
+  // 只有在「會計 → 帳款總覽」的全域列表裡看得到，回案場自己的「帳款」分頁反而找不到這一筆。
+  // 現在改成跟其他地方（例如新增進度）一樣，用 buildProjectSelect 把案場清單帶進來；
+  // 這裡特意用明確傳進來的 projectId（不是共用的 curProjectId 全域變數），
+  // 這樣從「會計 → 帳款總覽」這種不屬於任何案場的地方新增時，不會不小心撿到之前逛過的案場 ID。
+  const pid=projectId!==undefined?projectId:null;
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),pid,true);
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';

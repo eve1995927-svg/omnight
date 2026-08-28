@@ -590,6 +590,7 @@ function openCalEventModal(dateStr,existingEvent){
       '<div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" type="date" id="calEvDate" value="'+(ev?ev.date:dateStr)+'"></div>'+
       '<div class="field" style="margin:0"><label class="fl">時間（選填）</label><input class="fi" type="time" id="calEvTime" value="'+(ev&&ev.time?ev.time:'')+'"></div>'+
     '</div>'+
+    '<div class="field" style="margin-bottom:12px"><label class="fl">關聯案場（選填）</label><select class="fi" id="calEvProject"><option value="">不指定案場</option>'+DB.get('projects').map(p=>'<option value="'+p._id+'"'+(ev&&ev.projectId===p._id?' selected':'')+'>'+esc(p.name||'未命名案場')+'</option>').join('')+'</select></div>'+
     '<div class="field" style="margin-bottom:16px"><label class="fl">備注</label><input class="fi" id="calEvNote" placeholder="選填" value="'+(ev?esc(ev.note||''):'')+'"></div>'+
     '<div style="display:flex;gap:8px">'+
       '<button class="btn bg" id="calEvSaveBtn" style="flex:1">儲存</button>'+
@@ -614,9 +615,10 @@ function openCalEventModal(dateStr,existingEvent){
     const date=document.getElementById('calEvDate').value;
     const time=document.getElementById('calEvTime').value;
     const note=document.getElementById('calEvNote').value.trim();
+    const projectIdSel=document.getElementById('calEvProject')?.value;
     if(!title){showToast('⚠️ 請輸入行程標題');return;}
     if(!date){showToast('⚠️ 請選擇日期');return;}
-    const data={title,date,time,note,summary:'行程 '+title};
+    const data={title,date,time,note,projectId:projectIdSel?parseInt(projectIdSel):null,summary:'行程 '+title};
     if(ev)DB.upd('calendar_events',ev._id,data);
     else DB.push('calendar_events',data);
     box.remove();
@@ -920,8 +922,8 @@ function renderProjectDetail(id, activeTab='overview'){
   }
 
   // Tab 切換
-  const tabs=['overview','survey','quote','vendor','contract','ledger','progress'];
-  const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
+  const tabs=['overview','survey','quote','vendor','contract','ledger','progress','design','memo'];
+  const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
     tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
@@ -942,6 +944,8 @@ function renderProjectDetail(id, activeTab='overview'){
     case 'contract': renderProjContract(id,p,content); break;
     case 'ledger':   renderProjLedger(id,p,content);   break;
     case 'progress': renderProjProgress(id,p,content); break;
+    case 'design': renderProjDesign(id,p,content); break;
+    case 'memo': renderProjMemo(id,p,content); break;
   }
 }
 
@@ -1229,6 +1233,127 @@ function renderProjVendors(id,p,c){
   // 直接沿用「廠商報價整理」頁面同一套卡片（可展開看細項、改廠商名稱／類別／備注／工項、標記付款、刪除），
   // 這樣不用切去別的頁面找那一筆廠商報價，在案場詳情裡就能直接編輯，操作起來順很多。
   vendors.forEach(v=>wrap.appendChild(buildVendorCard(v)));
+}
+
+// ── 案場設計圖 Tab（上傳平面圖、設計圖、渲染圖，跟業主或廠商共享用）────────
+function renderProjDesign(id,p,c){
+  const items=DB.get('design_files').filter(d=>d.projectId===id&&!d.deleted).sort((a,b)=>b._id-a._id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">設計圖（${items.length} 張）</div>
+      <button class="btn bg bsm" onclick="openProjDesignUpload(${id})">＋ 上傳設計圖</button>
+    </div>
+    <div id="projDesignGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px"></div>`;
+  const grid=c.querySelector('#projDesignGrid');
+  if(!items.length){
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="es-ic">🖼️</div><div class="es-t">尚無設計圖</div><div class="es-s">點右上方「上傳設計圖」，可上傳平面圖、設計圖、渲染圖等</div></div>';
+  } else {
+    items.forEach(d=>{
+      const card=document.createElement('div');
+      card.style.cssText='position:relative;border-radius:var(--rs);overflow:hidden;background:var(--g100);aspect-ratio:4/3;cursor:pointer';
+      if(d.imgDataUrl){
+        card.innerHTML=`<img src="${d.imgDataUrl}" style="width:100%;height:100%;object-fit:cover;display:block">`;
+        card.addEventListener('click',()=>openLB(d.imgDataUrl));
+      }else{
+        card.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-size:1.5rem">📄</div>';
+      }
+      card.innerHTML+=`<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);color:#fff;font-size:.68rem;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name||d.date||'設計圖')}</div>
+        <button onclick="event.stopPropagation();confirmAction('刪除這張設計圖？',()=>{DB.softDel('design_files',${d._id});renderProjDesign(${id},null,document.getElementById('projDetailContent'));})" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(200,0,0,.7);border:none;color:#fff;cursor:pointer;font-size:.68rem;line-height:1">✕</button>`;
+      grid.appendChild(card);
+    });
+  }
+}
+function openProjDesignUpload(projectId){
+  const input=document.createElement('input');input.type='file';input.accept='image/*,.pdf';input.multiple=true;
+  input.addEventListener('change',async()=>{
+    const files=[...input.files];if(!files.length)return;
+    let count=0;
+    for(const file of files){
+      const reader=new FileReader();
+      await new Promise(res=>{ reader.onload=()=>{
+        const imgDataUrl=reader.result;
+        DB.push('design_files',{projectId,name:file.name,date:new Date().toISOString().split('T')[0],imgDataUrl,summary:'設計圖 '+file.name});
+        count++;res();
+      };reader.readAsDataURL(file);});
+    }
+    renderProjDesign(projectId,null,document.getElementById('projDetailContent'));
+    showToast('✅ 已上傳 '+count+' 張設計圖');
+  });
+  input.click();
+}
+
+// ── 案場備忘錄 Tab（跟這個案場有關的任何筆記，例如業主特殊要求、廠商溝通紀錄）────
+function renderProjMemo(id,p,c){
+  const memos=DB.get('memos').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">備忘錄（${memos.length} 則）</div>
+      <button class="btn bg bsm" onclick="openProjMemoModal(${id})">＋ 新增備忘</button>
+    </div>
+    <div id="projMemoList"></div>`;
+  const list=c.querySelector('#projMemoList');
+  if(!memos.length){
+    list.innerHTML='<div class="empty-state"><div class="es-ic">📝</div><div class="es-t">尚無備忘錄</div><div class="es-s">點右上方「新增備忘」記下業主特殊要求、廠商溝通紀錄、施工注意事項等</div></div>';
+  } else {
+    list.innerHTML=memos.map(m=>`
+      <div style="background:var(--w);border:1.5px solid var(--g200);border-radius:var(--rs);padding:14px 16px;margin-bottom:10px;transition:all var(--ease)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+          <div style="font-size:.72rem;color:var(--g400)">${m.date||''} ${m.cat?'· '+esc(m.cat):''}</div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="openProjMemoModal(${id},${m._id})" style="background:none;border:none;color:var(--g400);cursor:pointer;font-size:.8rem;padding:0">✏️</button>
+            <button onclick="confirmAction('刪除這則備忘錄？',()=>{DB.softDel('memos',${m._id});renderProjMemo(${id},null,document.getElementById('projDetailContent'));})" style="background:none;border:none;color:var(--bad);cursor:pointer;font-size:.8rem;padding:0">🗑</button>
+          </div>
+        </div>
+        <div style="font-size:.88rem;color:var(--g700);white-space:pre-wrap;word-break:break-word">${esc(m.content||'')}</div>
+        ${m.imgDataUrl?`<img src="${m.imgDataUrl}" onclick="openLB('${m.imgDataUrl}')" style="max-width:100%;max-height:180px;border-radius:var(--rxs);margin-top:10px;cursor:pointer;object-fit:cover">`:''}
+      </div>`).join('');
+  }
+}
+function openProjMemoModal(projectId,memoId){
+  const old=document.getElementById('_memoModal');if(old)old.remove();
+  const ex=memoId?DB.get('memos').find(m=>m._id===memoId):null;
+  const box=document.createElement('div');box.id='_memoModal';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9300;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">
+    <div style="font-weight:900;font-size:1rem;margin-bottom:16px">${ex?'✏️ 編輯備忘錄':'📝 新增備忘錄'}</div>
+    <div class="g2" style="margin-bottom:10px">
+      <div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" type="date" id="_memoDate" value="${ex?.date||new Date().toISOString().split('T')[0]}"></div>
+      <div class="field" style="margin:0"><label class="fl">分類（選填）</label><input class="fi" id="_memoCat" placeholder="例：業主要求" value="${esc(ex?.cat||'')}"></div>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label class="fl">內容</label><textarea class="fi" id="_memoContent" rows="4" placeholder="記下任何跟這個案場有關的備注…" style="resize:vertical">${esc(ex?.content||'')}</textarea></div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:.8rem;color:var(--g500);margin-bottom:6px">附圖（選填）</div>
+      ${ex?.imgDataUrl?`<img src="${ex.imgDataUrl}" id="_memoImgPreview" style="max-width:100%;max-height:140px;border-radius:var(--rxs);object-fit:cover;display:block;margin-bottom:6px">`:'<div id="_memoImgPreview" style="display:none"></div>'}
+      <button onclick="document.getElementById('_memoFileInp').click()" style="padding:6px 12px;border-radius:var(--rs);border:1.5px dashed var(--g200);background:var(--g50);color:var(--g500);cursor:pointer;font-size:.78rem;font-family:inherit">上傳照片</button>
+      <input type="file" id="_memoFileInp" accept="image/*" style="display:none">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bg" id="_memoSaveBtn" style="flex:1">儲存</button>
+      ${ex?`<button class="btn brd" onclick="confirmAction('刪除這則備忘錄？',()=>{DB.softDel('memos',${memoId});document.getElementById('_memoModal').remove();renderProjMemo(${projectId},null,document.getElementById('projDetailContent'));})">刪除</button>`:''}
+      <button class="btn bo" onclick="document.getElementById('_memoModal').remove()">取消</button>
+    </div>
+  </div>`;
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  let _memoImg=ex?.imgDataUrl||null;
+  document.getElementById('_memoFileInp').addEventListener('change',function(){
+    const f=this.files[0];if(!f)return;
+    const r=new FileReader();r.onload=()=>{
+      _memoImg=r.result;
+      const prev=document.getElementById('_memoImgPreview');
+      prev.src=_memoImg;prev.style.display='block';
+    };r.readAsDataURL(f);
+  });
+  document.getElementById('_memoSaveBtn').addEventListener('click',()=>{
+    const content=document.getElementById('_memoContent').value.trim();
+    if(!content){showToast('⚠️ 請輸入備忘內容');return;}
+    const data={projectId,date:document.getElementById('_memoDate').value,cat:document.getElementById('_memoCat').value.trim(),content,imgDataUrl:_memoImg,summary:'備忘 '+content.slice(0,20)};
+    if(ex)DB.upd('memos',memoId,data);
+    else DB.push('memos',data);
+    box.remove();
+    renderProjMemo(projectId,null,document.getElementById('projDetailContent'));
+    showToast('✅ 已儲存備忘錄');
+  });
 }
 
 function showProjVendorDetail(vendorId){
@@ -1609,8 +1734,7 @@ function openProjLedgerModal(projectId, dir){
   curProjectId=projectId;
   curLedgerBook=dir==='in'?'in':'out';
   curLedgerType=dir;
-  // openLedgerModal 會用 curProjectId 自動把案場選單選好，不用再另外補設定
-  openLedgerModal(curLedgerBook);
+  openLedgerModal(curLedgerBook,projectId);
 }
 
 // ── 案場進度 Tab ──────────────────────────────────────────
