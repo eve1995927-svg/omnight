@@ -683,8 +683,8 @@
  <div class="ph">
   <div><div class="ptit">💰 帳款總覽</div><div class="psub">以月份或案場查看收支明細</div></div>
   <div style="display:flex;gap:8px">
-   <button class="btn bg bsm" onclick="openLedgerModal('in')">＋ 外帳收款</button>
-   <button class="btn bo bsm" onclick="openLedgerModal('out')">＋ 內帳支出</button>
+   <button class="btn bg bsm" onclick="openLedgerModal('in',null)">＋ 外帳收款</button>
+   <button class="btn bo bsm" onclick="openLedgerModal('out',null)">＋ 內帳支出</button>
    <button class="btn bo bsm" onclick="openRecurringExpenseModal()">每月固定支出</button>
   </div>
  </div>
@@ -734,8 +734,8 @@
   </div>
   <div id="ledger-detail-list"></div>
   <div style="display:flex;gap:8px;margin-top:16px">
-   <button class="add-ledger-btn" onclick="openLedgerModal('in')">＋ 外帳記錄</button>
-   <button class="add-ledger-btn" onclick="openLedgerModal('out')">＋ 內帳記錄</button>
+   <button class="add-ledger-btn" onclick="openLedgerModal('in',null)">＋ 外帳記錄</button>
+   <button class="add-ledger-btn" onclick="openLedgerModal('out',null)">＋ 內帳記錄</button>
   </div>
  </div>
 
