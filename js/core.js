@@ -644,6 +644,17 @@ function renderTrashBin(){
 // （其實資料都還在 Firebase 裡，只是傳不下來而已）。
 // 拆成每個資料表各自訂閱之後，改一筆打卡記錄就只會重傳打卡記錄那一小塊，
 // 不會牽動到案場、報價這些完全沒變動的資料表，流量會大幅下降。
+// 打卡照片 60 天自動清除：照片存在 Firebase Realtime DB 裡（base64），
+// base64 圖片佔的空間比一般文字資料大很多，60 天前的打卡記錄照片已經不太需要留，
+// 這裡在每次登入時跑一次清理，把超過 60 天的那些打卡記錄的 photo 欄位清空（不刪整筆記錄，只清照片）。
+// 清完的記錄只是少了照片，打卡時間、地址、姓名都還在。
+function cleanupOldPunchPhotos(){
+  const cutoffMs=Date.now()-(60*24*60*60*1000); // 60天前的毫秒時間戳
+  const recs=DB.get('punch_recs').filter(r=>r.photo&&r._id<cutoffMs);
+  recs.forEach(r=>DB.upd('punch_recs',r._id,{photo:null}));
+  if(recs.length)console.log('🧹 清除了 '+recs.length+' 筆超過60天的打卡照片');
+}
+
 function startCloudSync(){
   if(!_fbDB||!_fbReady){
     console.log('Firebase not ready, skip sync');
@@ -942,6 +953,7 @@ let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id�
       initCloudDB().then(()=>{
         startCloudSync();
         setupApp(curRole);
+        setTimeout(cleanupOldPunchPhotos,5000); // 登入後5秒跑清理，等資料同步完
       });
     });
   }

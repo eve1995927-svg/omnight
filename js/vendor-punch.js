@@ -1058,9 +1058,10 @@ function renderHRPanel(){
             '</div>'+
             '<div style="font-size:.75rem;color:var(--g500);margin-top:1px">'+(r.type==='in'?'上班打卡':'下班打卡')+'</div>'+
           '</div>'+
-          '<div style="text-align:right">'+
+          '<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
             '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+r.time+'</div>'+
             addrHtml+
+            (r.photo?'<img src="'+r.photo+'" onclick="openLB(\''+r.photo+'\')" style="width:52px;height:52px;object-fit:cover;border-radius:var(--rxs);cursor:pointer;flex-shrink:0;border:1.5px solid var(--g200)" title="打卡現場照片">':'')+
           '</div>';
         list.appendChild(row);
       });

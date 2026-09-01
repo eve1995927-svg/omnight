@@ -124,37 +124,25 @@ function renderProgress(){
 // ══ 員工管理 ══════════════════════════════════════════════
 let empEditId=null;
 
-// 勞健保：改成直接讀使用者填的實際金額（勞健保有投保級距，不是單純比例，
-// 自動用百分比算出來的數字常常跟勞保局／健保局寄來的帳單對不上，所以這裡不再自動算，
-// 勞保費／健保費都是使用者依實際帳單填入的固定數字；只有勞退還是用投保金額×6%自動算
-// （勞退提繳工資分級表雖然也是級距，但誤差通常比勞健保小很多，先維持自動算）
+// 勞健保：完全改成手動輸入，四個欄位分別填公司出的勞保、公司出的健保、員工自己出的勞保、員工自己出的健保。
+// 不再自動算，因為每個人的投保薪資級距不同，用百分比算出來的數字常常跟勞保局／健保局帳單對不上。
 function calcSalaryInsurance(){
   const salary=parseFloat(document.getElementById('empSalary')?.value)||0;
   const meal=parseFloat(document.getElementById('empMeal')?.value)||0;
   const transport=parseFloat(document.getElementById('empTransport')?.value)||0;
   const other=parseFloat(document.getElementById('empOther')?.value)||0;
-  const insuredSalary=parseFloat(document.getElementById('empInsuredSalary')?.value)||salary;
-  const labor=parseFloat(document.getElementById('empLaborInput')?.value)||0;
-  const health=parseFloat(document.getElementById('empHealthInput')?.value)||0;
-  const absorb=document.getElementById('empAbsorbInsurance')?.checked||false;
+  const laborCompany=parseFloat(document.getElementById('empLaborCompany')?.value)||0;
+  const healthCompany=parseFloat(document.getElementById('empHealthCompany')?.value)||0;
+  const laborEmployee=parseFloat(document.getElementById('empLaborEmployee')?.value)||0;
+  const healthEmployee=parseFloat(document.getElementById('empHealthEmployee')?.value)||0;
   const gross=salary+meal+transport+other;
-  // 勞退：雇主提撥6%，用投保金額算（沒填投保金額就退回用底薪）
-  const retire=Math.round(insuredSalary*0.06);
-  // 勞健保由公司吸收時，員工薪水不倒扣這筆錢，上面填的金額就是實拿金額；
-  // 沒勾的話維持原本行為：底薪扣掉員工自己那份勞健保才是實領
-  const net=absorb?gross:(gross-labor-health);
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent='NT$'+v.toLocaleString();};
-  set('empRetire',retire);set('empNet',net);
-  const absorbRow=document.getElementById('empAbsorbRow');
-  if(absorbRow){
-    absorbRow.style.display=absorb?'flex':'none';
-    if(absorb)set('empAbsorbAmt',labor+health);
-  }
-  const laborLabel=document.getElementById('empLaborLabel');if(laborLabel)laborLabel.textContent=absorb?'勞保費（公司吸收）':'勞保費（員工負擔）';
-  const healthLabel=document.getElementById('empHealthLabel');if(healthLabel)healthLabel.textContent=absorb?'健保費（公司吸收）':'健保費（員工負擔）';
-  const netLabel=document.getElementById('empNetLabel');if(netLabel)netLabel.textContent=absorb?'實領薪資（＝上面填的底薪＋津貼）':'實領薪資';
+  const net=gross-laborEmployee-healthEmployee;
+  const companyCost=gross+laborCompany+healthCompany;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent='NT$'+Math.round(v).toLocaleString();};
+  set('empNet',net);
+  set('empCompanyCost',companyCost);
 }
-['empSalary','empMeal','empTransport','empOther','empInsuredSalary','empLaborInput','empHealthInput','empAbsorbInsurance'].forEach(id=>{
+['empSalary','empMeal','empTransport','empOther','empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{
   document.getElementById(id)?.addEventListener('input',calcSalaryInsurance);
   document.getElementById(id)?.addEventListener('change',calcSalaryInsurance);
 });
@@ -167,8 +155,7 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   document.getElementById('empTransport').value='0';
   document.getElementById('empOther').value='0';
   const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value='';
-  const laborInEl=document.getElementById('empLaborInput');if(laborInEl)laborInEl.value='';
-  const healthInEl=document.getElementById('empHealthInput');if(healthInEl)healthInEl.value='';
+  ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=false;
   document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
   document.getElementById('empModalTitle').innerHTML='新增員工 <button class="mcl" data-close="empModal">✕</button>';
@@ -199,11 +186,17 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   const transport=parseFloat(document.getElementById('empTransport').value)||0;
   const other=parseFloat(document.getElementById('empOther').value)||0;
   const insuredSalary=parseFloat(document.getElementById('empInsuredSalary')?.value)||salary;
-  const absorbInsurance=document.getElementById('empAbsorbInsurance')?.checked||false;
-  const labor=parseFloat(document.getElementById('empLaborInput')?.value)||0;
-  const health=parseFloat(document.getElementById('empHealthInput')?.value)||0;
+  const laborCompany=parseFloat(document.getElementById('empLaborCompany')?.value)||0;
+  const healthCompany=parseFloat(document.getElementById('empHealthCompany')?.value)||0;
+  const laborEmployee=parseFloat(document.getElementById('empLaborEmployee')?.value)||0;
+  const healthEmployee=parseFloat(document.getElementById('empHealthEmployee')?.value)||0;
+  // 向下相容：保留 labor/health 欄位（薪資管理的扣除計算還在用），
+  // 這裡用「員工自行負擔」的數字填進去，跟舊版行為保持一致
+  const labor=laborEmployee;
+  const health=healthEmployee;
   const retire=Math.round(insuredSalary*0.06);
-  const net=absorbInsurance?(salary+meal+transport+other):(salary+meal+transport+other-labor-health);
+  const net=salary+meal+transport+other-laborEmployee-healthEmployee;
+  const companyCost=salary+meal+transport+other+laborCompany+healthCompany;
   const account=(document.getElementById('empAccount')?.value||'').trim();
   const password=(document.getElementById('empPassword')?.value||'').trim();
   // 帳號重複檢查（排除自己）
@@ -213,7 +206,7 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
     if(!password){showToast('⚠️ 設定了帳號就需要設定密碼');return;}
   }
   const permissions=readEmpPermCheckboxes();
-  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,retire,net,absorbInsurance,account,password,permissions,summary:'員工 '+name};
+  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,laborCompany,healthCompany,laborEmployee,healthEmployee,retire,net,companyCost,account,password,permissions,summary:'員工 '+name};
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
@@ -263,8 +256,10 @@ function renderEmployees(){
         '<div style="font-size:.74rem;color:var(--g400);margin-bottom:8px">到職：'+esc(e.startDate||'—')+'</div>'+
         '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+(e.salary||0).toLocaleString()+'</span></div>'+
         '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+((e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞保（'+(e.absorbInsurance?'公司吸收':'員工負擔')+'）</span><span class="sl-val" style="color:'+(e.absorbInsurance?'var(--warn)':'var(--bad)')+'">'+(e.absorbInsurance?'':'-')+'NT$'+(e.labor||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">健保（'+(e.absorbInsurance?'公司吸收':'員工負擔')+'）</span><span class="sl-val" style="color:'+(e.absorbInsurance?'var(--warn)':'var(--bad)')+'">'+(e.absorbInsurance?'':'-')+'NT$'+(e.health||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞保（公司負擔）</span><span class="sl-val" style="color:var(--bad)">NT$'+(e.laborCompany||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">健保（公司負擔）</span><span class="sl-val" style="color:var(--bad)">NT$'+(e.healthCompany||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--g500)">-NT$'+(e.laborEmployee||e.labor||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--g500)">-NT$'+(e.healthEmployee||e.health||0).toLocaleString()+'</span></div>'+
         '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+(e.retire||0).toLocaleString()+'</span></div>'+
         '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+(e.net||0).toLocaleString()+'</span></div>'+
         (e.bank?'<div style="font-size:.72rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+esc(e.bank)+'</div>':'')+
@@ -286,6 +281,11 @@ function renderEmployees(){
       const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value=e.insuredSalary||'';
       const laborInEl=document.getElementById('empLaborInput');if(laborInEl)laborInEl.value=e.labor||'';
       const healthInEl=document.getElementById('empHealthInput');if(healthInEl)healthInEl.value=e.health||'';
+      ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{
+        const key=id.replace('emp','').replace('Company','Company').replace('Employee','Employee');
+        const fieldMap={empLaborCompany:'laborCompany',empHealthCompany:'healthCompany',empLaborEmployee:'laborEmployee',empHealthEmployee:'healthEmployee'};
+        const el=document.getElementById(id);if(el)el.value=e[fieldMap[id]]||'';
+      });
       const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=!!e.absorbInsurance;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
@@ -404,17 +404,17 @@ function getSalaryRecord(empId, monthKey){
 function calcSalaryRecord(rec){
   const gross=(rec.baseSalary||0)+(rec.meal||0)+(rec.transport||0)+(rec.other||0)+(rec.bonus||0);
   const e=DB.get('employees').find(x=>x._id===rec.empId)||{};
-  // 勞健保由公司吸收的員工：薪水不倒扣這筆錢，勞健保員工那份改記在公司成本裡（下面 companyCost 會把這筆加回去）
-  const laborDeduct=e.absorbInsurance?0:(e.labor||0);
-  const healthDeduct=e.absorbInsurance?0:(e.health||0);
+  // 新版：直接用員工資料裡儲存的四個欄位（laborEmployee/laborCompany 等）。
+  // 向下相容舊資料：沒有新欄位時退回用 e.labor/e.health，如果有 absorbInsurance 勾選也照顧到。
+  const laborEmployee=e.laborEmployee!=null?e.laborEmployee:(e.absorbInsurance?0:(e.labor||0));
+  const healthEmployee=e.healthEmployee!=null?e.healthEmployee:(e.absorbInsurance?0:(e.health||0));
+  const laborCompany=e.laborCompany!=null?e.laborCompany:(e.absorbInsurance?(e.labor||0):0);
+  const healthCompany=e.healthCompany!=null?e.healthCompany:(e.absorbInsurance?(e.health||0):0);
+  const laborDeduct=laborEmployee;
+  const healthDeduct=healthEmployee;
   const net=gross-laborDeduct-healthDeduct+(rec.reimbursement||0);
-  const companyRetire=e.retire||0;
-  const companyLabor=Math.round((rec.baseSalary||0)*0.105*0.8);
-  const companyHealth=Math.round(((rec.baseSalary||0)+(rec.meal||0))*0.0517*0.7);
-  // absorbInsurance 的話，公司同時也要吸收員工原本該負擔的那 20%/30%，這裡加進公司實際成本
-  const absorbedByCompany=e.absorbInsurance?((e.labor||0)+(e.health||0)):0;
-  const companyCost=gross+companyRetire+companyLabor+companyHealth+absorbedByCompany+(rec.reimbursement||0);
-  return {gross,laborDeduct,healthDeduct,net,companyCost,absorbedByCompany};
+  const companyCost=gross+laborCompany+healthCompany+(rec.reimbursement||0);
+  return {gross,laborDeduct,healthDeduct,laborCompany,healthCompany,net,companyCost};
 }
 
 function renderMonthSalary(monthKey){
