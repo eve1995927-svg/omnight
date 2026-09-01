@@ -786,14 +786,34 @@ function openAddProject(id=null){
 
 // 案場地址轉座標（正向地理編碼），這樣打卡才能算出「距離工地多遠」——
 // 跟打卡地址反查用的是同一個免費地圖服務（OpenStreetMap Nominatim），不用另外申請、不用扣點
+// 地址轉座標：查完整地址常常查不到（尤其工業區地址，OpenStreetMap 資料庫沒收錄到門牌號那麼細），
+// 這裡改成查不到就自動簡化地址再試一次（先去掉門牌號、樓層，只留路名，再不行只留路名前半段），
+// 抓到路口大概位置就夠用了（打卡圍籬本來就不用很準，抓附近街區已經足夠判斷有沒有在工地附近）。
 async function geocodeProjectAddress(projectId,address){
-  try{
-    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(address)+'&countrycodes=tw&limit=1');
-    const arr=await r.json();
-    if(arr&&arr[0]){
-      DB.upd('projects',projectId,{lat:parseFloat(arr[0].lat),lng:parseFloat(arr[0].lon)});
+  const tryFetch=async(q)=>{
+    try{
+      const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(q)+'&countrycodes=tw&limit=1');
+      const arr=await r.json();
+      return (arr&&arr[0])?arr[0]:null;
+    }catch(e){console.log('地址轉座標失敗（'+q+'）：',e.message);return null;}
+  };
+  // 依序嘗試：完整地址 → 去掉門牌號＋樓層（留路名巷弄）→ 只留「縣市＋區＋路名」
+  const candidates=[address];
+  const noNumber=address.replace(/\d+[之\-\d]*號.*$/,'').trim(); // 去掉「163號」以後的所有文字（含樓層、室別）
+  if(noNumber&&noNumber!==address)candidates.push(noNumber);
+  const roadOnly=address.match(/^.{0,3}[縣市].{0,4}[鄉鎮市區].{2,}?[路街道]/)?.[0];
+  if(roadOnly&&!candidates.includes(roadOnly))candidates.push(roadOnly);
+
+  for(const q of candidates){
+    const hit=await tryFetch(q);
+    if(hit){
+      DB.upd('projects',projectId,{lat:parseFloat(hit.lat),lng:parseFloat(hit.lon),geoApprox:q!==address});
+      if(q!==address)console.log('📍 完整地址查不到，改用「'+q+'」查到大概位置');
+      return true;
     }
-  }catch(e){console.log('地址轉座標失敗：',e.message);}
+  }
+  console.log('地址轉座標失敗：完整地址跟簡化後都查不到座標（'+address+'）');
+  return false;
 }
 
 
@@ -1666,21 +1686,31 @@ function openContractForProject(projectId){
 }
 
 // ── 案場帳款 Tab ──────────────────────────────────────────
+// 案場帳款分頁的收支分類篩選（跟「會計→帳款總覽」同一個概念：全部/外帳收入/外帳支出/內帳支出/內帳收入），
+// 每個案場各自記自己選到哪個分類，預設「全部」
+const projLedgerDirFilter={};
+
 function renderProjLedger(id,p,c){
   // 改成用「交易日期」排序而不是建立順序：付款日期現在可以自己選（例如補登之前的付款），
   // 用建立順序排會讓補登的舊款項跑到最上面，跟月份分組對不起來
-  const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
-  const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+  const allItems=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
+  const income=allItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
   // 修正重點：標記廠商付款時，系統會自動在這裡多記一筆內帳支出方便對帳，
   // 但那筆錢已經算在下面的「廠商成本」裡了，兩個一起加會把同一筆錢算兩次。
   // 這裡「內帳支出」這個統計數字，只加總「不是廠商付款」自動產生的那些（沒有 vendorId 標記），
   // 避免重複計算；下面的交易紀錄清單還是完整顯示每一筆，包含廠商付款那筆，只是不會被重複加進總數。
-  const cost=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
+  const cost=allItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
   // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
   // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
   // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
   const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
+
+  const curDir=projLedgerDirFilter[id]||'all';
+  const items=curDir==='all'?allItems:allItems.filter(l=>{
+    const [book,type]=curDir.split('-');
+    return getLedgerBook(l)===book&&l.type===type;
+  });
 
   // 依月份分組，方便案場拖得比較久（跨好幾個月）的時候不用滑一長串才找到某一筆
   const groups={};
@@ -1694,15 +1724,33 @@ function renderProjLedger(id,p,c){
     const [y,m]=key.split('-');
     return y+'年'+parseInt(m)+'月';
   };
-  const rowHtml=l=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
+  const rowHtml=l=>{
+    // 廠商付款那筆是標記付款時自動產生的，真正的資料源頭是廠商報價卡片自己的付款紀錄，
+    // 這裡如果讓人直接改/刪，會跟廠商那邊的付款紀錄兜不起來，所以這種自動產生的記錄
+    // 不給編輯/刪除，要改請到「廠商報價」分頁那筆廠商卡片本身去動
+    const isVendorAuto=!!l.vendorId;
+    return `
+      <div class="ledgerRow" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
         <div style="width:36px;height:36px;border-radius:8px;background:${l.type==='in'?'var(--ok-bg)':'var(--bad-bg)'};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">${l.type==='in'?'💰':'📤'}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${esc(l.desc||l.cat||'記錄')}</div>
-          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}</div>
+          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}${isVendorAuto?' · <span style="color:var(--g300)">廠商付款自動記錄</span>':''}</div>
         </div>
         <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
+        ${isVendorAuto?'':`<div style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="editLedgerFromProject(${l._id},${l.projectId})" title="編輯" style="width:26px;height:26px;border:1px solid var(--g200);background:var(--w);border-radius:var(--rxs);color:var(--g500);cursor:pointer;font-size:.72rem;padding:0">✏️</button>
+          <button onclick="delLedgerFromProject(${l._id},${l.projectId})" title="刪除" style="width:26px;height:26px;border:1px solid var(--bad-bd);background:var(--w);border-radius:var(--rxs);color:var(--bad);cursor:pointer;font-size:.72rem;padding:0">🗑</button>
+        </div>`}
       </div>`;
+  };
+
+  const dirTabs=[
+    {key:'all',label:'全部'},
+    {key:'in-in',label:'外帳收入'},
+    {key:'in-out',label:'外帳支出'},
+    {key:'out-out',label:'內帳支出'},
+    {key:'out-in',label:'內帳收入'},
+  ];
 
   c.innerHTML=`
     <div class="g4" style="margin-bottom:16px">
@@ -1711,9 +1759,12 @@ function renderProjLedger(id,p,c){
       <div class="stat"><div class="sn" style="color:var(--bad)">${vendorCost?'NT$'+vendorCost.toLocaleString():'NT$0'}</div><div class="sl">廠商成本</div></div>
       <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
     </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
       <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
       <button class="btn bo bsm" onclick="openProjLedgerModal(${id},'out')">＋ 新增支出</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      ${dirTabs.map(t=>`<button onclick="setProjLedgerDir(${id},'${t.key}')" style="padding:5px 14px;border-radius:20px;border:1.5px solid ${curDir===t.key?'var(--gold)':'var(--g200)'};background:${curDir===t.key?'var(--gold)':'var(--w)'};color:${curDir===t.key?'#fff':'var(--g600)'};font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">${t.label}</button>`).join('')}
     </div>
     <div id="projLedgerList">
     ${items.length?monthKeys.map(key=>{
@@ -1726,8 +1777,14 @@ function renderProjLedger(id,p,c){
         </div>
         ${monthItems.map(rowHtml).join('')}
       </div>`;
-    }).join(''):'<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">尚無帳款紀錄</div></div>'}
+    }).join(''):`<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">${curDir==='all'?'尚無帳款紀錄':'這個分類底下沒有紀錄'}</div></div>`}
     </div>`;
+}
+
+function setProjLedgerDir(id,dir){
+  projLedgerDirFilter[id]=dir;
+  const content=document.getElementById('projDetailContent');
+  if(content)renderProjLedger(id,null,content);
 }
 
 function openProjLedgerModal(projectId, dir){

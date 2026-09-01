@@ -380,7 +380,11 @@ function renderLedger(){
         (r.caseN&&!proj?'<span style="font-size:.68rem;color:var(--g400)">📍'+esc(r.caseN)+'</span>':'')+
         '</div></div>'+
         '<div style="text-align:right;flex-shrink:0"><div style="font-weight:900;font-size:.95rem;color:'+(isIn?'var(--ok)':'var(--bad)')+';">'+(isIn?'+':'-')+'NT$'+(r.amount||0).toLocaleString()+'</div>'+
-        '<button onclick="delLedger('+r._id+')" style="font-size:.65rem;color:var(--g300);background:none;border:none;cursor:pointer;padding:0;margin-top:2px">刪除</button></div>';
+        (r.vendorId?'<span style="font-size:.65rem;color:var(--g300)">廠商付款自動記錄</span>':
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:2px">'+
+          '<button onclick="openLedgerModal(\''+r.type+'\','+(r.projectId||'null')+','+r._id+')" style="font-size:.65rem;color:var(--g400);background:none;border:none;cursor:pointer;padding:0">編輯</button>'+
+          '<button onclick="delLedger('+r._id+')" style="font-size:.65rem;color:var(--g300);background:none;border:none;cursor:pointer;padding:0">刪除</button>'+
+          '</div>')+'</div>';
       c.appendChild(row);
     });
   });
@@ -393,15 +397,23 @@ function renderLedgerMonthly(){
   const c=document.getElementById('ledger-monthly-table');if(!c)return;
   const all=DB.get('ledger');
   if(!all.length){c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">尚無帳款記錄</div></div>';return;}
+  // 修正重點：原本「財務報表」那邊另外有一張「月度損益報表」，內容其實跟這裡的月度總表很像，
+  // 只是多了「人事成本」這一欄，兩張表分開放、內容又高度重疊，維護起來容易對不起來，
+  // 陳冠語也反映平常記帳主要是看這張（案場為主），所以把人事成本併進來這裡，
+  // 原本獨立的「月度損益報表」就整個拿掉了，不用再切去財務報表那邊另外看一次。
+  const salaryRecs=DB.get('salary_records');
+  const emps=DB.get('employees');
   const months=new Set();
   all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
+  salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
   const sm=[...months].sort().reverse();
   c.innerHTML='';
+  const cols='90px 1fr 1fr 1fr 60px 1fr 1fr';
   const hd=document.createElement('div');
-  hd.style.cssText='display:grid;grid-template-columns:90px 1fr 1fr 1fr 70px;gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
-  hd.innerHTML='<span>月份</span><span style="text-align:right">外帳收入</span><span style="text-align:right">內帳支出</span><span style="text-align:right">毛利</span><span style="text-align:right">毛利率</span>';
+  hd.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
+  hd.innerHTML='<span>月份</span><span style="text-align:right">外帳收入</span><span style="text-align:right">內帳支出</span><span style="text-align:right">毛利</span><span style="text-align:right">毛利率</span><span style="text-align:right">人事成本</span><span style="text-align:right">淨利</span>';
   c.appendChild(hd);
-  let tIn=0,tOut=0;
+  let tIn=0,tOut=0,tPersonnel=0;
   sm.forEach(month=>{
     const it=all.filter(r=>(r.date||'').startsWith(month));
     const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
@@ -410,23 +422,50 @@ function renderLedgerMonthly(){
     const outIn=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
     const profit=(inIn-inOut)-(outOut-outIn);const rate=inIn>0?Math.round(profit/inIn*100):0;
     tIn+=inIn;tOut+=outOut;
+    // 人事成本：按月份抓薪資記錄，計算每個員工那個月的總額（跟原本「月度損益報表」同一套算法）
+    const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
+    const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
+    tPersonnel+=personnel;
+    const netProfit=profit-personnel;
+    const personnelDetailId='pd-'+month.replace('-','');
+    const personnelDetailRows=monthSalaries.map(r=>{
+      const e=emps.find(x=>x._id===r.empId)||{name:'（已刪除員工）'};
+      const gross=(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0);
+      const parts=[];
+      if(r.baseSalary)parts.push('底薪'+r.baseSalary.toLocaleString());
+      if(r.meal||r.transport||r.other)parts.push('津貼'+((r.meal||0)+(r.transport||0)+(r.other||0)).toLocaleString());
+      if(r.bonus)parts.push('獎金'+r.bonus.toLocaleString());
+      if(r.reimbursement)parts.push('代墊'+r.reimbursement.toLocaleString());
+      return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--g100)"><span style="color:var(--g600)">'+esc(e.name||'員工')+(r.paid?' ✅':' ⏳未匯款')+'</span><span style="font-family:monospace;color:var(--bad)">NT$'+gross.toLocaleString()+'<span style="font-size:.68rem;color:var(--g400);margin-left:4px">('+(parts.join('+')||'—')+')</span></span></div>';
+    }).join('')||'<div style="color:var(--g400);font-size:.78rem">尚無薪資記錄</div>';
+
     const pp=month.split('-');
     const row=document.createElement('div');
-    row.style.cssText='display:grid;grid-template-columns:90px 1fr 1fr 1fr 70px;gap:6px;padding:10px 12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease);font-size:.85rem;align-items:center';
+    row.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:10px 12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease);font-size:.85rem;align-items:center';
     row.innerHTML='<span style="font-weight:800;color:var(--g700)">'+parseInt(pp[0])+'年'+parseInt(pp[1])+'月</span>'+
       '<span style="text-align:right;color:var(--ok);font-weight:700">'+(inIn?'NT$'+inIn.toLocaleString():'—')+'</span>'+
       '<span style="text-align:right;color:var(--bad);font-weight:700">'+(outOut?'NT$'+outOut.toLocaleString():'—')+'</span>'+
       '<span style="text-align:right;color:'+(profit>=0?'var(--ok)':'var(--bad)')+';font-weight:800">'+(profit?'NT$'+profit.toLocaleString():'—')+'</span>'+
-      '<span style="text-align:right;color:'+(rate>=0?'var(--ok)':'var(--bad)')+';">'+(inIn?rate+'%':'—')+'</span>';
+      '<span style="text-align:right;color:'+(rate>=0?'var(--ok)':'var(--bad)')+';">'+(inIn?rate+'%':'—')+'</span>'+
+      '<span style="text-align:right;color:var(--bad);cursor:pointer;text-decoration:underline dotted" title="點擊展開各員工明細">'+(personnel?'NT$'+personnel.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;font-weight:900;color:'+(netProfit>=0?'var(--ok)':'var(--bad)')+'">'+(netProfit?'NT$'+netProfit.toLocaleString():'—')+'</span>';
     row.addEventListener('click',()=>{setLedgerMonth(month);switchLedgerView('detail',null);document.querySelector('[data-lt="detail"]')?.classList.add('on');document.querySelector('[data-lt="monthly"]')?.classList.remove('on');});
+    row.children[5].addEventListener('click',e=>{e.stopPropagation();const d=document.getElementById(personnelDetailId);d.style.display=d.style.display==='none'?'block':'none';});
     row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
     row.addEventListener('mouseleave',()=>row.style.background='');
     c.appendChild(row);
+    if(personnel){
+      const detailRow=document.createElement('div');
+      detailRow.id=personnelDetailId;
+      detailRow.style.cssText='display:none;background:var(--g50);border-bottom:1px solid var(--g200);padding:10px 18px';
+      detailRow.innerHTML='<div style="font-size:.74rem;font-weight:800;color:var(--g500);margin-bottom:6px">👥 '+parseInt(pp[0])+'年'+parseInt(pp[1])+'月 人事明細</div>'+personnelDetailRows;
+      c.appendChild(detailRow);
+    }
   });
-  const tp=tIn-tOut;const tr=tIn>0?Math.round(tp/tIn*100):0;
+  const tp=tIn-tOut;const tr=tIn>0?Math.round(tp/tIn*100):0;const tNet=tp-tPersonnel;
   const tot=document.createElement('div');
-  tot.style.cssText='display:grid;grid-template-columns:90px 1fr 1fr 1fr 70px;gap:6px;padding:12px;background:var(--gold-pale);border-radius:var(--rs);font-size:.88rem;font-weight:900;margin-top:8px;border:1.5px solid var(--gold-l)';
-  tot.innerHTML='<span style="color:var(--gold-d)">合計</span><span style="text-align:right;color:var(--ok)">NT$'+tIn.toLocaleString()+'</span><span style="text-align:right;color:var(--bad)">NT$'+tOut.toLocaleString()+'</span><span style="text-align:right;color:'+(tp>=0?'var(--ok)':'var(--bad)')+'">NT$'+tp.toLocaleString()+'</span><span style="text-align:right">'+(tIn?tr+'%':'—')+'</span>';
+  tot.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:12px;background:var(--gold-pale);border-radius:var(--rs);font-size:.88rem;font-weight:900;margin-top:8px;border:1.5px solid var(--gold-l)';
+  tot.innerHTML='<span style="color:var(--gold-d)">合計</span><span style="text-align:right;color:var(--ok)">NT$'+tIn.toLocaleString()+'</span><span style="text-align:right;color:var(--bad)">NT$'+tOut.toLocaleString()+'</span><span style="text-align:right;color:'+(tp>=0?'var(--ok)':'var(--bad)')+'">NT$'+tp.toLocaleString()+'</span><span style="text-align:right">'+(tIn?tr+'%':'—')+'</span><span style="text-align:right;color:var(--bad)">NT$'+tPersonnel.toLocaleString()+'</span><span style="text-align:right;color:'+(tNet>=0?'var(--ok)':'var(--bad)')+'">NT$'+tNet.toLocaleString()+'</span>';
   c.appendChild(tot);
 }
 function renderLedgerByProject(){
@@ -560,19 +599,48 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
-function openLedgerModal(book){
+let ldEditId=null; // 目前在編輯的帳款記錄 id，null 代表是新增
+function openLedgerModal(book, projectId, editId){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
-  const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  ldItems=[];ldImgUrl=null;
+  ldEditId=editId||null;
+  const existing=ldEditId?DB.get('ledger').find(l=>l._id===ldEditId):null;
+  const dt=document.getElementById('ldDate');if(dt)dt.value=existing?.date||new Date().toISOString().split('T')[0];
+  const amtEl=document.getElementById('ldAmt');if(amtEl)amtEl.value=existing?.amount||'';
+  const descEl=document.getElementById('ldDesc');if(descEl)descEl.value=existing?.desc||'';
+  // 修正重點：這個「案場」下拉選單本來從來沒有被填過任何選項，永遠是空的、選不了案場，
+  // 導致不管從哪個案場點「新增支出／收入」，存進去的紀錄都沒有掛到任何案場，
+  // 只有在「會計 → 帳款總覽」的全域列表裡看得到，回案場自己的「帳款」分頁反而找不到這一筆。
+  // 現在改成跟其他地方（例如新增進度）一樣，用 buildProjectSelect 把案場清單帶進來；
+  // 這裡特意用明確傳進來的 projectId（不是共用的 curProjectId 全域變數），
+  // 這樣從「會計 → 帳款總覽」這種不屬於任何案場的地方新增時，不會不小心撿到之前逛過的案場 ID。
+  const pid=existing?existing.projectId:(projectId!==undefined?projectId:null);
+  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),pid,true);
+  ldItems=existing?.items?existing.items.map(x=>({...x})):[];ldImgUrl=existing?.imgUrl||null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
   const op=document.getElementById('ldOcr');if(op)op.classList.remove('show');
   document.querySelectorAll('.ldir[data-ldir="in"],.ldir[data-ldir="out"]').forEach(t=>t.classList.toggle('on',t.dataset.ldir===curLedgerType));
-  setLedgerDir(curLedgerType);openModal('ledgerModal');
+  setLedgerDir(curLedgerType);
+  const titleEl=document.getElementById('ledgerModalTitle');
+  if(titleEl)titleEl.innerHTML=(ldEditId?'✏️ 編輯記錄':'＋ 新增記錄（內帳）')+' <button class="mcl" data-close="ledgerModal">✕</button>';
+  const saveBtnEl=document.getElementById('addLedgerBtn');
+  if(saveBtnEl)saveBtnEl.textContent=ldEditId?'儲存修改':'儲存記錄';
+  openModal('ledgerModal');
 }
 function switchLedger(book){openLedgerModal(book);}
 function delLedger(id){DB.softDel('ledger',id);renderLedger();updLedgerStats();showToast('✅ 已移至垃圾桶');}
+function editLedgerFromProject(id,projectId){
+  const l=DB.get('ledger').find(x=>x._id===id);if(!l)return;
+  openLedgerModal(l.type==='in'?'in':'out',projectId,id);
+}
+function delLedgerFromProject(id,projectId){
+  confirmAction('刪除這筆帳款記錄？',()=>{
+    DB.softDel('ledger',id);
+    showToast('✅ 已刪除');
+    const content=document.getElementById('projDetailContent');
+    if(content)renderProjLedger(projectId,null,content);
+  });
+}
 
 
 // ── 發票管理 ──────────────────────────────────────────────
@@ -641,20 +709,25 @@ function renderContracts(){
       '<div class="cc-hd">'+
         '<div class="cc-icon">'+( (c.fileUrls||[]).length>1?'📚'+(c.fileUrls.length)+'頁':isImageUrl(c.fileUrl)?'🖼️':'📄')+'</div>'+
         '<div class="cc-info">'+
-          '<div class="cc-name">'+c.name+'<span class="cc-badge '+(c.status==='signed'?'signed':'pending')+'">'+( c.status==='signed'?'✅ 結案':'📋 未開始')+'</span></div>'+
+          '<div class="cc-name">'+c.name+'<span class="cc-badge '+(c.status==='signed'?'signed':'pending')+'">'+( c.status==='signed'?'✅ 結案':'📋 未開始')+'</span>'+
+            (c.signatureUrl?'<span class="cc-badge" style="background:var(--info-bg);color:var(--info)">✍️ 已簽名</span>':'')+
+          '</div>'+
           '<div class="cc-meta">業主：'+(c.client||'—')+' ｜ '+(c.amount?fmt(c.amount):'未填金額')+' ｜ '+(c._ts||'').split(' ')[0]+'</div>'+
           (c.note?'<div style="font-size:.75rem;color:var(--g400);margin-top:2px">📌 '+c.note+'</div>':'')+
+          (c.signatureUrl?'<div style="margin-top:6px;display:flex;align-items:center;gap:8px"><img src="'+c.signatureUrl+'" style="height:32px;background:var(--g50);border-radius:4px;border:1px solid var(--g200);cursor:pointer" onclick="openLB(\''+c.signatureUrl+'\')"><span style="font-size:.68rem;color:var(--g400)">簽署於 '+(c.signedAt||'')+'</span></div>':'')+
         '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">'+
           ((c.fileUrl||( c.fileUrls&&c.fileUrls.length))?'<button class="btn bg bsm" data-cprev="'+c._id+'">👁 查看</button>':'')+
           '<div style="display:flex;gap:5px">'+
+            (c.signatureUrl?'':'<button class="btn bo bxs" data-csign="'+c._id+'" title="現場請業主在螢幕上簽名">✍️ 簽名</button>')+
             '<button class="btn bo bxs" data-cedit="'+c._id+'">✏️</button>'+
-            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'↩ 未開始':'✅ 結案')+'</button>'+
+            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'未開始':'結案')+'</button>'+
             '<button class="btn brd bxs" data-cdel="'+c._id+'">🗑</button>'+
           '</div>'+
         '</div>'+
       '</div>';
     card.querySelector('[data-cprev]')?.addEventListener('click',()=>previewContract(c._id));
+    card.querySelector('[data-csign]')?.addEventListener('click',()=>openSignaturePad(c._id));
     card.querySelector('[data-cedit]').addEventListener('click',()=>editContract(c._id));
     card.querySelector('[data-ctog]').addEventListener('click',()=>toggleContractStatus(c._id));
     card.querySelector('[data-cdel]').addEventListener('click',()=>{confirmAction('刪除合約「'+c.name+'」？（可在系統設定→垃圾桶復原）',()=>{DB.softDel('contracts',c._id);renderContracts();updContractStats();showToast('✅ 已移至垃圾桶');});});
@@ -734,6 +807,63 @@ function toggleContractStatus(id){
   DB.upd('contracts',id,{status:c.status==='signed'?'pending':'signed'});
   renderContracts();updContractStats();
   showToast(c.status==='signed'?'已改為未開始':'✅ 已標記結案');
+}
+
+// ══ 合約電子簽名（現場請業主直接在螢幕上簽） ══════════════════
+// 簽名畫在 canvas 上，存成一張圖片附在這份合約記錄裡，簽完自動把合約標記成「結案」。
+// 這是「當面簽」的版本（老闆把手機/平板轉給業主簽），不是「傳連結給業主自己在家簽」——
+// 後者需要業主專屬頁面（client.html）支援簽名功能，目前那個頁面不在這次的檔案裡，之後可以再加。
+function openSignaturePad(contractId){
+  const c=DB.get('contracts').find(r=>r._id===contractId);if(!c)return;
+  const old=document.getElementById('_sigBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_sigBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`
+   <div style="background:var(--w);border-radius:var(--rl);padding:22px;max-width:480px;width:100%;box-shadow:var(--sh4)" onclick="event.stopPropagation()">
+    <div style="font-size:1.05rem;font-weight:900;color:var(--g800);margin-bottom:2px">✍️ 合約簽名</div>
+    <div style="font-size:.8rem;color:var(--g400);margin-bottom:14px">${esc(c.name)}　業主：${esc(c.client||'—')}</div>
+    <div style="font-size:.78rem;color:var(--g500);margin-bottom:8px">請把螢幕轉向業主，在下方框內簽名</div>
+    <canvas id="_sigCanvas" width="440" height="200" style="width:100%;height:200px;border:2px dashed var(--g300);border-radius:var(--rs);background:var(--g50);touch-action:none;cursor:crosshair"></canvas>
+    <div style="display:flex;gap:8px;margin-top:12px">
+     <button id="_sigClearBtn" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.85rem;cursor:pointer;font-family:inherit">清除重簽</button>
+     <button id="_sigCancelBtn" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.85rem;cursor:pointer;font-family:inherit">取消</button>
+     <button id="_sigConfirmBtn" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">確認簽署</button>
+    </div>
+    <div style="font-size:.7rem;color:var(--g300);margin-top:10px;text-align:center">簽署後會記錄時間，並自動把這份合約標記為結案</div>
+   </div>`;
+  document.body.appendChild(box);
+
+  const canvas=document.getElementById('_sigCanvas');
+  const ctx=canvas.getContext('2d');
+  // canvas 的實際畫布尺寸跟 CSS 顯示尺寸要對應好，不然觸控座標會跟畫出來的線對不上
+  const ratio=canvas.width/canvas.getBoundingClientRect().width||1;
+  ctx.lineWidth=2.5;ctx.lineCap='round';ctx.strokeStyle='#1a1a1a';
+  let drawing=false,hasSigned=false;
+  const getPos=e=>{
+    const rect=canvas.getBoundingClientRect();
+    const scaleX=canvas.width/rect.width, scaleY=canvas.height/rect.height;
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    return {x:(clientX-rect.left)*scaleX,y:(clientY-rect.top)*scaleY};
+  };
+  const start=e=>{e.preventDefault();drawing=true;hasSigned=true;const p=getPos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);};
+  const move=e=>{if(!drawing)return;e.preventDefault();const p=getPos(e);ctx.lineTo(p.x,p.y);ctx.stroke();};
+  const end=()=>{drawing=false;};
+  canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
+  canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});canvas.addEventListener('touchend',end);
+
+  document.getElementById('_sigClearBtn').addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);hasSigned=false;});
+  document.getElementById('_sigCancelBtn').addEventListener('click',()=>box.remove());
+  document.getElementById('_sigConfirmBtn').addEventListener('click',()=>{
+    if(!hasSigned){showToast('⚠️ 還沒有簽名，請先在框內簽名');return;}
+    const signatureUrl=canvas.toDataURL('image/png');
+    const signedAt=new Date().toLocaleString('zh-TW');
+    DB.upd('contracts',contractId,{signatureUrl,signedAt,status:'signed'});
+    box.remove();
+    renderContracts();updContractStats();
+    showToast('✅ 已完成簽署，合約標記為結案');
+  });
 }
 function editContract(id){
   const c=DB.get('contracts').find(r=>r._id===id);if(!c)return;
@@ -976,68 +1106,6 @@ function checkPaymentTriggers(){
 // ── exportBackup / importBackup ────────────────────────────
 // ══ 財務報表定義 ══════════════════════════════════════════
 const RPTS={
-  monthly:{
-    t:'月度損益報表',
-    b:()=>{
-      // 拆成三塊：①案場相關收支（帳款裡有連到案場的），②人事支出（從薪資管理抓），
-      // ③公司營運支出（帳款裡沒連案場的固定支出，像房租、水電雜支，依分類列出）。
-      const all=DB.get('ledger');
-      const salaryRecs=DB.get('salary_records');
-      const months=new Set();
-      all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
-      salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
-      const sm=[...months].sort().reverse().slice(0,12);
-      if(!sm.length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
-
-      let grandProjectProfit=0,grandPersonnel=0,grandOpex=0;
-      const rows=sm.map(month=>{
-        const it=all.filter(r=>(r.date||'').startsWith(month));
-        const projIt=it.filter(r=>r.projectId);
-        const projIn=projIt.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
-        const projOut=projIt.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-        const projProfit=projIn-projOut;
-        // 人事支出：按月份抓薪資記錄，計算每個員工那個月的總額
-        const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
-        const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
-        // 人事明細：每個員工的拆分，點數字可以展開看是哪一筆讓這個月金額比較大
-        const emps=DB.get('employees');
-        const personnelDetailRows=monthSalaries.map(r=>{
-          const e=emps.find(x=>x._id===r.empId)||{name:'（已刪除員工）'};
-          const gross=(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0);
-          const parts=[];
-          if(r.baseSalary)parts.push('底薪'+r.baseSalary.toLocaleString());
-          if(r.meal||r.transport||r.other)parts.push('津貼'+((r.meal||0)+(r.transport||0)+(r.other||0)).toLocaleString());
-          if(r.bonus)parts.push('獎金'+r.bonus.toLocaleString());
-          if(r.reimbursement)parts.push('代墊'+r.reimbursement.toLocaleString());
-          return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--g100)"><span style="color:var(--g600)">${esc(e.name||'員工')}${r.paid?' ✅':' ⏳未匯款'}</span><span style="font-family:monospace;color:var(--bad)">NT$${gross.toLocaleString()}<span style="font-size:.68rem;color:var(--g400);margin-left:4px">(${parts.join('+')||'—'})</span></span></div>`;
-        }).join('')||'<div style="color:var(--g400);font-size:.78rem">尚無薪資記錄</div>';
-        const personnelDetailId=`pd-${month.replace('-','')}`;
-
-        const opexIt=it.filter(r=>!r.projectId&&getLedgerBook(r)==='out'&&r.type==='out');
-        const opexByCat={};
-        opexIt.forEach(r=>{const c=r.cat||'其他支出';opexByCat[c]=(opexByCat[c]||0)+(r.amount||0);});
-        const opexTotal=opexIt.reduce((s,r)=>s+(r.amount||0),0);
-        const opexDetail=Object.entries(opexByCat).sort((a,b)=>b[1]-a[1]).map(([c,amt])=>c+' NT$'+amt.toLocaleString()).join('、')||'—';
-
-        const netProfit=projProfit-personnel-opexTotal;
-        grandProjectProfit+=projProfit;grandPersonnel+=personnel;grandOpex+=opexTotal;
-        const [y,m]=month.split('-');
-        return `<tr>
-          <td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td>
-          <td style="padding:8px 12px;text-align:right;color:${projProfit>=0?'var(--ok)':'var(--bad)'}">NT$${projProfit.toLocaleString()}</td>
-          <td style="padding:8px 12px;text-align:right;color:var(--bad);cursor:pointer" onclick="const d=document.getElementById('${personnelDetailId}');d.style.display=d.style.display==='none'?'block':'none'" title="點擊展開各員工明細">${personnel?'NT$'+personnel.toLocaleString():'—'}</td>
-          <td style="padding:8px 12px;text-align:right;color:var(--bad)" title="${esc(opexDetail)}">${opexTotal?'NT$'+opexTotal.toLocaleString():'—'}</td>
-          <td style="padding:8px 12px;text-align:right;font-weight:800;color:${netProfit>=0?'var(--ok)':'var(--bad)'}">NT$${netProfit.toLocaleString()}</td>
-        </tr>
-        <tr><td colspan="5" style="padding:0 12px 8px;font-size:.72rem;color:var(--g400)">${opexTotal?'營運支出明細：'+esc(opexDetail):''}</td></tr>
-        ${personnel?`<tr><td colspan="5" style="padding:0"><div id="${personnelDetailId}" style="display:none;background:var(--g50);border-top:1px solid var(--g200);padding:10px 18px"><div style="font-size:.74rem;font-weight:800;color:var(--g500);margin-bottom:6px">👥 ${parseInt(y)}年${parseInt(m)}月 人事明細</div>${personnelDetailRows}</div></td></tr>`:''}`;
-
-      }).join('');
-      const grandNet=grandProjectProfit-grandPersonnel-grandOpex;
-      return `<div style="font-size:.76rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 案場淨利＝有連到案場的收入減支出；人事支出抓自「薪資管理」；營運支出＝沒連案場的一般記帳（房租、水電、雜支等固定支出），滑鼠移到金額上可看分類明細。房租這類每月固定支出，記帳的時候選「支出分類：房租」即可自動歸類進來。</div>
-      <table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">月份</th><th style="padding:8px 12px;text-align:right">案場淨利</th><th style="padding:8px 12px;text-align:right">人事支出</th><th style="padding:8px 12px;text-align:right">營運支出</th><th style="padding:8px 12px;text-align:right">公司淨利</th></tr></thead><tbody style="border-top:2px solid var(--g200)">${rows}</tbody><tfoot><tr style="background:var(--gold-pale);font-weight:900"><td style="padding:10px 12px">合計</td><td style="padding:10px 12px;text-align:right;color:${grandProjectProfit>=0?'var(--ok)':'var(--bad)'}">NT$${grandProjectProfit.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandPersonnel.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:var(--bad)">NT$${grandOpex.toLocaleString()}</td><td style="padding:10px 12px;text-align:right;color:${grandNet>=0?'var(--ok)':'var(--bad)'}">NT$${grandNet.toLocaleString()}</td></tr></tfoot></table>`;
-    }
-  },
   profit:{
     t:'案場毛利分析',
     b:()=>{
