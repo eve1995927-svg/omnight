@@ -1673,23 +1673,21 @@
     <div class="field" style="margin:0"><label class="fl">交通津貼</label><input class="fi" id="empTransport" type="number" placeholder="1000" value="0"></div>
     <div class="field" style="margin:0"><label class="fl">其他津貼</label><input class="fi" id="empOther" type="number" placeholder="0" value="0"></div>
    </div>
-   <div class="field" style="margin-bottom:10px">
-    <label class="fl">投保金額（勞保局／健保局的投保級距金額，可能跟底薪不一樣）</label>
-    <input class="fi" id="empInsuredSalary" type="number" placeholder="留空預設用底薪">
-   </div>
-   <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:var(--w);border-radius:var(--rs);margin-bottom:10px;cursor:pointer;font-size:.82rem;color:var(--g600)">
-    <input type="checkbox" id="empAbsorbInsurance" style="width:16px;height:16px;cursor:pointer">
-    🏢 勞健保由公司吸收（不從員工薪水扣，上面填的底薪就是員工實拿的金額）
-   </label>
-   <div style="background:var(--w);border-radius:var(--rs);padding:12px 14px;font-size:.82rem">
-    <div style="font-size:.75rem;font-weight:800;color:var(--info);margin-bottom:8px">📊 勞健保費用（依勞保局／健保局實際帳單金額填寫，因為有投保級距，不是單純比例）</div>
-    <div class="g2" style="margin-bottom:10px">
-     <div class="field" style="margin:0"><label class="fl" id="empLaborLabel">勞保費（員工負擔）</label><input class="fi" id="empLaborInput" type="number" placeholder="0"></div>
-     <div class="field" style="margin:0"><label class="fl" id="empHealthLabel">健保費（員工負擔）</label><input class="fi" id="empHealthInput" type="number" placeholder="0"></div>
+   <div style="background:var(--w);border-radius:var(--rs);padding:12px 14px;font-size:.82rem;border:1.5px solid var(--g200)">
+    <div style="font-size:.78rem;font-weight:800;color:var(--g600);margin-bottom:12px">📋 勞健保費用（依勞保局／健保局實際帳單填，不自動算，填實際數字才準）</div>
+    <div class="g2" style="margin-bottom:8px">
+     <div class="field" style="margin:0"><label class="fl">勞保費（公司負擔）</label><input class="fi" id="empLaborCompany" type="number" placeholder="例：2582"></div>
+     <div class="field" style="margin:0"><label class="fl">健保費（公司負擔）</label><input class="fi" id="empHealthCompany" type="number" placeholder="例：1428"></div>
     </div>
-    <div class="salary-row"><span class="sl-label">勞退（雇主提撥 6%，依投保金額計算）</span><span class="sl-val" id="empRetire">-</span></div>
-    <div class="salary-row" id="empAbsorbRow" style="display:none"><span class="sl-label" style="color:var(--warn)">公司額外吸收（勞健保員工那份）</span><span class="sl-val" id="empAbsorbAmt" style="color:var(--warn)">-</span></div>
-    <div class="salary-row"><span class="sl-label" style="font-weight:700" id="empNetLabel">實領薪資</span><span class="sl-val total" id="empNet">-</span></div>
+    <div class="g2" style="margin-bottom:8px">
+     <div class="field" style="margin:0"><label class="fl">勞保費（員工負擔）</label><input class="fi" id="empLaborEmployee" type="number" placeholder="例：738"></div>
+     <div class="field" style="margin:0"><label class="fl">健保費（員工負擔）</label><input class="fi" id="empHealthEmployee" type="number" placeholder="例：458"></div>
+    </div>
+    <div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">以上四欄依勞保局或健保局寄來的帳單填寫，每個人的投保級距不同，自行填入才準確。<br>公司負擔部分會計入人事成本，員工負擔部分如果由公司吸收也算在成本裡。</div>
+    <div style="background:var(--g50);border-radius:var(--rxs);padding:10px 12px">
+     <div class="salary-row"><span class="sl-label">公司人事總成本（底薪＋津貼＋勞保公司出＋健保公司出）</span><span class="sl-val total" id="empCompanyCost">-</span></div>
+     <div class="salary-row"><span class="sl-label" style="font-weight:700">員工實領薪資（底薪＋津貼－員工負擔勞健保）</span><span class="sl-val total" id="empNet">-</span></div>
+    </div>
    </div>
   </div>
   <button class="btn bg bfull" id="saveEmpBtn" style="padding:14px">儲存員工資料</button>
