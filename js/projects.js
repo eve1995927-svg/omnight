@@ -1826,7 +1826,15 @@ function renderProjProgress(id,p,c){
               </div>
             </div>
             ${item.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(item.note)}</div>`:''}
-            ${item.photoUrl?`<img src="${item.photoUrl}" onclick="openLB('${item.photoUrl}')" style="max-width:100%;max-height:200px;border-radius:var(--rxs);margin-top:8px;cursor:pointer;object-fit:cover">`:''}
+            ${(()=>{
+              // 相容舊資料：以前每則進度只存一張照片在 photoUrl（單一字串），
+              // 現在改成 photoUrls（陣列）可以存很多張，這裡兩種格式都要能顯示出來
+              const photos=item.photoUrls&&item.photoUrls.length?item.photoUrls:(item.photoUrl?[item.photoUrl]:[]);
+              if(!photos.length)return '';
+              return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;margin-top:8px">
+                ${photos.map(url=>`<img src="${url}" onclick="openLB('${url}')" style="width:100%;aspect-ratio:1;border-radius:var(--rxs);cursor:pointer;object-fit:cover">`).join('')}
+              </div>`;
+            })()}
           </div>
         </div>`).join(''):'<div class="empty-state"><div class="es-ic">🔨</div><div class="es-t">尚無進度記錄</div><div class="es-s">拍張現場照片，記錄今天做到哪</div></div>'}
     </div>`;
@@ -1856,13 +1864,10 @@ function openAddProgressEntry(projectId, editId){
     <textarea id="_progNote" placeholder="補充說明（選填，業主也看得到）" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box;resize:none">${existing?esc(existing.note||''):''}</textarea>
 
     <div style="margin-bottom:10px">
-      <div id="_progPhotoZone" style="border:2px dashed var(--g200);border-radius:var(--rs);padding:16px;text-align:center;cursor:pointer;transition:border-color var(--ease)">
-        <div id="_progPhotoPreview" style="${existing?.photoUrl?'':'display:none'}margin-bottom:8px">
-          <img src="${existing?.photoUrl||''}" style="max-width:100%;max-height:160px;border-radius:var(--rxs);object-fit:cover">
-        </div>
-        <div id="_progPhotoHint" style="font-size:.82rem;color:var(--g400)${existing?.photoUrl?';display:none':''}">📷 點這裡上傳現場照片（選填，業主可以看到）</div>
-      </div>
-      <input type="file" id="_progPhotoFile" accept="image/*" style="display:none">
+      <div style="font-size:.78rem;font-weight:700;color:var(--g500);margin-bottom:6px">📷 現場照片（選填，業主看得到，可一次選多張）</div>
+      <div id="_progPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;margin-bottom:8px"></div>
+      <button type="button" id="_progPhotoAddBtn" style="width:100%;padding:12px;border:2px dashed var(--g200);border-radius:var(--rs);background:var(--g50);color:var(--g400);font-size:.82rem;cursor:pointer;font-family:inherit">＋ 選擇照片（可多選）</button>
+      <input type="file" id="_progPhotoFile" accept="image/*" multiple style="display:none">
     </div>
 
     <label style="display:flex;align-items:center;gap:9px;font-size:.86rem;color:var(--g600);cursor:pointer;margin-bottom:16px">
@@ -1877,18 +1882,37 @@ function openAddProgressEntry(projectId, editId){
   box.addEventListener('click',()=>box.remove());
   document.body.appendChild(box);
 
-  let photoUrl=existing?.photoUrl||null;
-  const zone=document.getElementById('_progPhotoZone');
+  // 相容舊資料：既有記錄如果是單張照片存在 photoUrl，編輯時先轉成陣列處理，存檔時一律存成 photoUrls
+  let photoUrls=existing?.photoUrls&&existing.photoUrls.length?[...existing.photoUrls]:(existing?.photoUrl?[existing.photoUrl]:[]);
+  const grid=document.getElementById('_progPhotoGrid');
+  const renderPhotoGrid=()=>{
+    grid.innerHTML=photoUrls.map((url,i)=>`
+      <div style="position:relative;aspect-ratio:1">
+        <img src="${url}" style="width:100%;height:100%;border-radius:var(--rxs);object-fit:cover">
+        <button data-progphotodel="${i}" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--bad);color:#fff;border:2px solid var(--w);cursor:pointer;font-size:.62rem;line-height:1;padding:0">✕</button>
+      </div>`).join('');
+    grid.querySelectorAll('[data-progphotodel]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        photoUrls.splice(parseInt(btn.dataset.progphotodel),1);
+        renderPhotoGrid();
+      });
+    });
+  };
+  renderPhotoGrid();
+
   const fileInp=document.getElementById('_progPhotoFile');
-  zone.addEventListener('click',()=>fileInp.click());
+  const addBtn=document.getElementById('_progPhotoAddBtn');
+  addBtn.addEventListener('click',()=>fileInp.click());
   fileInp.addEventListener('change',async e=>{
-    const f=e.target.files[0];if(!f)return;
-    zone.querySelector('#_progPhotoHint').textContent='壓縮處理中…';
-    const compressed=await compressImage(f,1280,0.7);
-    photoUrl=compressed;
-    const prev=document.getElementById('_progPhotoPreview');
-    prev.style.display='block';prev.querySelector('img').src=photoUrl;
-    document.getElementById('_progPhotoHint').style.display='none';
+    const files=[...e.target.files];if(!files.length)return;
+    addBtn.textContent='壓縮處理中…（共'+files.length+'張）';addBtn.disabled=true;
+    for(const f of files){
+      const compressed=await compressImage(f,1280,0.7);
+      if(compressed)photoUrls.push(compressed);
+    }
+    renderPhotoGrid();
+    addBtn.textContent='＋ 選擇照片（可多選）';addBtn.disabled=false;
+    fileInp.value=''; // 清空，不然選同一批檔案第二次不會觸發 change
   });
 
   document.getElementById('_progCancel').addEventListener('click',()=>box.remove());
@@ -1900,7 +1924,8 @@ function openAddProgressEntry(projectId, editId){
       date:document.getElementById('_progDate').value,
       note:document.getElementById('_progNote').value.trim(),
       done:document.getElementById('_progDone').checked,
-      photoUrl,
+      photoUrls,
+      photoUrl:photoUrls[0]||null, // 保留這個欄位給舊版程式碼或還沒更新的業主頁面相容用
     };
     if(editId){DB.upd('progress',editId,data);showToast('✅ 進度已更新');}
     else{DB.push('progress',{...data,summary:'進度 '+p.name+' '+text});showToast('✅ 進度已新增');}

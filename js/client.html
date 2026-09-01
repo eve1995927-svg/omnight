@@ -192,8 +192,20 @@ function render(p,progress,payments,contracts){
   const st=STATUS[p.status||'inquiry']||STATUS.inquiry;
   const pct=STATUS_PCT[p.status||'inquiry']||0;
 
-  // 進度時間軸：每一筆 progress 記錄就是一個時間軸項目（拍照現場記錄）
-  let allSteps=progress.slice().sort((a,b)=>(a._id||0)-(b._id||0));
+  // 進度時間軸：這裡系統裡實際上有兩種進度記錄格式並存——
+  // 「行政→工程進度」那個舊頁面存的是「一個案場一筆記錄，裡面包一份 items 清單（checklist）」，
+  // 案場詳情頁自己的「進度」分頁（帶照片、業主真正會看到的）存的是「一個事件一筆記錄」。
+  // 這裡兩種格式都攤平處理：舊格式的 items 陣列展開成個別步驟，新格式的記錄本身就是一個步驟，
+  // 混在一起也能正確顯示，不會因為格式不對顯示出空白或文字怪怪的項目。
+  let allSteps=[];
+  progress.forEach(r=>{
+    if(Array.isArray(r.items)&&r.items.length){
+      r.items.forEach(it=>allSteps.push(it));
+    }else if(r.text||r.name){
+      allSteps.push(r);
+    }
+  });
+  allSteps.sort((a,b)=>(a._id||0)-(b._id||0));
   // 若還沒有任何現場記錄，用案場狀態顯示預設里程碑，至少讓業主知道大概進度
   if(!allSteps.length){
     const milestones=[
@@ -251,7 +263,15 @@ function render(p,progress,payments,contracts){
         '<div class="tl-title">'+esc(step.text||step.name||'進度')+'</div>'+
         (step.date?'<div class="tl-date">'+esc(step.date)+'</div>':'')+
         (step.note?'<div class="tl-note">'+esc(step.note)+'</div>':'')+
-        (step.photoUrl?'<img src="'+step.photoUrl+'" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px;object-fit:cover;display:block">':'')+
+        (()=>{
+          // 相容舊資料：以前一則進度只存一張照片在 photoUrl，現在改成 photoUrls 陣列可以存很多張
+          const photos=(step.photoUrls&&step.photoUrls.length)?step.photoUrls:(step.photoUrl?[step.photoUrl]:[]);
+          if(!photos.length)return '';
+          if(photos.length===1)return '<img src="'+photos[0]+'" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px;object-fit:cover;display:block">';
+          return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;margin-top:8px">'+
+            photos.map(u=>'<img src="'+u+'" style="width:100%;aspect-ratio:1;border-radius:8px;object-fit:cover">').join('')+
+          '</div>';
+        })()+
       '</div>';
     });
   }else{
@@ -281,8 +301,8 @@ function render(p,progress,payments,contracts){
     contracts.forEach((c,idx)=>{
       const hasFile=c.fileUrl||(c.fileUrls&&c.fileUrls.length);
       html+='<div class="doc-row"><div class="doc-ico">📄</div>'+
-        '<div class="doc-info"><div class="doc-name">'+esc(c.name||'工程合約')+'</div>'+
-        '<div class="doc-sub">'+(c.amount?fmt(c.amount):'')+(c._ts?' · '+esc(c._ts.split(' ')[0]):'')+'</div></div>'+
+        '<div class="doc-info"><div class="doc-name">'+esc(c.name||'工程合約')+(c.signatureUrl?' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:1px 8px;border-radius:20px;font-weight:800">✍️ 已簽署</span>':'')+'</div>'+
+        '<div class="doc-sub">'+(c.amount?fmt(c.amount):'')+(c._ts?' · '+esc(c._ts.split(' ')[0]):'')+(c.signedAt?' · 簽署於 '+esc(c.signedAt.split(' ')[0]):'')+'</div></div>'+
         (hasFile?'<button class="doc-link" onclick="openContractFiles('+idx+')">查看 →</button>':'')+
       '</div>';
     });
