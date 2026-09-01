@@ -560,18 +560,10 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 });
 
-function openLedgerModal(book, projectId){
+function openLedgerModal(book){
   curLedgerBook=book||'out';curLedgerType=curLedgerBook==='in'?'in':'out';
   const dt=document.getElementById('ldDate');if(dt)dt.value=new Date().toISOString().split('T')[0];
-  ['ldAmt','ldDesc'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
-  // 修正重點：這個「案場」下拉選單本來從來沒有被填過任何選項，永遠是空的、選不了案場，
-  // 導致不管從哪個案場點「新增支出／收入」，存進去的紀錄都沒有掛到任何案場，
-  // 只有在「會計 → 帳款總覽」的全域列表裡看得到，回案場自己的「帳款」分頁反而找不到這一筆。
-  // 現在改成跟其他地方（例如新增進度）一樣，用 buildProjectSelect 把案場清單帶進來；
-  // 這裡特意用明確傳進來的 projectId（不是共用的 curProjectId 全域變數），
-  // 這樣從「會計 → 帳款總覽」這種不屬於任何案場的地方新增時，不會不小心撿到之前逛過的案場 ID。
-  const pid=projectId!==undefined?projectId:null;
-  if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('ldCase'),pid,true);
+  ['ldAmt','ldDesc','ldCase'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   ldItems=[];ldImgUrl=null;
   const fc=document.getElementById('ldFileCard');if(fc)fc.style.display='none';
   const tb=document.getElementById('ldItemsTable');if(tb)tb.innerHTML='';
@@ -611,7 +603,7 @@ function renderInvoices(filter){
       '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0">'+
         '<div style="font-size:1rem;font-weight:900;font-family:monospace">'+fmt(v.amount||0)+'</div>'+
         '<div style="display:flex;gap:5px">'+
-          '<button class="btn bo bxs" data-iedit="'+v._id+'">編輯</button>'+
+          '<button class="btn bo bxs" data-iedit="'+v._id+'">✏️ 編輯</button>'+
           '<button class="btn brd bxs" data-idel="'+v._id+'">🗑</button>'+
         '</div>'+
       '</div>';
@@ -654,10 +646,10 @@ function renderContracts(){
           (c.note?'<div style="font-size:.75rem;color:var(--g400);margin-top:2px">📌 '+c.note+'</div>':'')+
         '</div>'+
         '<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">'+
-          ((c.fileUrl||( c.fileUrls&&c.fileUrls.length))?'<button class="btn bg bsm" data-cprev="'+c._id+'">查看</button>':'')+
+          ((c.fileUrl||( c.fileUrls&&c.fileUrls.length))?'<button class="btn bg bsm" data-cprev="'+c._id+'">👁 查看</button>':'')+
           '<div style="display:flex;gap:5px">'+
             '<button class="btn bo bxs" data-cedit="'+c._id+'">✏️</button>'+
-            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'未開始':'結案')+'</button>'+
+            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'↩ 未開始':'✅ 結案')+'</button>'+
             '<button class="btn brd bxs" data-cdel="'+c._id+'">🗑</button>'+
           '</div>'+
         '</div>'+
@@ -756,7 +748,7 @@ function editContract(id){
     const fc=document.getElementById('ctFileCard');if(fc)fc.style.display='block';
     const fn=document.getElementById('ctFileName');if(fn)fn.textContent=c.name;
   }
-  const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='儲存修改';
+  const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='💾 儲存修改';
   openModal('contractModal');
 }
 function delContract(id){
@@ -1004,8 +996,23 @@ const RPTS={
         const projIn=projIt.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
         const projOut=projIt.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
         const projProfit=projIn-projOut;
+        // 人事支出：按月份抓薪資記錄，計算每個員工那個月的總額
         const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
         const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
+        // 人事明細：每個員工的拆分，點數字可以展開看是哪一筆讓這個月金額比較大
+        const emps=DB.get('employees');
+        const personnelDetailRows=monthSalaries.map(r=>{
+          const e=emps.find(x=>x._id===r.empId)||{name:'（已刪除員工）'};
+          const gross=(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0);
+          const parts=[];
+          if(r.baseSalary)parts.push('底薪'+r.baseSalary.toLocaleString());
+          if(r.meal||r.transport||r.other)parts.push('津貼'+((r.meal||0)+(r.transport||0)+(r.other||0)).toLocaleString());
+          if(r.bonus)parts.push('獎金'+r.bonus.toLocaleString());
+          if(r.reimbursement)parts.push('代墊'+r.reimbursement.toLocaleString());
+          return `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--g100)"><span style="color:var(--g600)">${esc(e.name||'員工')}${r.paid?' ✅':' ⏳未匯款'}</span><span style="font-family:monospace;color:var(--bad)">NT$${gross.toLocaleString()}<span style="font-size:.68rem;color:var(--g400);margin-left:4px">(${parts.join('+')||'—'})</span></span></div>`;
+        }).join('')||'<div style="color:var(--g400);font-size:.78rem">尚無薪資記錄</div>';
+        const personnelDetailId=`pd-${month.replace('-','')}`;
+
         const opexIt=it.filter(r=>!r.projectId&&getLedgerBook(r)==='out'&&r.type==='out');
         const opexByCat={};
         opexIt.forEach(r=>{const c=r.cat||'其他支出';opexByCat[c]=(opexByCat[c]||0)+(r.amount||0);});
@@ -1018,11 +1025,13 @@ const RPTS={
         return `<tr>
           <td style="padding:8px 12px;font-weight:700">${parseInt(y)}年${parseInt(m)}月</td>
           <td style="padding:8px 12px;text-align:right;color:${projProfit>=0?'var(--ok)':'var(--bad)'}">NT$${projProfit.toLocaleString()}</td>
-          <td style="padding:8px 12px;text-align:right;color:var(--bad)">${personnel?'NT$'+personnel.toLocaleString():'—'}</td>
+          <td style="padding:8px 12px;text-align:right;color:var(--bad);cursor:pointer" onclick="const d=document.getElementById('${personnelDetailId}');d.style.display=d.style.display==='none'?'block':'none'" title="點擊展開各員工明細">${personnel?'NT$'+personnel.toLocaleString():'—'}</td>
           <td style="padding:8px 12px;text-align:right;color:var(--bad)" title="${esc(opexDetail)}">${opexTotal?'NT$'+opexTotal.toLocaleString():'—'}</td>
           <td style="padding:8px 12px;text-align:right;font-weight:800;color:${netProfit>=0?'var(--ok)':'var(--bad)'}">NT$${netProfit.toLocaleString()}</td>
         </tr>
-        <tr><td colspan="5" style="padding:0 12px 8px;font-size:.72rem;color:var(--g400)">${opexTotal?'營運支出明細：'+esc(opexDetail):''}</td></tr>`;
+        <tr><td colspan="5" style="padding:0 12px 8px;font-size:.72rem;color:var(--g400)">${opexTotal?'營運支出明細：'+esc(opexDetail):''}</td></tr>
+        ${personnel?`<tr><td colspan="5" style="padding:0"><div id="${personnelDetailId}" style="display:none;background:var(--g50);border-top:1px solid var(--g200);padding:10px 18px"><div style="font-size:.74rem;font-weight:800;color:var(--g500);margin-bottom:6px">👥 ${parseInt(y)}年${parseInt(m)}月 人事明細</div>${personnelDetailRows}</div></td></tr>`:''}`;
+
       }).join('');
       const grandNet=grandProjectProfit-grandPersonnel-grandOpex;
       return `<div style="font-size:.76rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 案場淨利＝有連到案場的收入減支出；人事支出抓自「薪資管理」；營運支出＝沒連案場的一般記帳（房租、水電、雜支等固定支出），滑鼠移到金額上可看分類明細。房租這類每月固定支出，記帳的時候選「支出分類：房租」即可自動歸類進來。</div>
