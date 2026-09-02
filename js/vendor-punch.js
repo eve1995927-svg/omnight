@@ -641,11 +641,42 @@ function buildVendorCard(v){
     const cancelBtn=document.createElement('button');cancelBtn.className='btn bo bsm';cancelBtn.textContent='取消';cancelBtn.addEventListener('click',()=>body.classList.remove('open'));
     saveBar.appendChild(saveBtn);saveBar.appendChild(cancelBtn);
 
+    // 付款紀錄明細：之前只有「已付X／尚欠Y」的合計，看不到分幾期付、每期何時付的，
+    // 常常要付第三期的時候要自己回想或去帳款那邊翻，這裡直接列出每一筆付款歷史，一目瞭然
+    const payHistWrap=document.createElement('div');
+    const payments=v.payments||[];
+    if(payments.length){
+      payHistWrap.style.cssText='padding:10px 16px;border-top:1px solid var(--g100);background:var(--g50)';
+      const payRows=payments.map((p,i)=>
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;'+(i<payments.length-1?'border-bottom:1px dashed var(--g200)':'')+'">'+
+          '<div><span style="font-size:.78rem;color:var(--g600);font-weight:700">第'+(i+1)+'期</span> '+
+          '<span style="font-size:.72rem;color:var(--g400)">'+esc(p.date||'')+(p.note?' · '+esc(p.note):'')+'</span></div>'+
+          '<div style="display:flex;align-items:center;gap:8px">'+
+            '<span style="font-family:monospace;font-weight:800;color:var(--ok);font-size:.82rem">NT$'+(p.amount||0).toLocaleString()+'</span>'+
+            '<button data-vpaydel="'+i+'" title="刪除這筆付款記錄（打錯或重複記的時候用）" style="width:20px;height:20px;border:none;background:none;color:var(--g300);cursor:pointer;font-size:.68rem;padding:0">✕</button>'+
+          '</div>'+
+        '</div>').join('');
+      payHistWrap.innerHTML='<div style="font-size:.72rem;font-weight:800;color:var(--g500);margin-bottom:6px">💳 付款紀錄（共'+payments.length+'期）</div>'+payRows;
+    }
+
     if(v.imgDataUrl){const iw=document.createElement('div');iw.style.cssText='padding:8px 16px;border-top:1px solid var(--g100);display:flex;gap:8px';const img=document.createElement('img');img.className='ith';img.src=v.imgDataUrl;img.style.cssText='width:80px;height:80px';img.addEventListener('click',()=>openLB(v.imgDataUrl));iw.appendChild(img);body.appendChild(iw);}
 
     itemWrap.appendChild(itmHd);itemWrap.appendChild(itmBody);itemWrap.appendChild(addItmBtn);
-    body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(saveBar);
+    body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(payHistWrap);body.appendChild(saveBar);
     renderVCardItems();
+
+    payHistWrap.querySelectorAll('[data-vpaydel]').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        const idx=parseInt(btn.dataset.vpaydel);
+        confirmAction('刪除第'+(idx+1)+'期這筆付款記錄？（只刪記錄，不會退款，記帳那邊也要記得手動刪掉對應的內帳支出）',()=>{
+          const newPayments=(v.payments||[]).filter((_,i)=>i!==idx);
+          DB.upd('vendors',v._id,{payments:newPayments,paid:newPayments.reduce((s,p)=>s+(p.amount||0),0)>=(v.amount||0)});
+          refreshVendorViews();
+          showToast('✅ 已刪除這筆付款記錄');
+        });
+      });
+    });
 
     hd.querySelector('[data-vadopt]').addEventListener('click',e=>{
       e.stopPropagation();
@@ -772,7 +803,7 @@ function initPunchClock(){
     buildProjectSelect(sel,lastId,true);
     if(!sel._geoBound){
       sel._geoBound=true;
-      sel.addEventListener('change',updatePunchGeoCard);
+      sel.addEventListener('change',()=>{updatePunchGeoCard();updatePunchBtn();});
     }
   }
 
@@ -811,7 +842,7 @@ function updatePunchGeoCard(){
           ev.target.textContent='查詢中…';ev.target.disabled=true;
           await geocodeProjectAddress(proj._id,proj.address);
           updatePunchGeoCard();
-          showToast('✅ 已重新查詢，若還是沒有座標，可能是地址格式問題，麻煩到案場總覽確認地址');
+          showToast('✅ 已重新查詢（如果完整地址查不到，系統會自動改用路名概略估算位置）');
         });
       }
     }else{
@@ -825,9 +856,10 @@ function updatePunchGeoCard(){
   const inFence=dist<=radius;
   card.style.display='block';
   document.getElementById('punchDistVal').textContent=(dist<1000?Math.round(dist)+'m':((dist/1000).toFixed(2)+'km'));
-  document.getElementById('punchFenceVal').innerHTML=inFence
+  document.getElementById('punchFenceVal').innerHTML=(inFence
     ?'<span style="color:var(--ok)">✓ 在圍籬範圍內</span>'
-    :'<span style="color:var(--warn,#B86820)">⚠ 超出圍籬（半徑'+radius+'m）</span>';
+    :'<span style="color:var(--warn,#B86820)">⚠ 超出圍籬（半徑'+radius+'m）</span>')
+    +(proj.geoApprox?'<span style="color:var(--g400);font-size:.72rem;display:block;margin-top:2px">📍 這個位置是用路名概略抓的，不是精確門牌，僅供參考</span>':'');
   document.getElementById('punchAccuracyVal').textContent=punchCurPos.acc?('定位精度 ±'+Math.round(punchCurPos.acc)+'m'):'';
 }
 
@@ -917,7 +949,7 @@ async function openPunchMap(){
   });
   rows.sort((a,b)=>(a.dist??1e15)-(b.dist??1e15));
   listEl.innerHTML=rows.map(({p,dist})=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--g100);cursor:pointer" onclick="document.getElementById('punchProjectSel').value='${p._id}';updatePunchGeoCard();closeModal('punchMapModal');">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--g100);cursor:pointer" onclick="document.getElementById('punchProjectSel').value='${p._id}';updatePunchGeoCard();updatePunchBtn();closeModal('punchMapModal');">
       <div>
         <div style="font-size:.85rem;font-weight:800">${esc(p.name||'未命名案場')}</div>
         <div style="font-size:.72rem;color:var(--g400)">${esc(p.address||'')}</div>
@@ -929,13 +961,17 @@ async function openPunchMap(){
 function doPunch(){
   const now=new Date();
   const today=now.toLocaleDateString('zh-TW');
-  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser);
-  const alreadyIn=todayRecs.some(r=>r.type==='in');
-  const alreadyOut=todayRecs.some(r=>r.type==='out');
-  // 上班只能打一次，下班只能打一次
-  const isIn=!alreadyIn; // 沒打過上班 → 打上班
-  if(!isIn&&alreadyOut){showToast('⚠️ 今日已完成上下班打卡！');return;}
-  if(isIn&&alreadyIn){showToast('⚠️ 今日已打過上班卡！');return;}
+  const selProjectId=document.getElementById('punchProjectSel')?.value||'';
+  // 修正重點：原本是「一天只能打一次上班、一次下班」，但很多員工一天要跑好幾個案場
+  // （早上在A案場、下午轉B案場），照舊邏輯打完A的上下班卡，B案場就完全打不了卡了。
+  // 改成「同一天、同一個案場」各自算一組上下班，只要換了案場（下拉選單選別的），
+  // 就可以重新打上班卡，等於每個案場各自有自己的出勤紀錄，同一天可以跑好幾組。
+  const todayRecsThisProject=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser&&(r.projectId||'')===selProjectId);
+  const alreadyIn=todayRecsThisProject.some(r=>r.type==='in');
+  const alreadyOut=todayRecsThisProject.some(r=>r.type==='out');
+  const isIn=!alreadyIn; // 這個案場今天沒打過上班 → 打上班
+  if(!isIn&&alreadyOut){showToast('⚠️ 今日在這個案場已完成上下班打卡！如果還要去別的案場，先在上面選好案場再打卡');return;}
+  if(isIn&&alreadyIn){showToast('⚠️ 今日在這個案場已打過上班卡！');return;}
   // 取得定位
   const empName=document.getElementById('uName')?.textContent||curRole;
   const save=(lat,lng,addr)=>{
@@ -946,7 +982,7 @@ function doPunch(){
       type:isIn?'in':'out',
       lat:lat||null,lng:lng||null,addr:addr||null,
       photo:punchPhotoData||null,
-      projectId:(()=>{const sel=document.getElementById('punchProjectSel');if(sel?.value){localStorage.setItem('zeju_last_punch_proj',sel.value);return sel.value;}return null;})()
+      projectId:selProjectId?(localStorage.setItem('zeju_last_punch_proj',selProjectId),selProjectId):null
     });
     // 打卡完清空這次的拍照佐證，下一次打卡不會誤帶到上一次的照片
     punchPhotoData=null;
@@ -997,14 +1033,15 @@ function updatePunchBtn(){
   const ico=document.getElementById('punchBtnIco');
   if(!btn)return;
   const today=new Date().toLocaleDateString('zh-TW');
-  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser);
+  const selProjectId=document.getElementById('punchProjectSel')?.value||'';
+  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser&&(r.projectId||'')===selProjectId);
   const hasIn=todayRecs.some(r=>r.type==='in');
   const hasOut=todayRecs.some(r=>r.type==='out');
   if(hasIn&&hasOut){
     btn.style.background='linear-gradient(135deg,#718096,#4A5568)';
     btn.style.cursor='not-allowed';btn.style.opacity='.8';
     if(ico)ico.textContent='✅';
-    if(txt)txt.textContent='今日已完成';
+    if(txt)txt.textContent='這裡已完成';
   }else if(hasIn){
     btn.style.background='linear-gradient(135deg,#3182CE,#2B6CB0)';
     btn.style.cursor='pointer';btn.style.opacity='1';
@@ -1050,13 +1087,16 @@ function renderHRPanel(){
           : r.lat
             ? '<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+r.lat+', '+r.lng+'</div>'
             : '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>';
+        // 一天可能跑好幾個案場，老闆這邊要看得出這筆打卡是哪個案場的，不然多筆混在一起分不出來
+        const proj=r.projectId?DB.get('projects').find(p=>String(p._id)===String(r.projectId)):null;
+        const projName=proj?.name||'';
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+
             '<div style="font-size:.88rem;font-weight:800">'+nameLabel+
               ' <span style="font-size:.7rem;background:var(--info-bg);color:var(--info);padding:1px 7px;border-radius:10px;font-weight:700">'+roleLabel+'</span>'+
             '</div>'+
-            '<div style="font-size:.75rem;color:var(--g500);margin-top:1px">'+(r.type==='in'?'上班打卡':'下班打卡')+'</div>'+
+            '<div style="font-size:.75rem;color:var(--g500);margin-top:1px">'+(r.type==='in'?'上班打卡':'下班打卡')+(projName?' · 📍 '+esc(projName):'')+'</div>'+
           '</div>'+
           '<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
             '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+r.time+'</div>'+
@@ -1160,7 +1200,7 @@ function renderLdItems(){
 // 覆寫 openLedgerModal 加入重置
 ;
 
-// 覆寫 addLedgerBtn 加上細項和圖片
+// 覆寫 addLedgerBtn 加上細項和圖片；現在同時支援新增和編輯（ldEditId 有值就是在改既有記錄）
 document.getElementById('addLedgerBtn')?.addEventListener('click',()=>{
   const amt=parseInt(document.getElementById('ldAmt').value)||ldItems.reduce((s,x)=>s+(x.amount||0),0);
   const desc=document.getElementById('ldDesc').value.trim();
@@ -1171,11 +1211,24 @@ document.getElementById('addLedgerBtn')?.addEventListener('click',()=>{
   const caseN=proj?.name||'';
   if(!amt&&!ldItems.length){showToast('⚠️ 請填入金額');return;}
   const bookLabel=curLedgerBook==='out'?'內帳':'外帳';
-  DB.push('ledger',{
+  const data={
     summary:bookLabel+(curLedgerType==='in'?'收入':'支出')+' '+desc+' '+fmt(amt||ldItems.reduce((s,x)=>s+(x.amount||0),0)),
     book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,projectId:pid?parseInt(pid):null,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
-  });
-  closeModal('ledgerModal');renderLedger();updLedgerStats();renderHistory();showToast('✅ 已儲存！');
+  };
+  if(ldEditId){
+    DB.upd('ledger',ldEditId,data);
+    closeModal('ledgerModal');
+    // 從案場的帳款分頁編輯完，畫面要留在原本那個案場、重新整理列表，不要跳去別的地方
+    const content=document.getElementById('projDetailContent');
+    if(pid&&content)renderProjLedger(parseInt(pid),null,content);
+    if(typeof renderLedger==='function'&&document.getElementById('ledgerList'))renderLedger();
+    updLedgerStats&&updLedgerStats();
+    showToast('✅ 已儲存修改');
+    ldEditId=null;
+  }else{
+    DB.push('ledger',data);
+    closeModal('ledgerModal');renderLedger();updLedgerStats();renderHistory();showToast('✅ 已儲存！');
+  }
 });
 
 // ══ 合約編輯 ══════════════════════════════════════════════

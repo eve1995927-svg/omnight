@@ -424,15 +424,6 @@ function showPunchDayDetail(dateStr,recs){
     detail.innerHTML='<div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center"><span style="font-size:.85rem;color:var(--g400)">'+dateStr+' 無打卡記錄</span><button class="btn bo bxs" onclick="openPunchRequest()">補打卡</button></div>';
     detail.style.display='block';return;
   }
-  const inRec=recs.find(r=>r.type==='in');
-  const outRec=recs.find(r=>r.type==='out');
-  let workHours='';
-  if(inRec&&outRec){
-    const [ih,im]=(inRec.time||'0:0').split(':').map(Number);
-    const [oh,om]=(outRec.time||'0:0').split(':').map(Number);
-    const mins=(oh*60+om)-(ih*60+im);
-    if(mins>0)workHours='⏱ 工時 '+Math.floor(mins/60)+'小時'+(mins%60?mins%60+'分':'');
-  }
   // 地址：打卡當下先存座標佔位，背景才會用 Nominatim 查回中文地址覆蓋過去，
   // 所以這裡如果 addr 看起來還是「緯度,經度」這種格式（查詢還沒回來或失敗），就顯示原始座標當備用，
   // 不會讓使用者以為完全沒有定位。不用很準，能大概知道打卡地點在哪就好。
@@ -443,15 +434,71 @@ function showPunchDayDetail(dateStr,recs){
     if(r.lat)return '📍 '+r.lat+', '+r.lng;
     return '';
   };
-  const inAddr=fmtAddr(inRec), outAddr=fmtAddr(outRec);
+  // 一天可能跑好幾個案場，依案場分組，每組各自算自己的上下班時間跟工時，
+  // 不指定案場的（projectId 是 null）歸在「未指定案場」那組
+  const groups={};
+  recs.forEach(r=>{const key=r.projectId||'none';(groups[key]=groups[key]||[]).push(r);});
+  const projects=DB.get('projects');
+  const groupsHtml=Object.entries(groups).map(([key,items])=>{
+    const proj=key!=='none'?projects.find(p=>String(p._id)===String(key)):null;
+    const inRec=items.find(r=>r.type==='in');
+    const outRec=items.find(r=>r.type==='out');
+    let workHours='';
+    if(inRec&&outRec){
+      const [ih,im]=(inRec.time||'0:0').split(':').map(Number);
+      const [oh,om]=(outRec.time||'0:0').split(':').map(Number);
+      const mins=(oh*60+om)-(ih*60+im);
+      if(mins>0)workHours='⏱ 工時 '+Math.floor(mins/60)+'小時'+(mins%60?mins%60+'分':'');
+    }
+    const inAddr=fmtAddr(inRec), outAddr=fmtAddr(outRec);
+    return '<div style="padding:0 16px 12px">'+
+      '<div style="font-size:.76rem;font-weight:800;color:var(--gold-d);margin-bottom:6px">📍 '+(proj?esc(proj.name):'未指定案場')+'</div>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      (inRec?'<div style="flex:1;min-width:100px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--ok);margin-bottom:4px">🟢 上班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+inRec.time+'</div>'+(inAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+inAddr+'</div>':'')+(inRec.photo?'<img src="'+inRec.photo+'" onclick="openLB(\''+inRec.photo+'\')" style="width:100%;max-height:90px;object-fit:cover;border-radius:var(--rxs);margin-top:8px;cursor:pointer">':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打上班卡</div>')+
+      (outRec?'<div style="flex:1;min-width:100px;background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--info);margin-bottom:4px">🔵 下班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+outRec.time+'</div>'+(outAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+outAddr+'</div>':'')+(outRec.photo?'<img src="'+outRec.photo+'" onclick="openLB(\''+outRec.photo+'\')" style="width:100%;max-height:90px;object-fit:cover;border-radius:var(--rxs);margin-top:8px;cursor:pointer">':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打下班卡</div>')+
+      '</div>'+
+      (workHours?'<div style="margin-top:6px"><div style="background:var(--gold-pale);border-radius:var(--rs);padding:8px 12px;font-size:.82rem;font-weight:700;color:var(--gold-d);display:inline-block">'+workHours+'</div></div>':'')+
+    '</div>';
+  }).join('<div style="margin:0 16px 12px;border-top:1px dashed var(--g200)"></div>');
   detail.innerHTML='<div style="padding:12px 16px;border-bottom:1px solid var(--g100);font-size:.8rem;font-weight:800;color:var(--g600)">📅 '+dateStr+'</div>'+
-    '<div style="display:flex;gap:10px;padding:12px 16px;flex-wrap:wrap">'+
-    (inRec?'<div style="flex:1;min-width:100px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--ok);margin-bottom:4px">🟢 上班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+inRec.time+'</div>'+(inAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+inAddr+'</div>':'')+(inRec.photo?'<img src="'+inRec.photo+'" onclick="openLB(\''+inRec.photo+'\')" style="width:100%;max-height:90px;object-fit:cover;border-radius:var(--rxs);margin-top:8px;cursor:pointer">':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打上班卡</div>')+
-    (outRec?'<div style="flex:1;min-width:100px;background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--info);margin-bottom:4px">🔵 下班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+outRec.time+'</div>'+(outAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+outAddr+'</div>':'')+(outRec.photo?'<img src="'+outRec.photo+'" onclick="openLB(\''+outRec.photo+'\')" style="width:100%;max-height:90px;object-fit:cover;border-radius:var(--rxs);margin-top:8px;cursor:pointer">':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打下班卡</div>')+
-    '</div>'+
-    (workHours?'<div style="padding:6px 16px 12px"><div style="background:var(--gold-pale);border-radius:var(--rs);padding:8px 12px;font-size:.82rem;font-weight:700;color:var(--gold-d)">'+workHours+'</div></div>':'')+
+    '<div style="padding-top:12px">'+groupsHtml+'</div>'+
     '<div style="padding:0 16px 12px;text-align:right"><button class="btn bo bxs" onclick="openPunchRequest()">申請修改</button></div>';
   detail.style.display='block';
+}
+
+// 今日出勤狀態卡：一天可能跑好幾個案場，每個案場各自一組上下班時間，
+// 這裡把今天的打卡記錄依案場分組，每組顯示自己的上班/下班時間，
+// 沒指定案場的（curLedgerBook風格：projectId 是 null）歸在「未指定案場」那組
+function updateTodayCard(){
+  const box=document.getElementById('punchTodayStatus');if(!box)return;
+  const today=new Date().toLocaleDateString('zh-TW');
+  const recs=DB.get('punch_recs').filter(r=>r.user===curPunchUser&&r.date===today);
+  if(!recs.length){
+    box.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.85rem">今天還沒有打卡記錄</div>';
+    return;
+  }
+  const groups={};
+  recs.forEach(r=>{
+    const key=r.projectId||'none';
+    (groups[key]=groups[key]||[]).push(r);
+  });
+  const projects=DB.get('projects');
+  box.innerHTML=Object.entries(groups).map(([key,items])=>{
+    const proj=key!=='none'?projects.find(p=>String(p._id)===String(key)):null;
+    const inRec=items.find(r=>r.type==='in');
+    const outRec=items.find(r=>r.type==='out');
+    return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--g100)">
+      <div style="grid-column:1/-1;padding:8px 16px 0;font-size:.76rem;font-weight:800;color:var(--gold-d)">📍 ${proj?esc(proj.name):'未指定案場'}</div>
+      <div style="padding:10px 16px 14px;border-right:1px solid var(--g100)">
+        <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🟢 上班打卡</div>
+        <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:${inRec?'var(--g800)':'var(--g300)'}">${inRec?inRec.time:'—'}</div>
+      </div>
+      <div style="padding:10px 16px 14px">
+        <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🔵 下班打卡</div>
+        <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:${outRec?'var(--g800)':'var(--g300)'}">${outRec?outRec.time:'—'}</div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 function renderPunchRec(){
