@@ -989,9 +989,17 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
       const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
-      if(withAccount.length){
+      // 防呆：員工資料如果不小心存成兩筆重複紀錄（同一個帳號被存了兩次），
+      // 這裡先用「帳號」去重，確保選單上每個人只出現一次，不會選誰都搞不清楚選到哪一筆。
+      // 真正該做的是把底層重複的紀錄清掉，這裡只是先讓畫面不要顯示壞掉。
+      const seenAcc=new Set();
+      const dedupList=withAccount.filter(e=>{
+        if(seenAcc.has(e.account))return false;
+        seenAcc.add(e.account);return true;
+      });
+      if(dedupList.length){
         empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
-          withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+          dedupList.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
       } else {
         empSelEl.innerHTML='<option value="">尚無員工帳號，請聯絡老闆設定</option>';
       }
@@ -1022,9 +1030,14 @@ async function silentRefreshEmployeesForLogin(){
     const empSelEl=document.getElementById('lEmpSelect');
     if(empSelEl&&empSelEl.style.display!=='none'){
       const withAccount=arr.filter(e=>e&&e.account&&!e.deleted);
+      const seenAcc=new Set();
+      const dedupList=withAccount.filter(e=>{
+        if(seenAcc.has(e.account))return false;
+        seenAcc.add(e.account);return true;
+      });
       const curVal=empSelEl.value;
-      empSelEl.innerHTML=withAccount.length
-        ?'<option value="">請選擇你的名字…</option>'+withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('')
+      empSelEl.innerHTML=dedupList.length
+        ?'<option value="">請選擇你的名字…</option>'+dedupList.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('')
         :'<option value="">尚無員工帳號，請聯絡老闆設定</option>';
       if(curVal)empSelEl.value=curVal;
     }
@@ -1100,7 +1113,13 @@ function doLogin(){
       localStorage.removeItem('zeju_owner_account');
     }
   } else if(empAcc){
-    // 個人帳號登入（staff 或 punch）
+    // 個人帳號登入（員工／公務兩個 tab 目前共用同一個「選你的名字」下拉選單，
+    // 之前的問題：如果點的是「公務」這個 tab，就算選的是自己有設定帳號密碼的個人帳號，
+    // 畫面還是會被鎖在陽春的公務打卡模式，看不到員工資料裡設定好的功能權限，
+    // 跟畫面上顯示的名字對不起來，很容易讓人以為自己「登入到別人的帳號」。
+    // 只要是用「自己的帳號密碼」登入（不是共用帳號），就一律當成員工登入，
+    // 套用這個員工在「員工資料」裡設定好的權限，不管點的是員工還是公務那個 tab，
+    // 兩邊行為統一，不會再因為手滑點錯 tab 就跑出不對的畫面。
     if(curRole!=='staff'&&curRole!=='punch'){
       err.style.display='block'; err.textContent='個人帳號只適用於員工或公務角色'; return;
     }
@@ -1109,6 +1128,7 @@ function doLogin(){
       err.style.display='block'; err.textContent='密碼不正確，請確認這位員工的登入密碼'; return;
     }
     _punchEmployee=emp;
+    curRole='staff';
   } else {
     // 打卡一律要選自己的名字才能打，不能再用共用密碼登入
     err.style.display='block'; err.textContent='請選擇你的名字才能打卡'; return;
@@ -1154,7 +1174,12 @@ function setupApp(role){
   const empId=localStorage.getItem('zeju_punch_emp_id');
   const isIndividual=(role==='punch'||role==='staff')&&empName&&empId;
   const displayName=isIndividual?empName:(a?.name||nameMap[role]||role);
-  curPunchUser=(role==='punch'&&empId)?('emp_'+empId):role;
+  // 修正重點：這裡原本只有 role==='punch' 的時候才會用「emp_+員工id」標記打卡人，
+  // 但現在個人帳號登入一律變成 role==='staff'，如果還照舊邏輯判斷，
+  // 用個人帳號登入的員工打卡記錄就會全部被歸到共用的 'staff' 分類裡，
+  // 老闆端「人資管理」會看不出到底是哪個員工打的卡。改成看 isIndividual（有沒有個人身份），
+  // 不要看 role 是不是等於 'punch'，這樣不管從哪個 tab 用個人帳號登入，打卡歸屬都會正確。
+  curPunchUser=isIndividual?('emp_'+empId):role;
 
   // 重新整理頁面後 _punchEmployee 會被重置為 null，這裡從資料庫還原，
   // 避免員工的功能權限在重新整理後跳回預設值

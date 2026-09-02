@@ -227,10 +227,33 @@ function renderEmployees(){
   const list=document.getElementById('empList');if(!list)return;
   const emps=DB.get('employees');
   if(!emps.length){list.innerHTML='<div class="empty-state"><div class="es-ic">👤</div><div class="es-t">尚無員工資料</div><div class="es-s">點右上方「新增員工」</div></div>';return;}
+
+  // 重複員工偵測：同一個人不小心被存成兩筆獨立紀錄（名字一樣，或登入帳號一樣），
+  // 這種情況登入下拉選單那邊已經做了防呆不會顯示重複，但底層資料還是重複的，
+  // 兩筆各自累積打卡/薪資記錄反而更容易搞混，這裡抓出來提醒，讓你確認後手動清掉多的那筆。
+  const dupGroups=[];
+  const byName={};
+  emps.forEach(e=>{const k=(e.name||'').trim();if(!k)return;(byName[k]=byName[k]||[]).push(e);});
+  Object.entries(byName).forEach(([name,group])=>{if(group.length>1)dupGroups.push({key:name,type:'姓名',items:group});});
+  const byAcc={};
+  emps.forEach(e=>{if(!e.account)return;(byAcc[e.account]=byAcc[e.account]||[]).push(e);});
+  Object.entries(byAcc).forEach(([acc,group])=>{if(group.length>1&&!dupGroups.find(g=>g.items.some(i=>group.includes(i))))dupGroups.push({key:acc,type:'登入帳號',items:group});});
+
+  let dupHtml='';
+  if(dupGroups.length){
+    dupHtml='<div style="background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">'+
+      '<div style="font-weight:800;color:var(--warn);margin-bottom:8px">⚠️ 發現可能重複的員工資料</div>'+
+      dupGroups.map(g=>'<div style="font-size:.82rem;color:var(--g600);margin-bottom:6px">「'+esc(g.key)+'」這個'+g.type+'有 '+g.items.length+' 筆紀錄：'+
+        g.items.map(e=>'<button onclick="confirmAction(\'確定刪除這筆重複的員工紀錄？（打卡和薪資歷史會保留在系統裡，只是不會再顯示在員工列表）\',()=>{DB.upd(\'employees\','+e._id+',{deleted:true,deletedAt:new Date().toLocaleString(\'zh-TW\')});renderEmployees();updHRStats();showToast(\'✅ 已刪除重複紀錄\');})" style="margin-left:6px;padding:2px 10px;border:1px solid var(--warn-bd);border-radius:20px;background:var(--w);color:var(--warn);font-size:.74rem;cursor:pointer;font-family:inherit">刪除 ID:'+e._id+(e.account?'（帳號:'+esc(e.account)+'）':'')+'</button>').join('')
+      +'</div>').join('')+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:6px">請先確認要留哪一筆再刪除，建議留有薪資記錄或打卡歷史比較多的那筆</div>'+
+    '</div>';
+  }
+
   // 修正重點：原本每張卡片把完整薪資明細都攤開顯示，人一多畫面拉得很長。
   // 改成小卡片＋格狀排列，一眼看到姓名、職稱、本月實領，薪資明細收起來，要看再點開。
   list.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px';
-  list.innerHTML='';
+  list.innerHTML=dupHtml?'<div style="grid-column:1/-1">'+dupHtml+'</div>':'';
   emps.forEach(e=>{
     const card=document.createElement('div');
     card.style.cssText='background:var(--w);border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden';

@@ -816,6 +816,29 @@ async function geocodeProjectAddress(projectId,address){
   return false;
 }
 
+// 批次補齊舊案場的座標：地址轉座標這個功能是後來才加的，只有「新增案場」或「編輯儲存地址」
+// 才會觸發，之前建立、地址沒再重新存過的案場，座標欄位一直是空的，導致那些案場打卡時
+// 圍籬距離永遠抓不到。這裡一次找出所有「有地址但沒座標」的案場，依序補跑轉換。
+// Nominatim（免費地圖服務）有速率限制，一次不能查太快，這裡每筆之間留一點間隔，
+// 案場數量多的話會跑比較久，跑的時候按鈕會顯示進度，不要重複點。
+async function backfillProjectGeo(btn){
+  const targets=DB.get('projects').filter(p=>p.address&&(p.lat==null||p.lng==null));
+  if(!targets.length){showToast('✅ 所有有地址的案場都已經有座標了，不用補');return;}
+  if(btn)btn.disabled=true;
+  let done=0,ok=0;
+  for(const p of targets){
+    if(btn)btn.textContent='補齊中… ('+(done+1)+'/'+targets.length+')';
+    const success=await geocodeProjectAddress(p._id,p.address);
+    if(success)ok++;
+    done++;
+    await new Promise(r=>setTimeout(r,1100)); // 留點間隔給 Nominatim，避免被限流
+  }
+  if(btn){btn.disabled=false;btn.textContent='📍 補齊打卡座標';}
+  showToast('✅ 補齊完成：'+ok+'/'+targets.length+' 個案場查到座標'+(ok<targets.length?'，剩下的可能地址格式特殊查不到，可到案場資料手動確認地址':''));
+  // 如果現在正開著案場總覽或某個案場詳情，重新整理畫面讓新座標生效
+  if(typeof renderProjects==='function')renderProjects();
+}
+
 
 function saveProject(){
   const get=id=>document.getElementById(id)?.value?.trim()||'';
