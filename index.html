@@ -844,19 +844,10 @@
   </button>
  </div>
 
- <!-- 今日狀態 -->
+ <!-- 今日狀態：改成列出今天在哪些案場打過卡（可能不只一組），而不是只有單一組上下班時間 -->
  <div id="punchTodayCard" style="margin:0 4px 20px;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;overflow:hidden">
   <div style="padding:10px 16px;background:var(--g50);border-bottom:1px solid var(--g100);font-size:.78rem;font-weight:900;color:var(--g500);letter-spacing:.06em">今日出勤狀態</div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:0" id="punchTodayStatus">
-   <div style="padding:14px 16px;border-right:1px solid var(--g100)">
-    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🟢 上班打卡</div>
-    <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:var(--g300)" id="todayInTime">—</div>
-   </div>
-   <div style="padding:14px 16px">
-    <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🔵 下班打卡</div>
-    <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:var(--g300)" id="todayOutTime">—</div>
-   </div>
-  </div>
+  <div id="punchTodayStatus"></div>
  </div>
 
  <!-- 月曆 -->
