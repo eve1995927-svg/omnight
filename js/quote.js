@@ -458,6 +458,7 @@ function renderQTable(){
         <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
         <div style="display:flex;gap:5px;flex-shrink:0">
           <button class="btn bo bxs" data-qid="${q._id}">編輯</button>
+          <button class="btn bo bxs" data-qcopy="${q._id}" title="複製這份報價單成新的一份草稿，內容都一樣可以再改">複製</button>
           <button class="btn bo bxs" data-qct="${q._id}" title="把這份報價單的客戶、金額帶進合約，不用重打">轉合約</button>
           <button class="btn bgn bxs" data-qxls="${q._id}">Excel</button>
           <button class="btn bo bxs" data-qarch="${q._id}" title="${q.archived?'從封存中取出':'封存這筆報價，不會刪除，只是先收起來'}">${q.archived?'取消封存':'封存'}</button>
@@ -495,6 +496,23 @@ function renderQTable(){
     renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
     openAllSecs('adSections');
     showPanel('ad-newquote');
+  });});
+  list.querySelectorAll('[data-qcopy]').forEach(btn=>{btn.addEventListener('click',()=>{
+    const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qcopy));if(!q)return;
+    // 複製：把內容整份帶進編輯畫面，但 qEditId 故意留空（不是原本那筆的 id），
+    // 這樣按下「儲存」的時候是「新增一筆」，不會蓋掉原本那份報價單，
+    // 案場名稱、業主姓名保留原本的，方便同一個業主要出第二份報價時直接改一改就好，不用重打
+    qEditId=null;
+    adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
+    document.getElementById('adN').value=q.name||'';
+    document.getElementById('adAd').value=q.addr||'';
+    document.getElementById('adQbClient').textContent=q.name||'—';
+    document.getElementById('adQbAddr').textContent=q.addr||'—';
+    if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('adCase'),q.projectId);
+    renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
+    openAllSecs('adSections');
+    showPanel('ad-newquote');
+    showToast('📋 已複製報價內容，改完記得存檔（會存成新的一份，原本那份不會被動到）');
   });});
   list.querySelectorAll('[data-qct]').forEach(btn=>{btn.addEventListener('click',()=>{if(typeof convertQuoteToContract==='function')convertQuoteToContract(parseInt(btn.dataset.qct));});});
   list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[]);});});
