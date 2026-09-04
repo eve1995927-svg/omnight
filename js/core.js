@@ -953,6 +953,23 @@ function getPunchUser(){
   // session 8小時內有效
   if(savedRole && (Date.now()-savedTs) < EIGHT_HOURS){
     curRole = savedRole;
+    // 修正重點：舊版程式（修這個 bug 之前）登入時會把 curRole 強制存成 'staff'，
+    // 就算你當初點的是「公務」也一樣。如果瀏覽器裡還留著舊版存的 session（8小時內登入過），
+    // 重新整理頁面會直接恢復成那個錯誤的 'staff'，不會再跑一次登入畫面，等於這次程式改對了，
+    // 舊的錯誤 session 還是會讓你卡在員工介面。這裡加一個防呆：如果恢復的身份是個人帳號登入
+    // 且被標記為 punch 類型（empType==='punch'），但存的角色卻是 'staff'，直接視為 session 過期、
+    // 清掉重登入一次，避免卡在錯的畫面。
+    const savedEmpId=localStorage.getItem('zeju_punch_emp_id');
+    if(curRole==='staff'&&savedEmpId){
+      let empList=[];
+      try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
+      const emp=empList.find(e=>String(e._id)===String(savedEmpId));
+      if(emp&&emp.empType==='punch'){
+        localStorage.removeItem('zeju_session_role');
+        localStorage.removeItem('zeju_session_ts');
+        return; // 不自動恢復，讓使用者重新走一次登入畫面，這次會正確進到打卡介面
+      }
+    }
     // 等 DOM 完全載入後自動跳過登入
     window.addEventListener('DOMContentLoaded',()=>{
       const ls=document.getElementById('ls');
