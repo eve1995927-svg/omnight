@@ -934,6 +934,16 @@ function openPhotoGallery(title, files){
 let curRole='owner';
 let curProjectId=null; // 目前選取的案場 ID
 let curPunchUser='owner'; // 打卡識別用：個人帳號為 'emp_'+員工id，共用帳號為角色名
+// 曾經發生過 curPunchUser 這個全域變數在畫面重新整理／session 自動恢復後沒有同步更新，
+// 導致明明是用個人帳號登入，打卡記錄卻存成共用角色代號（'punch'）的狀況。
+// 這個函式每次呼叫都直接從 localStorage（登入時寫入、最可靠的來源）重新確認一次身份，
+// 任何地方要用「現在是誰在打卡」都呼叫這個，不要直接讀 curPunchUser 變數本身，
+// 這樣不管前面發生什麼時序問題，都能保證拿到當下正確的身份。
+function getPunchUser(){
+  const savedEmpId=localStorage.getItem('zeju_punch_emp_id');
+  if(savedEmpId){curPunchUser='emp_'+savedEmpId;return curPunchUser;}
+  return curPunchUser;
+}
 
 // ── 自動恢復登入狀態 ──────────────────────────────────────
 (function autoRestore(){

@@ -966,7 +966,7 @@ function doPunch(){
   // （早上在A案場、下午轉B案場），照舊邏輯打完A的上下班卡，B案場就完全打不了卡了。
   // 改成「同一天、同一個案場」各自算一組上下班，只要換了案場（下拉選單選別的），
   // 就可以重新打上班卡，等於每個案場各自有自己的出勤紀錄，同一天可以跑好幾組。
-  const todayRecsThisProject=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser&&(r.projectId||'')===selProjectId);
+  const todayRecsThisProject=DB.get('punch_recs').filter(r=>r.date===today&&r.user===getPunchUser()&&(r.projectId||'')===selProjectId);
   const alreadyIn=todayRecsThisProject.some(r=>r.type==='in');
   const alreadyOut=todayRecsThisProject.some(r=>r.type==='out');
   const isIn=!alreadyIn; // 這個案場今天沒打過上班 → 打上班
@@ -977,19 +977,25 @@ function doPunch(){
   const save=(lat,lng,addr)=>{
     DB.push('punch_recs',{
       summary:(isIn?'上班':'下班')+'打卡 '+now.toLocaleTimeString('zh-TW',{hour12:false}),
-      user:curPunchUser,userName:empName,date:today,
+      user:getPunchUser(),userName:empName,date:today,
       time:now.toLocaleTimeString('zh-TW',{hour12:false}),
       type:isIn?'in':'out',
       lat:lat||null,lng:lng||null,addr:addr||null,
       photo:punchPhotoData||null,
       projectId:selProjectId?(localStorage.setItem('zeju_last_punch_proj',selProjectId),selProjectId):null
     });
+    // 修正重點：這筆記錄的確切 id，直接抓「目前所有記錄裡 _id 最大的那筆」
+    // （新記錄的 id 是用當下時間戳記產生，一定是最大的），回傳給呼叫端存起來給非同步查地址用，
+    // 不要用猜的方式去找要更新哪一筆，猜錯或猜不到是「一直只有一個案場有地址」的真正原因。
+    const allRecs=DB.get('punch_recs');
+    const newRecId=allRecs.reduce((max,r)=>r._id>max?r._id:max,0);
     // 打卡完清空這次的拍照佐證，下一次打卡不會誤帶到上一次的照片
     punchPhotoData=null;
     const preview=document.getElementById('punchPhotoPreview');if(preview)preview.style.display='none';
     const photoFile=document.getElementById('punchPhotoFile');if(photoFile)photoFile.value='';
     renderPunchRec();updatePunchBtn();
     showToast('✅ '+(isIn?'上班':'下班')+'打卡成功！'+now.toLocaleTimeString('zh-TW',{hour12:false}));
+    return newRecId;
   };
   if(navigator.geolocation){
     navigator.geolocation.getCurrentPosition(
@@ -997,8 +1003,8 @@ function doPunch(){
         const lat=pos.coords.latitude.toFixed(6);
         const lng=pos.coords.longitude.toFixed(6);
         punchCurPos={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy};
-        // 先用座標存檔，背景查地址
-        save(lat, lng, lat+','+lng);
+        // 先用座標存檔，背景查地址；記住這筆記錄的 id，等一下查到地址要更新回同一筆
+        const newRecId=save(lat, lng, lat+','+lng);
         // 修正重點：原本這裡是拿 GPS 座標去問 AI「這是哪個地址」——AI 語言模型本來就不是地圖服務，
         // 沒有精確的地址資料庫，用猜的常常猜不準或乾脆猜不出來，這也是「一直只有座標、沒有中文地址」的原因，
         // 而且每次打卡都要為了這個查詢扣一次 AI 點數，划不來。
@@ -1010,12 +1016,9 @@ function doPunch(){
           const addr=[a.state||a.county,a.city||a.town||a.district||a.suburb,a.road,a.house_number].filter(Boolean).join('').trim()
             || d.display_name || '';
           if(addr){
-            const recs=DB.get('punch_recs');
-            if(recs.length&&recs[0].lat===lat){
-              DB.upd('punch_recs',recs[0]._id,{addr});
-              renderPunchRec&&renderPunchRec();
-              if(typeof renderHRPanel==='function'&&document.getElementById('hrPunchList'))renderHRPanel();
-            }
+            DB.upd('punch_recs',newRecId,{addr});
+            renderPunchRec&&renderPunchRec();
+            if(typeof renderHRPanel==='function'&&document.getElementById('hrPunchList'))renderHRPanel();
           }
         }catch(e){console.log('地址查詢失敗:',e.message);}
       },
@@ -1034,7 +1037,7 @@ function updatePunchBtn(){
   if(!btn)return;
   const today=new Date().toLocaleDateString('zh-TW');
   const selProjectId=document.getElementById('punchProjectSel')?.value||'';
-  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===curPunchUser&&(r.projectId||'')===selProjectId);
+  const todayRecs=DB.get('punch_recs').filter(r=>r.date===today&&r.user===getPunchUser()&&(r.projectId||'')===selProjectId);
   const hasIn=todayRecs.some(r=>r.type==='in');
   const hasOut=todayRecs.some(r=>r.type==='out');
   if(hasIn&&hasOut){

@@ -376,7 +376,7 @@ function renderPunchCal(){
   const lbl=document.getElementById('punchMonthLabel');
   if(!grid)return;
   if(lbl)lbl.textContent=_punchCalYear+'年'+(_punchCalMonth+1)+'月';
-  const recs=DB.get('punch_recs').filter(r=>r.user===curPunchUser);
+  const recs=DB.get('punch_recs').filter(r=>r.user===getPunchUser());
   const today=new Date().toLocaleDateString('zh-TW');
   const recMap={};
   recs.forEach(r=>{if(!recMap[r.date])recMap[r.date]=[];recMap[r.date].push(r);});
@@ -472,7 +472,7 @@ function showPunchDayDetail(dateStr,recs){
 function updateTodayCard(){
   const box=document.getElementById('punchTodayStatus');if(!box)return;
   const today=new Date().toLocaleDateString('zh-TW');
-  const recs=DB.get('punch_recs').filter(r=>r.user===curPunchUser&&r.date===today);
+  const recs=DB.get('punch_recs').filter(r=>r.user===getPunchUser()&&r.date===today);
   if(!recs.length){
     box.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.85rem">今天還沒有打卡記錄</div>';
     return;
@@ -508,7 +508,7 @@ function renderPunchRec(){
   const today=new Date().toLocaleDateString('zh-TW');
   if(!_punchSelDate||_punchSelDate===today){
     _punchSelDate=today;
-    const recs=DB.get('punch_recs').filter(r=>r.user===curPunchUser&&r.date===today);
+    const recs=DB.get('punch_recs').filter(r=>r.user===getPunchUser()&&r.date===today);
     showPunchDayDetail(today,recs);
   }
 }
