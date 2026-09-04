@@ -998,29 +998,21 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       let empList=[];
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
-      const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
-      // 防呆：如果兩筆重複紀錄的帳號剛好一樣，去重合併成一個選項是安全的（帳號密碼都相同，選哪筆都能登入）。
-      // 但如果帳號不一樣（例如其中一筆帳號打錯字或忘記填），不能隨便藏掉一筆——
-      // 萬一那個人的密碼其實設定在被藏起來的那筆上，會變成完全登入不了，風險更大。
-      // 這種情況兩筆都保留顯示，但在名字後面加帳號後幾碼當提示，讓人看得出是不同筆、選得到自己要的那組，
-      // 真正該做的是去「人資管理」把底層重複的資料清乾淨，這裡只是先讓畫面看起來合理、不誤導。
-      const seenAcc=new Set();
-      const dedupList=withAccount.filter(e=>{
-        if(seenAcc.has(e.account))return false;
-        seenAcc.add(e.account);return true;
-      });
-      const nameCount={};
-      dedupList.forEach(e=>{nameCount[e.name]=(nameCount[e.name]||0)+1;});
-      if(dedupList.length){
-        const hasDup=Object.values(nameCount).some(c=>c>1);
+      const allWithAccount=empList.filter(e=>e&&e.account&&!e.deleted);
+      // 「員工」跟「公務」是兩個獨立功能，登入要選的名單也要分開，不能共用同一份：
+      // 公務只是打卡用，顯示所有有帳號的人（含公務型跟正式員工，不管哪種身份都能打卡）；
+      // 員工 tab 只顯示明確設定成「正式員工」的人，才能用到案場、業務、會計那些完整功能。
+      // 舊資料沒有 empType 欄位的話，當作正式員工處理（維持這個功能加入前的既有行為）。
+      const withAccount=curRole==='punch'
+        ? allWithAccount
+        : allWithAccount.filter(e=>e.empType!=='punch');
+      if(withAccount.length){
         empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
-          dedupList.map(e=>{
-            const showAcc=nameCount[e.name]>1;
-            return '<option value="'+e.account+'">👤 '+e.name+(showAcc?'（帳號：'+e.account+'）':'')+'</option>';
-          }).join('')+
-          (hasDup?'<option value="" disabled>⚠️ 有同名的人，請找老闆到「人資管理」清掉重複資料</option>':'');
+          withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
       } else {
-        empSelEl.innerHTML='<option value="">尚無員工帳號，請聯絡老闆設定</option>';
+        empSelEl.innerHTML=curRole==='punch'
+          ?'<option value="">尚無員工帳號，請聯絡老闆設定</option>'
+          :'<option value="">尚無正式員工帳號，請聯絡老闆設定</option>';
       }
       empSelEl.style.display='block';
     } else {
@@ -1048,22 +1040,14 @@ async function silentRefreshEmployeesForLogin(){
     localStorage.setItem('z7_employees',JSON.stringify(arr));
     const empSelEl=document.getElementById('lEmpSelect');
     if(empSelEl&&empSelEl.style.display!=='none'){
-      const withAccount=arr.filter(e=>e&&e.account&&!e.deleted);
-      const seenAcc=new Set();
-      const dedupList=withAccount.filter(e=>{
-        if(seenAcc.has(e.account))return false;
-        seenAcc.add(e.account);return true;
-      });
-      const nameCount={};
-      dedupList.forEach(e=>{nameCount[e.name]=(nameCount[e.name]||0)+1;});
-      const hasDup=Object.values(nameCount).some(c=>c>1);
+      const allWithAccount=arr.filter(e=>e&&e.account&&!e.deleted);
+      const withAccount=curRole==='punch'
+        ? allWithAccount
+        : allWithAccount.filter(e=>e.empType!=='punch');
       const curVal=empSelEl.value;
-      empSelEl.innerHTML=dedupList.length
-        ?'<option value="">請選擇你的名字…</option>'+dedupList.map(e=>{
-            const showAcc=nameCount[e.name]>1;
-            return '<option value="'+e.account+'">👤 '+e.name+(showAcc?'（帳號：'+e.account+'）':'')+'</option>';
-          }).join('')+(hasDup?'<option value="" disabled>⚠️ 有同名的人，請找老闆到「人資管理」清掉重複資料</option>':'')
-        :'<option value="">尚無員工帳號，請聯絡老闆設定</option>';
+      empSelEl.innerHTML=withAccount.length
+        ?'<option value="">請選擇你的名字…</option>'+withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('')
+        :(curRole==='punch'?'<option value="">尚無員工帳號，請聯絡老闆設定</option>':'<option value="">尚無正式員工帳號，請聯絡老闆設定</option>');
       if(curVal)empSelEl.value=curVal;
     }
   }catch(e){
@@ -1138,13 +1122,12 @@ function doLogin(){
       localStorage.removeItem('zeju_owner_account');
     }
   } else if(empAcc){
-    // 個人帳號登入（員工／公務兩個 tab 目前共用同一個「選你的名字」下拉選單，
-    // 之前的問題：如果點的是「公務」這個 tab，就算選的是自己有設定帳號密碼的個人帳號，
-    // 畫面還是會被鎖在陽春的公務打卡模式，看不到員工資料裡設定好的功能權限，
-    // 跟畫面上顯示的名字對不起來，很容易讓人以為自己「登入到別人的帳號」。
-    // 只要是用「自己的帳號密碼」登入（不是共用帳號），就一律當成員工登入，
-    // 套用這個員工在「員工資料」裡設定好的權限，不管點的是員工還是公務那個 tab，
-    // 兩邊行為統一，不會再因為手滑點錯 tab 就跑出不對的畫面。
+    // 個人帳號登入（員工／公務兩個 tab 現在各自有獨立名單：員工 tab 只列出 empType='staff' 的人，
+    // 公務 tab 列出所有有帳號的人）。這裡尊重使用者實際點的是哪個 tab：
+    // 點「員工」登入 → curRole 維持 'staff'，套用這個人在「員工資料」設定好的功能權限；
+    // 點「公務」登入 → curRole 維持 'punch'，畫面鎖定只顯示打卡介面，不會看到完整功能選單。
+    // （之前這裡曾經改成「不管點哪個 tab 一律當員工」，結果變成從公務 tab 登入也會跑出完整員工介面，
+    // 公務帳號形同虛設——公務／員工是兩個獨立功能，不應該互相覆蓋。）
     if(curRole!=='staff'&&curRole!=='punch'){
       err.style.display='block'; err.textContent='個人帳號只適用於員工或公務角色'; return;
     }
@@ -1153,7 +1136,6 @@ function doLogin(){
       err.style.display='block'; err.textContent='密碼不正確，請確認這位員工的登入密碼'; return;
     }
     _punchEmployee=emp;
-    curRole='staff';
   } else {
     // 打卡一律要選自己的名字才能打，不能再用共用密碼登入
     err.style.display='block'; err.textContent='請選擇你的名字才能打卡'; return;
