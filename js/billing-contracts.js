@@ -288,10 +288,12 @@ function shiftLedgerMonth(dir){
   const d=new Date(p[0],p[1]-1+dir,1);
   curLedgerMonth=d.getFullYear()+'-'+(d.getMonth()+1).toString().padStart(2,'0');
   updateLedgerMonthLabel();renderLedger();
+  if(typeof renderInvoices==='function')renderInvoices(document.getElementById('invSrch')?.value||'');
 }
 function setLedgerMonth(val){
   curLedgerMonth=(val==='all'?null:val);
   updateLedgerMonthLabel();renderLedger();
+  if(typeof renderInvoices==='function')renderInvoices(document.getElementById('invSrch')?.value||'');
 }
 function setLedgerDir2(dir,el){
   curLedgerDir2=dir;
@@ -306,6 +308,7 @@ function switchLedgerView(view,el){
   document.querySelectorAll('.ltab[data-lt]').forEach(t=>t.classList.toggle('on',t.dataset.lt===view));
   if(view==='monthly')renderLedgerMonthly();
   else if(view==='project')renderLedgerByProject();
+  else if(view==='invoice')renderInvoices(document.getElementById('invSrch')?.value||'');
   else renderLedger();
 }
 function getFilteredLedger(){
@@ -393,6 +396,20 @@ function renderLedger(){
   sr.innerHTML='<span style="color:var(--g600)">'+items.length+' 筆記錄</span><span style="color:'+(runTotal>=0?'var(--ok)':'var(--bad)')+'">'+( runTotal>=0?'+':'')+'NT$'+Math.abs(runTotal).toLocaleString()+'</span>';
   c.appendChild(sr);
 }
+let curLedgerMonthlyYear=null; // null 代表還沒初始化，第一次渲染時會自動抓最新有資料的那個會計年度
+
+// 會計年度是從每年9月開始算一整個週期（例如「2025年度」＝2025年9月～2026年8月），
+// 不是照日曆年1月到12月分。這裡把一個 "YYYY-MM" 月份字串換算成它屬於哪個會計年度。
+function monthToFiscalYear(monthKey){
+  const y=parseInt(monthKey.slice(0,4)),m=parseInt(monthKey.slice(5,7));
+  return m>=9?y:y-1; // 9月～12月算當年度；1月～8月算前一年度
+}
+
+function changeLedgerMonthlyYear(dir){
+  curLedgerMonthlyYear=(curLedgerMonthlyYear||monthToFiscalYear(new Date().getFullYear()+'-'+(new Date().getMonth()+1).toString().padStart(2,'0')))+dir;
+  renderLedgerMonthly();
+}
+
 function renderLedgerMonthly(){
   const c=document.getElementById('ledger-monthly-table');if(!c)return;
   const all=DB.get('ledger');
@@ -406,8 +423,25 @@ function renderLedgerMonthly(){
   const months=new Set();
   all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
   salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
-  const sm=[...months].sort().reverse();
+  const allMonths=[...months].sort().reverse();
+  if(!allMonths.length){c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">尚無帳款記錄</div></div>';return;}
+
+  // 年度篩選：原本是所有月份無限往下滑，跨了好幾年會很難找特定月份，
+  // 改成一次只看一個會計年度（9月～隔年8月），跨年度用上面的「← 上一年度／下一年度 →」切換。
+  // 第一次進來（curLedgerMonthlyYear 還沒設定過）自動抓「最新有資料的那個會計年度」當起點，
+  // 不用手動翻到最新的那年。
+  if(curLedgerMonthlyYear==null){
+    curLedgerMonthlyYear=monthToFiscalYear(allMonths[0]);
+  }
+  const yearLabel=document.getElementById('ledgerMonthlyYearLabel');
+  if(yearLabel)yearLabel.textContent=curLedgerMonthlyYear+'年9月–'+(curLedgerMonthlyYear+1)+'年8月';
+  const sm=allMonths.filter(m=>monthToFiscalYear(m)===curLedgerMonthlyYear);
+
   c.innerHTML='';
+  if(!sm.length){
+    c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">'+curLedgerMonthlyYear+'年9月–'+(curLedgerMonthlyYear+1)+'年8月沒有帳款記錄</div></div>';
+    return;
+  }
   const cols='90px 1fr 1fr 1fr 60px 1fr 1fr';
   const hd=document.createElement('div');
   hd.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
@@ -465,7 +499,7 @@ function renderLedgerMonthly(){
   const tp=tIn-tOut;const tr=tIn>0?Math.round(tp/tIn*100):0;const tNet=tp-tPersonnel;
   const tot=document.createElement('div');
   tot.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:12px;background:var(--gold-pale);border-radius:var(--rs);font-size:.88rem;font-weight:900;margin-top:8px;border:1.5px solid var(--gold-l)';
-  tot.innerHTML='<span style="color:var(--gold-d)">合計</span><span style="text-align:right;color:var(--ok)">NT$'+tIn.toLocaleString()+'</span><span style="text-align:right;color:var(--bad)">NT$'+tOut.toLocaleString()+'</span><span style="text-align:right;color:'+(tp>=0?'var(--ok)':'var(--bad)')+'">NT$'+tp.toLocaleString()+'</span><span style="text-align:right">'+(tIn?tr+'%':'—')+'</span><span style="text-align:right;color:var(--bad)">NT$'+tPersonnel.toLocaleString()+'</span><span style="text-align:right;color:'+(tNet>=0?'var(--ok)':'var(--bad)')+'">NT$'+tNet.toLocaleString()+'</span>';
+  tot.innerHTML='<span style="color:var(--gold-d)">年度合計</span><span style="text-align:right;color:var(--ok)">NT$'+tIn.toLocaleString()+'</span><span style="text-align:right;color:var(--bad)">NT$'+tOut.toLocaleString()+'</span><span style="text-align:right;color:'+(tp>=0?'var(--ok)':'var(--bad)')+'">NT$'+tp.toLocaleString()+'</span><span style="text-align:right">'+(tIn?tr+'%':'—')+'</span><span style="text-align:right;color:var(--bad)">NT$'+tPersonnel.toLocaleString()+'</span><span style="text-align:right;color:'+(tNet>=0?'var(--ok)':'var(--bad)')+'">NT$'+tNet.toLocaleString()+'</span>';
   c.appendChild(tot);
 }
 function renderLedgerByProject(){
@@ -647,9 +681,13 @@ function delLedgerFromProject(id,projectId){
 function renderInvoices(filter){
   const list=document.getElementById('invList');if(!list)return;
   let data=DB.get('invoices');
+  // 修正重點：這裡本來完全沒有跟上面的月份選擇器連動，不管切到哪個月份，發票記錄永遠顯示全部。
+  // 改成跟其他分頁（收支明細、月度總表）用同一個 curLedgerMonth，切到「2026年9月」，
+  // 這裡就只顯示9月份的發票；切回「全期」（curLedgerMonth 是 null）才會顯示全部。
+  if(curLedgerMonth)data=data.filter(v=>(v.date||'').startsWith(curLedgerMonth));
   if(filter)data=data.filter(v=>(v.no||'').includes(filter)||(v.desc||'').includes(filter)||(v.cat||'').includes(filter));
   if(!data.length){
-    list.innerHTML='<div class="empty-state"><div class="es-ic">🧾</div><div class="es-t">尚無發票記錄</div><div class="es-s">點右上方「新增發票」，上傳照片 AI 自動辨識</div></div>';return;
+    list.innerHTML='<div class="empty-state"><div class="es-ic">🧾</div><div class="es-t">'+(curLedgerMonth?'這個月份沒有發票記錄':'尚無發票記錄')+'</div><div class="es-s">點右上方「新增發票」，上傳照片 AI 自動辨識</div></div>';return;
   }
   list.innerHTML='';
   data.forEach(v=>{
