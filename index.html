@@ -742,6 +742,11 @@
 
  <!-- 月度總表 view -->
  <div id="lv-monthly" class="ledger-view" style="display:none">
+  <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:14px">
+   <button class="btn bo bxs" onclick="changeLedgerMonthlyYear(-1)">← 上一年度</button>
+   <span id="ledgerMonthlyYearLabel" style="font-weight:900;font-size:1rem;color:var(--g700);min-width:140px;text-align:center">2025年9月–2026年8月</span>
+   <button class="btn bo bxs" onclick="changeLedgerMonthlyYear(1)">下一年度 →</button>
+  </div>
   <div id="ledger-monthly-table"></div>
  </div>
 
@@ -1626,6 +1631,18 @@
    <div class="field" style="margin:0"><label class="fl">姓名</label><input class="fi" id="empName" placeholder="陳小明"></div>
    <div class="field" style="margin:0"><label class="fl">職稱</label><input class="fi" id="empTitle" placeholder="行政助理"></div>
   </div>
+  <div class="field" style="margin-bottom:12px">
+   <label class="fl">身份類型</label>
+   <div style="display:flex;gap:8px">
+    <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:1.5px solid var(--g200);border-radius:var(--rs);cursor:pointer;font-size:.85rem" class="empTypeOpt">
+     <input type="radio" name="empType" value="staff" id="empTypeStaff" style="cursor:pointer"> 👤 正式員工（可用完整功能）
+    </label>
+    <label style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:10px;border:1.5px solid var(--g200);border-radius:var(--rs);cursor:pointer;font-size:.85rem" class="empTypeOpt">
+     <input type="radio" name="empType" value="punch" id="empTypePunch" style="cursor:pointer"> 🕐 公務（只能打卡）
+    </label>
+   </div>
+   <div style="font-size:.72rem;color:var(--g400);margin-top:4px">決定這個人登入時要在「員工」還是「公務」那個 tab 找得到自己的名字，兩邊名單是分開的</div>
+  </div>
   <div class="g2" style="margin-bottom:12px">
    <div class="field" style="margin:0"><label class="fl">到職日</label><input class="fi" id="empStartDate" type="date"></div>
    <div class="field" style="margin:0"><label class="fl">聯絡電話</label><input class="fi" id="empPhone" placeholder="0912-345-678"></div>
@@ -1658,7 +1675,7 @@
    <div style="font-size:.85rem;font-weight:800;color:var(--info);margin-bottom:12px">💰 薪資設定</div>
    <div class="g2" style="margin-bottom:10px">
     <div class="field" style="margin:0"><label class="fl">底薪（月）</label><input class="fi" id="empSalary" type="number" placeholder="32000"></div>
-    <div class="field" style="margin:0"><label class="fl">伙食津貼</label><input class="fi" id="empMeal" type="number" placeholder="2400" value="2400"></div>
+    <div class="field" style="margin:0"><label class="fl">伙食津貼</label><input class="fi" id="empMeal" type="number" placeholder="0"></div>
    </div>
    <div class="g2" style="margin-bottom:10px">
     <div class="field" style="margin:0"><label class="fl">交通津貼</label><input class="fi" id="empTransport" type="number" placeholder="1000" value="0"></div>
