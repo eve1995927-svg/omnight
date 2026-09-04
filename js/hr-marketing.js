@@ -151,7 +151,7 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   empEditId=null;
   ['empName','empTitle','empPhone','empId','empBank','empAccount','empPassword'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('empSalary').value='32000';
-  document.getElementById('empMeal').value='2400';
+  document.getElementById('empMeal').value='';
   document.getElementById('empTransport').value='0';
   document.getElementById('empOther').value='0';
   const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value='';
@@ -378,7 +378,7 @@ function renderEmployees(){
       document.getElementById('empName').value=e.name||'';document.getElementById('empTitle').value=e.title||'';
       document.getElementById('empPhone').value=e.phone||'';document.getElementById('empId').value=e.idNum||'';
       document.getElementById('empBank').value=e.bank||'';document.getElementById('empStartDate').value=e.startDate||'';
-      document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||2400;
+      document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||'';
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
       const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value=e.insuredSalary||'';
       const laborInEl=document.getElementById('empLaborInput');if(laborInEl)laborInEl.value=e.labor||'';
