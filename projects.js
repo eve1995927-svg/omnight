@@ -396,7 +396,16 @@ function renderProjectCalendar(){
   // 這個月（含前後補位天）每一天要放哪些案場：用開工日 startDate 對應
   const projects=DB.get('projects').filter(p=>!p.archived&&p.startDate);
   const byDate={};
-  projects.forEach(p=>{ (byDate[p.startDate]=byDate[p.startDate]||[]).push(p); });
+  projects.forEach(p=>{ (byDate[p.startDate]=byDate[p.startDate]||[]).push({kind:'project',data:p}); });
+  // 自訂行程（像 Google 日曆一樣自己新增的，不綁案場）
+  const events=DB.get('calendar_events');
+  events.forEach(ev=>{ if(!ev.date)return; (byDate[ev.date]=byDate[ev.date]||[]).push({kind:'event',data:ev}); });
+  Object.values(byDate).forEach(list=>list.sort((a,b)=>{
+    // 有時間的行程照時間排在前面，案場卡片（沒有時間）排最後
+    const ta=a.kind==='event'?(a.data.time||'99:99'):'99:99';
+    const tb=b.kind==='event'?(b.data.time||'99:99'):'99:99';
+    return ta.localeCompare(tb);
+  }));
 
   const cells=[];
   // 補上個月尾巴
@@ -420,45 +429,75 @@ function renderProjectCalendar(){
   const MAX_CHIPS=3; // 正方形格子放不下太多，超過用「+N 更多」收起來，跟 Google 日曆一樣
   cells.forEach(cell=>{
     const el=document.createElement('div');
-    el.className='pc-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
+    el.className='cal-day'+(cell.otherMonth?' other-month':'')+(cell.dateStr===todayStr?' today':'');
     el.dataset.date=cell.dateStr;
-    const dayProjects=byDate[cell.dateStr]||[];
-    el.innerHTML='<div class="pc-day-num">'+cell.dnum+'</div><div class="pc-day-chips"></div>';
-    const chipsWrap=el.querySelector('.pc-day-chips');
-    dayProjects.slice(0,MAX_CHIPS).forEach(p=>{
-      const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+    const dayItems=byDate[cell.dateStr]||[];
+    el.innerHTML='<div class="cal-day-num">'+cell.dnum+'</div><div class="cal-day-chips"></div>';
+    const chipsWrap=el.querySelector('.cal-day-chips');
+    dayItems.slice(0,MAX_CHIPS).forEach(item=>{
       const chip=document.createElement('div');
-      chip.className='pc-chip';
-      chip.draggable=true;
-      chip.dataset.id=p._id;
-      chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
-      chip.textContent=st.icon+' '+(p.name||p.client||'未命名案場');
-      chip.title=(p.name||'未命名案場')+'（點擊查看，拖曳可改開工日）';
-      chip.addEventListener('click',e=>{e.stopPropagation();openProject(p._id);});
-      chip.addEventListener('dragstart',e=>{
-        chip.classList.add('dragging');
-        e.dataTransfer.setData('text/plain',String(p._id));
-        e.dataTransfer.effectAllowed='move';
-      });
-      chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      chip.className='cal-chip';
+      if(item.kind==='project'){
+        const p=item.data;
+        const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+        chip.draggable=true;
+        chip.dataset.id=p._id;
+        chip.style.cssText='background:'+st.bg+';color:'+st.color+';border-left-color:'+st.color;
+        chip.textContent=st.icon+' '+(p.name||p.client||'未命名案場');
+        chip.title=(p.name||'未命名案場')+'（點擊查看，拖曳可改開工日）';
+        chip.addEventListener('click',e=>{e.stopPropagation();openProject(p._id);});
+        chip.addEventListener('dragstart',e=>{
+          chip.classList.add('dragging');
+          e.dataTransfer.setData('text/plain','project:'+p._id);
+          e.dataTransfer.effectAllowed='move';
+        });
+        chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      }else{
+        // 自訂行程：跟案場卡片長得不一樣（紫色系，跟 Google 日曆的一般行程做出區別），點擊可以編輯/刪除
+        const ev=item.data;
+        chip.draggable=true;
+        chip.dataset.evid=ev._id;
+        chip.style.cssText='background:#EDE9FE;color:#5B21B6;border-left-color:#7C3AED';
+        chip.textContent='📌 '+(ev.time?ev.time+' ':'')+(ev.title||'行程');
+        chip.title=(ev.title||'行程')+(ev.time?'（'+ev.time+'）':'')+'（點擊編輯，拖曳可改日期）';
+        chip.addEventListener('click',e=>{e.stopPropagation();openCalEventModal(cell.dateStr,ev);});
+        chip.addEventListener('dragstart',e=>{
+          chip.classList.add('dragging');
+          e.dataTransfer.setData('text/plain','event:'+ev._id);
+          e.dataTransfer.effectAllowed='move';
+        });
+        chip.addEventListener('dragend',()=>chip.classList.remove('dragging'));
+      }
       chipsWrap.appendChild(chip);
     });
-    if(dayProjects.length>MAX_CHIPS){
+    if(dayItems.length>MAX_CHIPS){
       const more=document.createElement('div');
-      more.className='pc-day-more';
-      more.textContent='+'+(dayProjects.length-MAX_CHIPS)+' 更多';
-      more.addEventListener('click',e=>{e.stopPropagation();showDayProjectsPopover(cell.dateStr,dayProjects);});
+      more.className='cal-day-more';
+      more.textContent='+'+(dayItems.length-MAX_CHIPS)+' 更多';
+      more.addEventListener('click',e=>{e.stopPropagation();showDayItemsPopover(cell.dateStr,dayItems);});
       chipsWrap.appendChild(more);
     }
+    // 點格子空白處（不是點卡片）：直接在這天新增行程，跟 Google 日曆點空白格的行為一樣
+    el.addEventListener('click',()=>openCalEventModal(cell.dateStr));
     el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
     el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
     el.addEventListener('drop',e=>{
       e.preventDefault();
       el.classList.remove('drag-over');
-      const draggedId=parseInt(e.dataTransfer.getData('text/plain'));
+      const raw=e.dataTransfer.getData('text/plain');
+      const newDate=el.dataset.date;
+      if(raw.startsWith('event:')){
+        const evId=parseInt(raw.slice(6));
+        const ev=DB.get('calendar_events').find(x=>x._id===evId);
+        if(!ev||ev.date===newDate)return;
+        DB.upd('calendar_events',evId,{date:newDate});
+        renderProjectCalendar();
+        showToast('📅 已把「'+(ev.title||'行程')+'」改到 '+newDate);
+        return;
+      }
+      const draggedId=parseInt(raw.startsWith('project:')?raw.slice(8):raw);
       const proj=getProject(draggedId);
       if(!proj||!proj.startDate)return;
-      const newDate=el.dataset.date;
       if(proj.startDate===newDate)return;
       // 保留原本工期長度：完工日跟著開工日一起平移，不會因為拖曳而把工期拉長或縮短
       const patch={startDate:newDate};
@@ -491,33 +530,104 @@ document.getElementById('calTodayBtn')?.addEventListener('click',()=>{
   renderProjectCalendar();
 });
 
-// 正方形格子放不下太多案場時，點「+N 更多」跳出這個小視窗看當天全部案場
-function showDayProjectsPopover(dateStr,projects){
+// 正方形格子放不下太多時，點「+N 更多」跳出這個小視窗看當天全部案場／行程
+function showDayItemsPopover(dateStr,items){
   const old=document.getElementById('_dayPopover');if(old)old.remove();
   const box=document.createElement('div');
   box.id='_dayPopover';
   box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.35);z-index:9200;display:flex;align-items:center;justify-content:center;padding:20px';
-  const rows=projects.map(p=>{
-    const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
-    return '<div class="pc-pop-row" data-id="'+p._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
-      '<span style="font-size:1rem">'+st.icon+'</span>'+
-      '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name||'未命名案場')+'</div>'+
-      '<div style="font-size:.72rem;color:var(--g400)">'+esc(p.client||'業主未填')+'</div></div>'+
-      '<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+  const rows=items.map(item=>{
+    if(item.kind==='project'){
+      const p=item.data;
+      const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
+      return '<div class="pc-pop-row" data-ptype="project" data-id="'+p._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
+        '<span style="font-size:1rem">'+st.icon+'</span>'+
+        '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(p.name||'未命名案場')+'</div>'+
+        '<div style="font-size:.72rem;color:var(--g400)">'+esc(p.client||'業主未填')+'</div></div>'+
+        '<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+      '</div>';
+    }
+    const ev=item.data;
+    return '<div class="pc-pop-row" data-ptype="event" data-id="'+ev._id+'" style="display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;cursor:pointer;transition:background .15s">'+
+      '<span style="font-size:1rem">📌</span>'+
+      '<div style="flex:1;min-width:0"><div style="font-size:.86rem;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(ev.title||'行程')+'</div>'+
+      (ev.note?'<div style="font-size:.72rem;color:var(--g400)">'+esc(ev.note)+'</div>':'')+'</div>'+
+      (ev.time?'<span style="font-size:.68rem;font-weight:800;padding:2px 8px;border-radius:20px;background:#EDE9FE;color:#5B21B6">'+esc(ev.time)+'</span>':'')+
     '</div>';
   }).join('');
   box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:18px 20px;max-width:360px;width:100%;max-height:70vh;overflow-y:auto;box-shadow:0 12px 40px rgba(0,0,0,.25)" onclick="event.stopPropagation()">'+
-    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+projects.length+' 個案場）</div>'+
+    '<div style="font-weight:900;font-size:.92rem;margin-bottom:12px">📅 '+dateStr+'（共 '+items.length+' 項）</div>'+
     rows+
     '</div>';
   box.addEventListener('click',()=>box.remove());
   box.querySelectorAll('.pc-pop-row').forEach(row=>{
     row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
     row.addEventListener('mouseleave',()=>row.style.background='');
-    row.addEventListener('click',()=>{box.remove();openProject(parseInt(row.dataset.id));});
+    row.addEventListener('click',()=>{
+      box.remove();
+      const id=parseInt(row.dataset.id);
+      if(row.dataset.ptype==='project')openProject(id);
+      else{
+        const ev=DB.get('calendar_events').find(x=>x._id===id);
+        if(ev)openCalEventModal(dateStr,ev);
+      }
+    });
   });
   document.body.appendChild(box);
 }
+
+// ── 自訂行程（像 Google 日曆一樣自己新增行程/時間，不用綁案場）─────────
+function openCalEventModal(dateStr,existingEvent){
+  const old=document.getElementById('_calEventModal');if(old)old.remove();
+  const ev=existingEvent||null;
+  const box=document.createElement('div');
+  box.id='_calEventModal';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9300;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:1rem;margin-bottom:16px;color:var(--g800)">'+(ev?'✏️ 編輯行程':'📌 新增行程')+'</div>'+
+    '<div class="field" style="margin-bottom:12px"><label class="fl">標題</label><input class="fi" id="calEvTitle" placeholder="例如：跟業主約看樣品" value="'+(ev?esc(ev.title||''):'')+'"></div>'+
+    '<div class="g2" style="margin-bottom:12px">'+
+      '<div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" type="date" id="calEvDate" value="'+(ev?ev.date:dateStr)+'"></div>'+
+      '<div class="field" style="margin:0"><label class="fl">時間（選填）</label><input class="fi" type="time" id="calEvTime" value="'+(ev&&ev.time?ev.time:'')+'"></div>'+
+    '</div>'+
+    '<div class="field" style="margin-bottom:12px"><label class="fl">關聯案場（選填）</label><select class="fi" id="calEvProject"><option value="">不指定案場</option>'+DB.get('projects').map(p=>'<option value="'+p._id+'"'+(ev&&ev.projectId===p._id?' selected':'')+'>'+esc(p.name||'未命名案場')+'</option>').join('')+'</select></div>'+
+    '<div class="field" style="margin-bottom:16px"><label class="fl">備注</label><input class="fi" id="calEvNote" placeholder="選填" value="'+(ev?esc(ev.note||''):'')+'"></div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn bg" id="calEvSaveBtn" style="flex:1">儲存</button>'+
+      (ev?'<button class="btn brd" id="calEvDelBtn">刪除</button>':'')+
+      '<button class="btn bo" id="calEvCancelBtn">取消</button>'+
+    '</div>'+
+  '</div>';
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  document.getElementById('calEvCancelBtn').addEventListener('click',()=>box.remove());
+  document.getElementById('calEvTitle').focus();
+  document.getElementById('calEvDelBtn')?.addEventListener('click',()=>{
+    confirmAction('刪除行程「'+(ev.title||'')+'」？',()=>{
+      DB.del('calendar_events',ev._id);
+      box.remove();
+      renderProjectCalendar();
+      showToast('✅ 已刪除行程');
+    });
+  });
+  document.getElementById('calEvSaveBtn').addEventListener('click',()=>{
+    const title=document.getElementById('calEvTitle').value.trim();
+    const date=document.getElementById('calEvDate').value;
+    const time=document.getElementById('calEvTime').value;
+    const note=document.getElementById('calEvNote').value.trim();
+    const projectIdSel=document.getElementById('calEvProject')?.value;
+    if(!title){showToast('⚠️ 請輸入行程標題');return;}
+    if(!date){showToast('⚠️ 請選擇日期');return;}
+    const data={title,date,time,note,projectId:projectIdSel?parseInt(projectIdSel):null,summary:'行程 '+title};
+    if(ev)DB.upd('calendar_events',ev._id,data);
+    else DB.push('calendar_events',data);
+    box.remove();
+    renderProjectCalendar();
+    showToast('✅ 已儲存行程');
+  });
+}
+
+document.getElementById('calAddEventBtn')?.addEventListener('click',()=>openCalEventModal(ymd(new Date())));
 
 
 // ── 合併重複案場（因打錯字/命名不一致而分裂成好幾筆的同一個案場）─────────
@@ -572,7 +682,7 @@ function updateMergeProjectUI(){
     primarySel.innerHTML=projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名')+'</option>').join('');
     if(ids.includes(parseInt(prevVal)))primarySel.value=prevVal;
   }
-  if(btn){btn.disabled=false;btn.textContent='🔀 合併這 '+ids.length+' 筆案場';}
+  if(btn){btn.disabled=false;btn.textContent='合併這'+ids.length+' 筆案場';}
 }
 
 document.getElementById('mergeProjBtn')?.addEventListener('click',()=>{
@@ -649,7 +759,7 @@ function openAddProject(id=null){
   const set=(elId,v)=>{const el=document.getElementById(elId);if(el)el.value=v||'';};
   set('projName',p?.name);set('projClient',p?.client);set('projAddress',p?.address);
   set('projType',p?.type||PROJECT_TYPES[0]);set('projStart',p?.startDate);set('projEnd',p?.endDate);
-  set('projNote',p?.note);
+  set('projNote',p?.note);set('projGeofence',p?.geofenceRadius||80);
 
   // 狀態選項
   const stSel=document.getElementById('projStatus');
@@ -664,41 +774,133 @@ function openAddProject(id=null){
     empSel.innerHTML='<option value="">不指定</option>'+emps.map(e=>`<option value="${e._id}"${p?.employeeId===e._id?' selected':''}>${esc(e.name)}</option>`).join('');
   }
 
+  // 業主姓名自動帶出之前的客戶清單，打字就會搜尋，選了會自動關聯到同一個客戶身上
+  const clientDL=document.getElementById('clientDatalist');
+  if(clientDL){
+    clientDL.innerHTML=DB.get('clients').map(cl=>'<option value="'+esc(cl.name)+'">').join('');
+  }
+
   document.getElementById('projModalTitle').textContent=id?'編輯案場':'新增案場';
   openModal('projModal');
 }
+
+// 案場地址轉座標（正向地理編碼），這樣打卡才能算出「距離工地多遠」——
+// 跟打卡地址反查用的是同一個免費地圖服務（OpenStreetMap Nominatim），不用另外申請、不用扣點
+// 地址轉座標：查完整地址常常查不到（尤其工業區地址，OpenStreetMap 資料庫沒收錄到門牌號那麼細），
+// 這裡改成查不到就自動簡化地址再試一次（先去掉門牌號、樓層，只留路名，再不行只留路名前半段），
+// 抓到路口大概位置就夠用了（打卡圍籬本來就不用很準，抓附近街區已經足夠判斷有沒有在工地附近）。
+async function geocodeProjectAddress(projectId,address){
+  const tryFetch=async(q)=>{
+    try{
+      const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&q='+encodeURIComponent(q)+'&countrycodes=tw&limit=1');
+      const arr=await r.json();
+      return (arr&&arr[0])?arr[0]:null;
+    }catch(e){console.log('地址轉座標失敗（'+q+'）：',e.message);return null;}
+  };
+  // 依序嘗試：完整地址 → 去掉門牌號＋樓層（留路名巷弄）→ 只留「縣市＋區＋路名」
+  const candidates=[address];
+  const noNumber=address.replace(/\d+[之\-\d]*號.*$/,'').trim(); // 去掉「163號」以後的所有文字（含樓層、室別）
+  if(noNumber&&noNumber!==address)candidates.push(noNumber);
+  const roadOnly=address.match(/^.{0,3}[縣市].{0,4}[鄉鎮市區].{2,}?[路街道]/)?.[0];
+  if(roadOnly&&!candidates.includes(roadOnly))candidates.push(roadOnly);
+
+  for(const q of candidates){
+    const hit=await tryFetch(q);
+    if(hit){
+      DB.upd('projects',projectId,{lat:parseFloat(hit.lat),lng:parseFloat(hit.lon),geoApprox:q!==address});
+      if(q!==address)console.log('📍 完整地址查不到，改用「'+q+'」查到大概位置');
+      return true;
+    }
+  }
+  console.log('地址轉座標失敗：完整地址跟簡化後都查不到座標（'+address+'）');
+  return false;
+}
+
+// 批次補齊舊案場的座標：地址轉座標這個功能是後來才加的，只有「新增案場」或「編輯儲存地址」
+// 才會觸發，之前建立、地址沒再重新存過的案場，座標欄位一直是空的，導致那些案場打卡時
+// 圍籬距離永遠抓不到。這裡一次找出所有「有地址但沒座標」的案場，依序補跑轉換。
+// Nominatim（免費地圖服務）有速率限制，一次不能查太快，這裡每筆之間留一點間隔，
+// 案場數量多的話會跑比較久，跑的時候按鈕會顯示進度，不要重複點。
+async function backfillProjectGeo(btn){
+  const targets=DB.get('projects').filter(p=>p.address&&(p.lat==null||p.lng==null));
+  if(!targets.length){showToast('✅ 所有有地址的案場都已經有座標了，不用補');return;}
+  if(btn)btn.disabled=true;
+  let done=0,ok=0;
+  for(const p of targets){
+    if(btn)btn.textContent='補齊中… ('+(done+1)+'/'+targets.length+')';
+    const success=await geocodeProjectAddress(p._id,p.address);
+    if(success)ok++;
+    done++;
+    await new Promise(r=>setTimeout(r,1100)); // 留點間隔給 Nominatim，避免被限流
+  }
+  if(btn){btn.disabled=false;btn.textContent='📍 補齊打卡座標';}
+  showToast('✅ 補齊完成：'+ok+'/'+targets.length+' 個案場查到座標'+(ok<targets.length?'，剩下的可能地址格式特殊查不到，可到案場資料手動確認地址':''));
+  // 如果現在正開著案場總覽或某個案場詳情，重新整理畫面讓新座標生效
+  if(typeof renderProjects==='function')renderProjects();
+}
+
 
 function saveProject(){
   const get=id=>document.getElementById(id)?.value?.trim()||'';
   const name=get('projName');
   if(!name){showToast('⚠️ 請填入案場名稱');return;}
   const existing=projEditId?getProject(projEditId):null;
+  const clientName=get('projClient');
+  // 業主姓名比對既有客戶：名字一樣就當作同一個人，掛到同一個客戶底下；
+  // 找不到就自動幫他建一筆新客戶——不用另外跑去「客戶總覽」手動新增，維持原本打名字就好的操作習慣
+  let clientId=existing?.clientId||null;
+  if(clientName){
+    const matched=DB.get('clients').find(cl=>cl.name===clientName);
+    if(matched){
+      clientId=matched._id;
+    }else if(!clientId){
+      const created=DB.push('clients',{name:clientName,phone:'',addr:get('projAddress')});
+      clientId=created[0]._id;
+    }
+  }
   const data={
-    name, client:get('projClient'), address:get('projAddress'),
+    name, client:clientName, clientId, address:get('projAddress'),
     type:get('projType')||PROJECT_TYPES[0], status:get('projStatus')||'inquiry',
     startDate:get('projStart'), endDate:get('projEnd'), note:get('projNote'),
     employeeId:document.getElementById('projEmployee')?.value||'',
+    geofenceRadius:parseInt(get('projGeofence'))||80,
     token:existing?.token||('zj'+Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4)),
     summary:'案場 '+name,
   };
+  const addressChanged=!existing||existing.address!==data.address;
   if(projEditId){
     DB.upd('projects',projEditId,data);
     showToast('✅ 案場資料已更新');
+    if(addressChanged&&data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(projEditId,data.address);
   } else {
     const arr=DB.push('projects',data);
     const newId=arr[0]._id;
     showToast('✅ 案場已建立！');
+    if(data.address&&typeof geocodeProjectAddress==='function')geocodeProjectAddress(newId,data.address);
+    closeModal('projModal');
+    renderProjects();
+
+    // 如果這次新增案場，是從別的地方（例如存進度時發現還沒選案場）跳過來的，
+    // 存完不要再跳「接下來要做什麼」的提示，而是直接帶著新案場的編號回去，繼續完成原本卡住的那件事
+    if(_pendingProjectCallback){
+      const {selectEl,onReady}=_pendingProjectCallback;
+      _pendingProjectCallback=null;
+      if(typeof buildProjectSelect==='function')buildProjectSelect(selectEl,newId);
+      else if(selectEl)selectEl.value=newId;
+      showToast('✅ 已自動選好剛新增的案場，繼續儲存');
+      onReady(newId);
+      return;
+    }
+
     // 建立後提示下一步
     setTimeout(()=>{
       showNextStep('案場已建立！接下來可以：', [
-        {label:'📋 建立報價單', action:()=>{closeModal('projModal');openProject(newId,'quote');}},
-        {label:'📝 上傳合約',  action:()=>{closeModal('projModal');openProject(newId,'contract');}},
-        {label:'稍後再說',     action:()=>closeModal('projModal')},
+        {label:'📋 建立報價單', action:()=>{openProject(newId,'quote');}},
+        {label:'📝 上傳合約',  action:()=>{openProject(newId,'contract');}},
+        {label:'稍後再說',     action:()=>{}},
       ]);
       return;
     }, 300);
-    closeModal('projModal');
-    renderProjects();
     return;
   }
   closeModal('projModal');
@@ -763,8 +965,8 @@ function renderProjectDetail(id, activeTab='overview'){
   }
 
   // Tab 切換
-  const tabs=['overview','quote','vendor','contract','ledger','progress'];
-  const tabLabels={overview:'📊 總覽',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度'};
+  const tabs=['overview','survey','quote','vendor','contract','ledger','progress','design','memo'];
+  const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
     tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
@@ -773,14 +975,20 @@ function renderProjectDetail(id, activeTab='overview'){
   // Tab 內容
   const content=document.getElementById('projDetailContent');
   if(!content) return;
+  content.dataset.projId=id;
+  content.dataset.tab=activeTab;
+
 
   switch(activeTab){
     case 'overview': renderProjOverview(id,p,content); break;
+    case 'survey':   renderProjSurvey(id,p,content);   break;
     case 'quote':    renderProjQuotes(id,p,content);   break;
     case 'vendor':   renderProjVendors(id,p,content);  break;
     case 'contract': renderProjContract(id,p,content); break;
     case 'ledger':   renderProjLedger(id,p,content);   break;
     case 'progress': renderProjProgress(id,p,content); break;
+    case 'design': renderProjDesign(id,p,content); break;
+    case 'memo': renderProjMemo(id,p,content); break;
   }
 }
 
@@ -791,8 +999,12 @@ function renderProjOverview(id,p,c){
   const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
   const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
   const income=ledgerItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
-  const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
-  const vendorCost=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  // 修正重點：在廠商報價那邊「標記付款」時，系統會自動在帳款裡多記一筆內帳支出（雙式記帳，方便對帳），
+  // 但這筆帳原本的錢，其實已經算在下面的 vendorCost（廠商報價金額）裡了——
+  // 一筆錢被算了兩次：一次是「廠商報價本身」，一次是「付款時自動產生的內帳支出」。
+  // 這裡改成內帳支出只算「跟廠商付款無關」的那些（沒有 vendorId 標記的），廠商的錢統一只透過 vendorCost 算一次。
+  const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
+  const vendorCost=vendors.reduce((s,v)=>s+getVendorTrueCost(v),0);
   const profit=income-cost-vendorCost;
   const st=PROJECT_STATUS[p.status||'inquiry'];
 
@@ -800,7 +1012,7 @@ function renderProjOverview(id,p,c){
     <div class="g3" style="margin-bottom:20px">
       <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">客戶收款</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${(cost+vendorCost)?'NT$'+(cost+vendorCost).toLocaleString():'NT$0'}</div><div class="sl">工程成本</div></div>
-      <div class="stat"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${(profit>=0?'+':'')}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利</div></div>
+      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
       ${[
@@ -818,13 +1030,15 @@ function renderProjOverview(id,p,c){
         </div>`).join('')}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn bg" onclick="shareProjectToClient(${id})" style="background:var(--ok);color:#fff">📱 分享給業主</button>
-      <button class="btn bo" onclick="openAddProject(${id})">✏️ 編輯案場資料</button>
+      <button class="btn bg" onclick="shareProjectToClient(${id})" style="background:var(--ok);color:#fff">分享給業主</button>
+      <button class="btn bo" onclick="openAddProject(${id})">編輯案場資料</button>
       <select onchange="if(this.value)updateProjectStatus(${id},this.value)" style="padding:8px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
         <option value="">更改狀態...</option>
         ${Object.entries(PROJECT_STATUS).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
       </select>
-    </div>`;
+      <button class="btn bo" id="catProfitToggleBtn" onclick="toggleProjCatProfit(${id})">工種毛利</button>
+    </div>
+    <div id="projCatProfitBox" style="display:none;margin-top:14px;padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r)"></div>`;
 }
 
 function updateProjectStatus(id,status){
@@ -852,7 +1066,7 @@ function renderProjQuotes(id,p,c){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
       <div style="display:flex;gap:8px">
-        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">📎 上傳報價單檔案</button>
+        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">上傳報價單檔案</button>
         <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
       </div>
     </div>
@@ -884,12 +1098,67 @@ function openQuoteFileUpload(projectId){
   openModal('qFileModal');
 }
 
+// ── 案場丈量 Tab（現場量尺寸，一個房間一筆，之後報價可以直接參考）───────
+function renderProjSurvey(id,p,c){
+  const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
+      <div>
+        <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
+        ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
+      </div>
+      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
+    </div>
+    ${items.length?items.map(m=>`
+      <div class="card" style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:.92rem">${esc(m.room||'未命名區域')}</div>
+            <div style="font-size:.78rem;color:var(--g400);margin-top:3px">
+              ${m.length&&m.width?`${m.length}m × ${m.width}m　=　`:''}<strong style="color:var(--gold-d)">${(m.area||0).toFixed(2)} 坪</strong>
+            </div>
+            ${m.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(m.note)}</div>`:''}
+          </div>
+          <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
+        </div>
+        ${(m.fileUrls||[]).length?`
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px">
+            ${m.fileUrls.map(f=>`<img src="${esc(f.url||f)}" onclick="openLB('${esc(f.url||f)}')" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}
+          </div>`:''}
+      </div>`).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「＋新增丈量」，一個房間量一次，之後報價可以直接參考</div></div>'}`;
+}
+
+function openSurveyModal(projectId){
+  curProjectId=projectId;
+  svImgUrl=[];
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  set('svRoom','');set('svLen','');set('svWid','');set('svNote','');
+  if(typeof updSurveyArea==='function')updSurveyArea();
+  const fc=document.getElementById('svFileCard');if(fc)fc.style.display='none';
+  const grid=document.getElementById('svPhotoGrid');if(grid)grid.innerHTML='';
+  const fi=document.getElementById('svFile');if(fi)fi.value='';
+  openModal('surveyModal');
+}
+
+function deleteSurvey(measureId,projectId){
+  confirmAction('確定刪除這筆丈量記錄？',()=>{
+    DB.softDel('measurements',measureId);
+    renderProjectDetail(projectId,'survey');
+    showToast('✅ 已刪除');
+  });
+}
+
 // 修正重點：這個函式原本在案場總覽的報價分頁裡被呼叫（點開一份已存在的報價單），
 // 但整個程式碼裡從來沒有真的定義過，點下去等於完全沒反應。
 // 現在補上：如果這份報價單只有上傳的檔案、沒有明細（用上面新增的上傳功能存的），開一個小視窗顯示附件；
 // 如果是有明細的報價單（用系統的報價編輯器建立的），才進去完整的編輯畫面。
 function openQuoteEdit(id){
   const q=DB.get('quotes').find(r=>r._id===id);if(!q)return;
+  // 這裡本來沒有設定 qEditId，導致從案場詳情的「報價」分頁點進來編輯、存檔時，
+  // 系統會誤判成「這是一份新報價」而另外新增一筆，不是更新原本這筆——
+  // 這就是為什麼案場詳情看到的金額改了，但「報價管理」列表那邊的舊記錄還是沒變、變成兩筆對不起來的真正原因。
+  qEditId=id;
   const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
   const fileUrls=q.fileUrls||[];
 
@@ -925,6 +1194,14 @@ function openQuoteEdit(id){
 
   // 有明細的報價單：載入完整報價編輯器（跟「報價管理」列表頁點編輯是同一套邏輯）
   adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
+  // 把這份報價單當初存的管理費％數帶回來（沒存過的舊報價單，退回預設 8%）
+  curMgmtRate=(typeof q.mgmtFeeRate==='number')?q.mgmtFeeRate:8;
+  const rateInput=document.getElementById('adMgmtRate');if(rateInput)rateInput.value=curMgmtRate;
+  const waiveBtn=document.getElementById('adMgmtWaive');
+  if(waiveBtn){
+    if(curMgmtRate===0){waiveBtn.textContent='↩️ 取消贈送';waiveBtn.style.background='var(--ok-bg)';waiveBtn.style.color='var(--ok)';waiveBtn.style.borderColor='var(--ok-bd)';}
+    else{waiveBtn.textContent='贈送';waiveBtn.style.background='var(--gold-pale)';waiveBtn.style.color='var(--gold-d)';waiveBtn.style.borderColor='var(--gold-l)';}
+  }
   const adN=document.getElementById('adN');if(adN)adN.value=q.name||'';
   const adAd=document.getElementById('adAd');if(adAd)adAd.value=q.addr||'';
   const qbClient=document.getElementById('adQbClient');if(qbClient)qbClient.textContent=q.name||'—';
@@ -951,28 +1228,417 @@ function newProjQuote(projectId){
   }, 300);
 }
 
+// 案場詳情「廠商報價」分頁目前選的工種篩選，每個案場各自記自己選到哪個工種（預設「全部」）
+const projVendorCatFilter={};
+
 // ── 案場廠商報價 Tab ──────────────────────────────────────
 function renderProjVendors(id,p,c){
-  const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const allVendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const curCat=projVendorCatFilter[id]||'all';
+  const vendors=curCat==='all'?allVendors:allVendors.filter(v=>(v.cat||'其他')===curCat);
   const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
+  // 已付款總額：把這個案場底下每一筆廠商報價的付款紀錄加總，一眼看出付了多少、還欠多少
+  const paidTotal=vendors.reduce((s,v)=>s+getVendorPaid(v),0);
+
+  // 同一個工種常常會有好幾家廠商在比價（例如平鎮案場水電就有三組），列表一長就很難一次比較。
+  // 這裡把這個案場實際出現過的工種都列成篩選頁籤，點哪個工種就只看那個工種底下的幾筆報價，方便互相比較。
+  const catCounts={};
+  allVendors.forEach(v=>{const k=v.cat||'其他';catCounts[k]=(catCounts[k]||0)+1;});
+  const cats=Object.keys(catCounts).sort((a,b)=>catCounts[b]-catCounts[a]);
+
   c.innerHTML=`
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-weight:800;color:var(--g700)">廠商報價（${vendors.length} 筆）</div>
+        <div style="font-weight:800;color:var(--g700)">廠商報價（${allVendors.length} 筆${curCat!=='all'?'，目前篩選 '+vendors.length+' 筆':''}）</div>
         ${total?`<div style="font-size:.82rem;color:var(--bad);font-weight:700">合計成本：NT$${total.toLocaleString()}</div>`:''}
+        ${paidTotal>0?`<div style="font-size:.78rem;color:var(--ok);font-weight:700;margin-top:2px">已付款：NT$${paidTotal.toLocaleString()}${paidTotal<total?'　尚欠：NT$'+(total-paidTotal).toLocaleString():'（已付清）'}</div>`:''}
       </div>
       <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
     </div>
-    ${vendors.length?vendors.map(v=>`
-      <div class="card" style="margin-bottom:8px">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div>
-            <div style="font-weight:700">${esc(v.vendor||'廠商')}</div>
-            <div style="font-size:.75rem;color:var(--g400)">${esc(v.cat||'')} ${v.caseN?' · '+esc(v.caseN):''}</div>
+    ${cats.length>1?`<div id="projVendorCatFilt" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
+      <button class="btn ${curCat==='all'?'bg':'bo'} bxs" data-pvcat="all">全部（${allVendors.length}）</button>
+      ${cats.map(cat=>`<button class="btn ${curCat===cat?'bg':'bo'} bxs" data-pvcat="${esc(cat)}">${esc(cat)}（${catCounts[cat]}）</button>`).join('')}
+    </div>`:''}
+    <div id="projVendorCards"></div>`;
+
+  c.querySelectorAll('[data-pvcat]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      projVendorCatFilter[id]=btn.dataset.pvcat;
+      renderProjVendors(id,p,c);
+    });
+  });
+
+  const wrap=c.querySelector('#projVendorCards');
+  if(!vendors.length){
+    wrap.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+(curCat==='all'?'尚無廠商報價':'這個工種底下還沒有廠商報價')+'</div></div>';
+    return;
+  }
+  // 直接沿用「廠商報價整理」頁面同一套卡片（可展開看細項、改廠商名稱／類別／備注／工項、標記付款、刪除），
+  // 這樣不用切去別的頁面找那一筆廠商報價，在案場詳情裡就能直接編輯，操作起來順很多。
+  vendors.forEach(v=>wrap.appendChild(buildVendorCard(v)));
+}
+
+// ── 案場設計圖 Tab（上傳平面圖、設計圖、渲染圖，跟業主或廠商共享用）────────
+function renderProjDesign(id,p,c){
+  const items=DB.get('design_files').filter(d=>d.projectId===id&&!d.deleted).sort((a,b)=>b._id-a._id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">設計圖（${items.length} 張）</div>
+      <button class="btn bg bsm" onclick="openProjDesignUpload(${id})">＋ 上傳設計圖</button>
+    </div>
+    <div id="projDesignGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px"></div>`;
+  const grid=c.querySelector('#projDesignGrid');
+  if(!items.length){
+    grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="es-ic">🖼️</div><div class="es-t">尚無設計圖</div><div class="es-s">點右上方「上傳設計圖」，可上傳平面圖、設計圖、渲染圖等</div></div>';
+  } else {
+    items.forEach(d=>{
+      const card=document.createElement('div');
+      card.style.cssText='position:relative;border-radius:var(--rs);overflow:hidden;background:var(--g100);aspect-ratio:4/3;cursor:pointer';
+      if(d.imgDataUrl){
+        card.innerHTML=`<img src="${d.imgDataUrl}" style="width:100%;height:100%;object-fit:cover;display:block">`;
+        card.addEventListener('click',()=>openLB(d.imgDataUrl));
+      }else{
+        card.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-size:1.5rem">📄</div>';
+      }
+      card.innerHTML+=`<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.5);color:#fff;font-size:.68rem;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(d.name||d.date||'設計圖')}</div>
+        <button onclick="event.stopPropagation();confirmAction('刪除這張設計圖？',()=>{DB.softDel('design_files',${d._id});renderProjDesign(${id},null,document.getElementById('projDetailContent'));})" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;background:rgba(200,0,0,.7);border:none;color:#fff;cursor:pointer;font-size:.68rem;line-height:1">✕</button>`;
+      grid.appendChild(card);
+    });
+  }
+}
+function openProjDesignUpload(projectId){
+  const input=document.createElement('input');input.type='file';input.accept='image/*,.pdf';input.multiple=true;
+  input.addEventListener('change',async()=>{
+    const files=[...input.files];if(!files.length)return;
+    let count=0;
+    for(const file of files){
+      const reader=new FileReader();
+      await new Promise(res=>{ reader.onload=()=>{
+        const imgDataUrl=reader.result;
+        DB.push('design_files',{projectId,name:file.name,date:new Date().toISOString().split('T')[0],imgDataUrl,summary:'設計圖 '+file.name});
+        count++;res();
+      };reader.readAsDataURL(file);});
+    }
+    renderProjDesign(projectId,null,document.getElementById('projDetailContent'));
+    showToast('✅ 已上傳 '+count+' 張設計圖');
+  });
+  input.click();
+}
+
+// ── 案場備忘錄 Tab（跟這個案場有關的任何筆記，例如業主特殊要求、廠商溝通紀錄）────
+function renderProjMemo(id,p,c){
+  const memos=DB.get('memos').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  c.innerHTML=`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-weight:800;color:var(--g700)">備忘錄（${memos.length} 則）</div>
+      <button class="btn bg bsm" onclick="openProjMemoModal(${id})">＋ 新增備忘</button>
+    </div>
+    <div id="projMemoList"></div>`;
+  const list=c.querySelector('#projMemoList');
+  if(!memos.length){
+    list.innerHTML='<div class="empty-state"><div class="es-ic">📝</div><div class="es-t">尚無備忘錄</div><div class="es-s">點右上方「新增備忘」記下業主特殊要求、廠商溝通紀錄、施工注意事項等</div></div>';
+  } else {
+    list.innerHTML=memos.map(m=>`
+      <div style="background:var(--w);border:1.5px solid var(--g200);border-radius:var(--rs);padding:14px 16px;margin-bottom:10px;transition:all var(--ease)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px">
+          <div style="font-size:.72rem;color:var(--g400)">${m.date||''} ${m.cat?'· '+esc(m.cat):''}</div>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button onclick="openProjMemoModal(${id},${m._id})" style="background:none;border:none;color:var(--g400);cursor:pointer;font-size:.8rem;padding:0">✏️</button>
+            <button onclick="confirmAction('刪除這則備忘錄？',()=>{DB.softDel('memos',${m._id});renderProjMemo(${id},null,document.getElementById('projDetailContent'));})" style="background:none;border:none;color:var(--bad);cursor:pointer;font-size:.8rem;padding:0">🗑</button>
           </div>
-          <div style="font-weight:900;color:var(--bad)">NT$${(v.amount||0).toLocaleString()}</div>
         </div>
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">尚無廠商報價</div></div>'}`;
+        <div style="font-size:.88rem;color:var(--g700);white-space:pre-wrap;word-break:break-word">${esc(m.content||'')}</div>
+        ${m.imgDataUrl?`<img src="${m.imgDataUrl}" onclick="openLB('${m.imgDataUrl}')" style="max-width:100%;max-height:180px;border-radius:var(--rxs);margin-top:10px;cursor:pointer;object-fit:cover">`:''}
+      </div>`).join('');
+  }
+}
+function openProjMemoModal(projectId,memoId){
+  const old=document.getElementById('_memoModal');if(old)old.remove();
+  const ex=memoId?DB.get('memos').find(m=>m._id===memoId):null;
+  const box=document.createElement('div');box.id='_memoModal';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9300;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:440px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">
+    <div style="font-weight:900;font-size:1rem;margin-bottom:16px">${ex?'✏️ 編輯備忘錄':'📝 新增備忘錄'}</div>
+    <div class="g2" style="margin-bottom:10px">
+      <div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" type="date" id="_memoDate" value="${ex?.date||new Date().toISOString().split('T')[0]}"></div>
+      <div class="field" style="margin:0"><label class="fl">分類（選填）</label><input class="fi" id="_memoCat" placeholder="例：業主要求" value="${esc(ex?.cat||'')}"></div>
+    </div>
+    <div class="field" style="margin-bottom:10px"><label class="fl">內容</label><textarea class="fi" id="_memoContent" rows="4" placeholder="記下任何跟這個案場有關的備注…" style="resize:vertical">${esc(ex?.content||'')}</textarea></div>
+    <div style="margin-bottom:16px">
+      <div style="font-size:.8rem;color:var(--g500);margin-bottom:6px">附圖（選填）</div>
+      ${ex?.imgDataUrl?`<img src="${ex.imgDataUrl}" id="_memoImgPreview" style="max-width:100%;max-height:140px;border-radius:var(--rxs);object-fit:cover;display:block;margin-bottom:6px">`:'<div id="_memoImgPreview" style="display:none"></div>'}
+      <button onclick="document.getElementById('_memoFileInp').click()" style="padding:6px 12px;border-radius:var(--rs);border:1.5px dashed var(--g200);background:var(--g50);color:var(--g500);cursor:pointer;font-size:.78rem;font-family:inherit">上傳照片</button>
+      <input type="file" id="_memoFileInp" accept="image/*" style="display:none">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn bg" id="_memoSaveBtn" style="flex:1">儲存</button>
+      ${ex?`<button class="btn brd" onclick="confirmAction('刪除這則備忘錄？',()=>{DB.softDel('memos',${memoId});document.getElementById('_memoModal').remove();renderProjMemo(${projectId},null,document.getElementById('projDetailContent'));})">刪除</button>`:''}
+      <button class="btn bo" onclick="document.getElementById('_memoModal').remove()">取消</button>
+    </div>
+  </div>`;
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  let _memoImg=ex?.imgDataUrl||null;
+  document.getElementById('_memoFileInp').addEventListener('change',function(){
+    const f=this.files[0];if(!f)return;
+    const r=new FileReader();r.onload=()=>{
+      _memoImg=r.result;
+      const prev=document.getElementById('_memoImgPreview');
+      prev.src=_memoImg;prev.style.display='block';
+    };r.readAsDataURL(f);
+  });
+  document.getElementById('_memoSaveBtn').addEventListener('click',()=>{
+    const content=document.getElementById('_memoContent').value.trim();
+    if(!content){showToast('⚠️ 請輸入備忘內容');return;}
+    const data={projectId,date:document.getElementById('_memoDate').value,cat:document.getElementById('_memoCat').value.trim(),content,imgDataUrl:_memoImg,summary:'備忘 '+content.slice(0,20)};
+    if(ex)DB.upd('memos',memoId,data);
+    else DB.push('memos',data);
+    box.remove();
+    renderProjMemo(projectId,null,document.getElementById('projDetailContent'));
+    showToast('✅ 已儲存備忘錄');
+  });
+}
+
+function showProjVendorDetail(vendorId){
+  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const items=v.items||[];
+  const itemRows=items.length
+    ? items.map(it=>'<div style="display:flex;justify-content:space-between;padding:7px 0;font-size:.85rem;border-top:1px dashed var(--g100)">'+
+        '<span style="color:var(--g600)">'+esc(it.name||'（未命名）')+(it.taxType==='excl'?' <span style="font-size:.65rem;color:#8A6D1E">（未稅）</span>':'')+'</span>'+
+        '<span style="font-family:monospace;color:var(--g600)">NT$'+(it.amount||0).toLocaleString()+'</span>'+
+      '</div>').join('')
+    : '<div style="padding:8px 0;font-size:.82rem;color:var(--g400)">這筆沒有拆細項，只有總價</div>';
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:420px">'+
+    '<div class="mtit">'+esc(v.vendor||'廠商')+' <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin-bottom:10px">'+esc(v.cat||'')+'</div>'+
+    '<div style="background:var(--gold-pale);border-radius:var(--rs);padding:10px 14px;margin-bottom:12px;text-align:center">'+
+      '<div style="font-size:.7rem;color:var(--gold-d);font-weight:800">報價總額</div>'+
+      '<div style="font-family:monospace;font-weight:900;font-size:1.15rem;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+    '</div>'+
+    '<div style="max-height:40vh;overflow-y:auto">'+itemRows+'</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+}
+
+// 各工程類別（工種）的毛利拆分：廠商成本只算「已標記✅已採用」的那家（同工種可能有好幾家在比價，
+// 只有真正選定的那家才算數，不然同一個工種的成本會被好幾張報價單重複加總）；
+// 客戶報價則抓報價單各大項的對客小計（依 sec.name 對應工種名稱）。
+// 兩邊都支援手動覆寫（p.catProfitOverride），蓋掉自動算出來的數字，蓋過的欄位會一直沿用，
+// 直到使用者自己把輸入框清空為止，才會改回自動計算。
+// 「毛利明細」彈窗跟案場總覽的「工種毛利」卡片共用這套計算，避免兩個地方各寫一次，數字卻對不起來。
+function getProjCatProfitRows(projectId,includeHidden){
+  const p=DB.get('projects').find(x=>x._id===projectId)||{};
+  const overrides=p.catProfitOverride||{};
+  const hidden=p.catProfitHidden||[];
+  const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
+  const adoptedByCat={};
+  vendorList.filter(v=>v.adopted).forEach(v=>{
+    const k=v.cat||'其他';
+    if(!adoptedByCat[k])adoptedByCat[k]={vendor:v.vendor||'',cost:0};
+    adoptedByCat[k].cost+=getVendorTrueCost(v);
+    if(v.vendor&&!adoptedByCat[k].vendor.split('、').includes(v.vendor))adoptedByCat[k].vendor=adoptedByCat[k].vendor?adoptedByCat[k].vendor+'、'+v.vendor:v.vendor;
+  });
+  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
+  const clientByCat={};
+  quotes.forEach(q=>{
+    (q.sections||[]).forEach(sec=>{
+      const secTotal=typeof calcSec==='function'?calcSec(sec.items||[]):(sec.items||[]).reduce((s,it)=>s+((it.qty||0)*(it.price||0)),0);
+      const k=sec.name||'其他';
+      clientByCat[k]=(clientByCat[k]||0)+secTotal;
+    });
+  });
+  // 類別清單：把「所有出現過廠商報價的工種」＋「報價單裡的大項」＋「手動輸入過的類別」都列出來，
+  // 就算某個工種還沒標記採用的廠商，也看得到它躺在清單裡（廠商欄位會顯示「未標記採用」提醒你去選）。
+  // 使用者手動隱藏過的類別（用不到的空類別），預設不顯示，除非明確要求包含隱藏的（給「顯示已隱藏」用）
+  const allVendorCats=[...new Set(vendorList.map(v=>v.cat||'其他'))];
+  const allCats=[...new Set([...allVendorCats,...Object.keys(clientByCat),...Object.keys(overrides)])]
+    .filter(cat=>includeHidden||!hidden.includes(cat));
+  const catRows=allCats.map(cat=>{
+    const ov=overrides[cat]||{};
+    const vcAuto=(adoptedByCat[cat]&&adoptedByCat[cat].cost)||0;
+    const ccAuto=clientByCat[cat]||0;
+    const vcOverridden=typeof ov.vc==='number';
+    const ccOverridden=typeof ov.cc==='number';
+    const vc=vcOverridden?ov.vc:vcAuto;
+    const cc=ccOverridden?ov.cc:ccAuto;
+    const cp=cc-vc;
+    const margin=cc?Math.round(cp/cc*1000)/10:null;
+    return {cat,vendor:(adoptedByCat[cat]&&adoptedByCat[cat].vendor)||'',vc,cc,cp,margin,vcOverridden,ccOverridden};
+  }).sort((a,b)=>b.vc-a.vc);
+  const catTotal=catRows.reduce((s,r)=>s+r.cp,0);
+  return {catRows,catTotal,hiddenCount:hidden.length};
+}
+
+// 把用不到的空類別（廠商成本、客戶報價都是 0 的那種）從「工種毛利」表裡藏起來，
+// 存在案場資料的 catProfitHidden 清單裡，不是真的刪掉任何交易紀錄，隨時可以「顯示已隱藏」復原
+function hideCatProfitRow(projectId,cat){
+  const p=DB.get('projects').find(x=>x._id===projectId);if(!p)return;
+  const hidden=[...(p.catProfitHidden||[])];
+  if(!hidden.includes(cat))hidden.push(cat);
+  DB.upd('projects',projectId,{catProfitHidden:hidden});
+  refreshCatProfitViews(projectId);
+  showToast('已隱藏「'+cat+'」，不想看到它了可以放心，隨時能按「顯示已隱藏」復原');
+}
+function unhideAllCatProfitRows(projectId){
+  DB.upd('projects',projectId,{catProfitHidden:[]});
+  refreshCatProfitViews(projectId);
+}
+// 工種毛利現在有兩個地方會顯示（案場總覽的展開卡片、毛利明細彈窗），
+// 隱藏／復原／改手動輸入之後兩邊都要一起更新，而且重畫過的輸入框要重新接上事件才會繼續能改
+function refreshCatProfitViews(projectId){
+  const box=document.getElementById('projCatProfitBox');
+  if(box&&box.style.display!=='none'){
+    box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(projectId);
+    wireCatProfitInputs(box,projectId);
+  }
+  const pane=document.getElementById('profitPaneCat');
+  if(pane){
+    pane.innerHTML=buildCatProfitHtml(projectId);
+    wireCatProfitInputs(pane,projectId);
+  }
+}
+
+function buildCatProfitHtml(projectId){
+  const {catRows,catTotal,hiddenCount}=getProjCatProfitRows(projectId);
+  const inputStyle=overridden=>'width:92px;text-align:right;padding:4px 6px;border:1.5px solid '+(overridden?'var(--gold-l)':'var(--g200)')+';border-radius:var(--rxs);font-family:monospace;font-size:.8rem;background:'+(overridden?'var(--gold-pale)':'var(--w)')+';outline:none';
+  const catTableHtml=catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px">'+
+    '<thead><tr style="border-bottom:1.5px solid var(--g200)">'+
+      '<th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">工種</th>'+
+      '<th style="text-align:left;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">廠商成本</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">客戶報價</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">工種毛利</th>'+
+      '<th style="text-align:right;padding:6px 4px;color:var(--g400);font-size:.7rem;font-weight:800">毛利率</th>'+
+      '<th style="width:26px"></th>'+
+    '</tr></thead>'+
+    '<tbody>'+catRows.map(r=>'<tr style="border-bottom:1px dashed var(--g100)">'+
+      '<td style="padding:6px 4px;font-weight:700;white-space:nowrap">'+esc(r.cat)+'</td>'+
+      '<td style="padding:6px 4px;color:var(--g500);white-space:nowrap">'+(r.vendor?esc(r.vendor):'<span style="color:var(--g300)">未標記採用</span>')+'</td>'+
+      '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="vc" value="'+r.vc+'" inputmode="numeric" style="'+inputStyle(r.vcOverridden)+'"></td>'+
+      '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="cc" value="'+r.cc+'" inputmode="numeric" style="'+inputStyle(r.ccOverridden)+'"></td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace;font-weight:800;white-space:nowrap;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.cp>=0?'+':'')+r.cp.toLocaleString()+'</td>'+
+      '<td style="padding:6px 4px;text-align:right;font-family:monospace;white-space:nowrap;color:'+(r.cp>=0?'var(--ok)':'var(--bad)')+'">'+(r.margin===null?'－':r.margin+'%')+'</td>'+
+      '<td style="padding:6px 4px;text-align:center"><button onclick="hideCatProfitRow('+projectId+',\''+esc(r.cat).replace(/'/g,"\\'")+'\')" title="用不到這個類別，從表裡藏起來（不會刪掉任何交易紀錄，可以復原）" style="width:22px;height:22px;border:1px solid var(--g200);background:var(--w);border-radius:50%;color:var(--g400);cursor:pointer;font-size:.68rem;line-height:1;padding:0">✕</button></td>'+
+    '</tr>').join('')+
+    '</tbody></table></div>'
+    :'<div style="padding:10px 0;font-size:.82rem;color:var(--g400)">尚無廠商報價或客戶報價單資料，無法拆分工種</div>';
+  const hiddenLink=hiddenCount?'<div style="text-align:right;margin-top:6px"><span style="font-size:.72rem;color:var(--g400)">已隱藏 '+hiddenCount+' 個類別　</span><button onclick="unhideAllCatProfitRows('+projectId+')" style="background:none;border:none;color:var(--gold-d);font-size:.72rem;font-weight:700;cursor:pointer;text-decoration:underline;padding:0">全部顯示</button></div>':'';
+  return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。用不到的類別可以點右邊 ✕ 藏起來。</div>'+
+    catTableHtml+
+    hiddenLink+
+    '<div style="padding:12px 16px;margin-top:10px;border-radius:var(--rs);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(catTotal>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
+      '<span style="font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">各工種毛利合計</span>'+
+      '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+'NT$'+catTotal.toLocaleString()+'</span>'+
+    '</div>';
+}
+
+// 幫「工種毛利」表裡的手動輸入框接上事件：改完（欄位失焦或按 Enter）就存進案場資料，
+// 並且把目前畫面上看得到的（總覽卡片、毛利明細彈窗）都重新算一次刷新，兩邊才不會兜不起來
+function wireCatProfitInputs(container,projectId){
+  if(!container)return;
+  container.querySelectorAll('.catProfitInput').forEach(inp=>{
+    let debounceTimer=null;
+    const commit=()=>{
+      const cat=inp.dataset.cat,field=inp.dataset.field;
+      const p=DB.get('projects').find(x=>x._id===projectId);if(!p)return;
+      const overrides={};
+      Object.keys(p.catProfitOverride||{}).forEach(k=>{overrides[k]={...(p.catProfitOverride[k]||{})};});
+      const raw=inp.value.trim();
+      overrides[cat]=overrides[cat]||{};
+      if(raw===''){
+        delete overrides[cat][field];
+        if(Object.keys(overrides[cat]).length===0)delete overrides[cat];
+      }else{
+        const num=Number(raw.replace(/,/g,''));
+        if(!isNaN(num))overrides[cat][field]=num;
+      }
+      DB.upd('projects',projectId,{catProfitOverride:overrides});
+      showToast('✅ 已更新工種毛利');
+      refreshCatProfitViews(projectId);
+    };
+    // 用 input（打字/清空當下就觸發）而不是 change（要失焦才觸發）：
+    // 之前如果直接把數字清空但沒有再點別的地方讓欄位失焦，change 事件不會發生，
+    // 畫面看起來清空了、但其實還沒存回去，也沒有真的變回自動計算的數字，就是「沒辦法歸零」的原因。
+    inp.addEventListener('input',()=>{
+      clearTimeout(debounceTimer);
+      debounceTimer=setTimeout(commit,600); // 停止打字 0.6 秒後才存檔，不會每打一個字就存一次
+    });
+    inp.addEventListener('blur',()=>{clearTimeout(debounceTimer);commit();}); // 失焦時立刻存，不用等
+  });
+}
+
+// 案場總覽頁的「🔧 工種毛利」按鈕：不開彈窗，直接在按鈕下方展開／收合明細，符合「明細放在下方」的需求
+function toggleProjCatProfit(id){
+  const box=document.getElementById('projCatProfitBox');if(!box)return;
+  const btn=document.getElementById('catProfitToggleBtn');
+  const opening=box.style.display==='none';
+  if(opening){
+    box.innerHTML='<div style="font-weight:800;color:var(--g700);margin-bottom:10px">🔧 工種毛利（依類別拆分）</div>'+buildCatProfitHtml(id);
+    box.style.display='block';
+    wireCatProfitInputs(box,id);
+    if(btn){btn.style.background='var(--gold-pale)';btn.style.borderColor='var(--gold-l)';btn.style.color='var(--gold-d)';btn.textContent='工種毛利（收起 ▲）';}
+  }else{
+    box.style.display='none';
+    if(btn){btn.style.background='';btn.style.borderColor='';btn.style.color='';btn.textContent='工種毛利';}
+  }
+}
+
+function showProjProfitDetail(projectId){
+  const items=DB.get('ledger').filter(l=>l.projectId===projectId);
+  const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
+  const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
+  const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
+  const income=incomeItems.reduce((s,l)=>s+(l.amount||0),0);
+  const cost=costItems.reduce((s,l)=>s+(l.amount||0),0);
+  const vendorCost=vendorList.reduce((s,v)=>s+getVendorTrueCost(v),0);
+  const profit=income-cost-vendorCost;
+
+  const section=(title,rows,total,color)=>{
+    const rowsHtml=rows.length
+      ? rows.map(r=>'<div style="display:flex;justify-content:space-between;padding:6px 0;font-size:.82rem;border-top:1px dashed var(--g100)"><span style="color:var(--g600)">'+esc(r.name)+'</span><span style="font-family:monospace;color:var(--g600)">'+(r.amount||0).toLocaleString()+'</span></div>').join('')
+      : '<div style="padding:6px 0;font-size:.8rem;color:var(--g400)">沒有記錄</div>';
+    return '<div style="margin-bottom:14px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">'+
+        '<span style="font-size:.85rem;font-weight:800;color:'+color+'">'+title+'</span>'+
+        '<span style="font-family:monospace;font-weight:800;color:'+color+'">NT$'+total.toLocaleString()+'</span>'+
+      '</div>'+rowsHtml+'</div>';
+  };
+
+  const modal=document.createElement('div');modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:520px">'+
+    '<div class="mtit">毛利明細 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div class="segmented" style="display:flex;gap:6px;margin-bottom:14px">'+
+      '<button class="btn bg bsm" id="profitTabTx" style="flex:1">收支明細</button>'+
+      '<button class="btn bo bsm" id="profitTabCat" style="flex:1">依類別拆分</button>'+
+    '</div>'+
+    '<div id="profitPaneTx">'+
+      section('💰 外帳收入',incomeItems.map(l=>({name:l.desc||l.cat||'收入',amount:l.amount})),income,'var(--ok)')+
+      section('📤 內帳支出',costItems.map(l=>({name:l.desc||l.cat||'支出',amount:l.amount})),cost,'var(--bad)')+
+      section('🏗️ 廠商成本',vendorList.map(v=>({name:v.vendor+'（'+getVendorTrueCost(v).toLocaleString()+'）',amount:getVendorTrueCost(v)})),vendorCost,'var(--bad)')+
+      '<div style="padding:12px 16px;border-radius:var(--rs);background:'+(profit>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(profit>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
+        '<span style="font-weight:800;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">毛利＝收入－內帳支出－廠商成本</span>'+
+        '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">'+(profit>=0?'+':'-')+'NT$'+Math.abs(profit).toLocaleString()+'</span>'+
+      '</div>'+
+    '</div>'+
+    '<div id="profitPaneCat" style="display:none">'+
+      buildCatProfitHtml(projectId)+
+    '</div>'+
+    '</div>';
+  document.body.appendChild(modal);
+  wireCatProfitInputs(modal.querySelector('#profitPaneCat'),projectId);
+  modal.querySelector('#profitTabTx').addEventListener('click',()=>{
+    modal.querySelector('#profitPaneTx').style.display='block';
+    modal.querySelector('#profitPaneCat').style.display='none';
+    modal.querySelector('#profitTabTx').className='btn bg bsm';
+    modal.querySelector('#profitTabCat').className='btn bo bsm';
+  });
+  modal.querySelector('#profitTabCat').addEventListener('click',()=>{
+    modal.querySelector('#profitPaneTx').style.display='none';
+    modal.querySelector('#profitPaneCat').style.display='block';
+    modal.querySelector('#profitTabTx').className='btn bo bsm';
+    modal.querySelector('#profitTabCat').className='btn bg bsm';
+  });
 }
 
 function openVendorForProject(projectId){
@@ -1032,7 +1698,7 @@ function openContractForProject(projectId){
   const gridEl=document.getElementById('ctPhotoGrid');if(gridEl)gridEl.innerHTML='';
   const cfEl=document.getElementById('ctFile');if(cfEl)cfEl.value='';
   const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
-  const btnEl=document.getElementById('addCtBtn');if(btnEl)btnEl.textContent='💾 儲存合約';
+  const btnEl=document.getElementById('addCtBtn');if(btnEl)btnEl.textContent='儲存合約';
   ['ctName','ctClient','ctAmt2','ctNote'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   if(p){
     const ctN=document.getElementById('ctName');if(ctN)ctN.value=p.name||'';
@@ -1052,40 +1718,112 @@ function openContractForProject(projectId){
 }
 
 // ── 案場帳款 Tab ──────────────────────────────────────────
-function renderProjLedger(id,p,c){
-  const items=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>b._id-a._id);
-  const income=items.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
-  const cost=items.filter(l=>l.book==='out'&&l.type==='out').reduce((s,l)=>s+(l.amount||0),0);
+// 案場帳款分頁的收支分類篩選（跟「會計→帳款總覽」同一個概念：全部/外帳收入/外帳支出/內帳支出/內帳收入），
+// 每個案場各自記自己選到哪個分類，預設「全部」
+const projLedgerDirFilter={};
 
-  c.innerHTML=`
-    <div class="g3" style="margin-bottom:16px">
-      <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">外帳收入</div></div>
-      <div class="stat"><div class="sn" style="color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'NT$0'}</div><div class="sl">內帳支出</div></div>
-      <div class="stat"><div class="sn" style="color:${income-cost>=0?'var(--ok)':'var(--bad)'}">${(income-cost>=0?'+':'')+'NT$'+Math.abs(income-cost).toLocaleString()}</div><div class="sl">毛利</div></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
-      <button class="btn bo bsm" onclick="openProjLedgerModal(${id},'out')">＋ 新增支出</button>
-    </div>
-    <div id="projLedgerList">
-    ${items.length?items.map(l=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
+function renderProjLedger(id,p,c){
+  // 改成用「交易日期」排序而不是建立順序：付款日期現在可以自己選（例如補登之前的付款），
+  // 用建立順序排會讓補登的舊款項跑到最上面，跟月份分組對不起來
+  const allItems=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
+  const income=allItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+  // 修正重點：標記廠商付款時，系統會自動在這裡多記一筆內帳支出方便對帳，
+  // 但那筆錢已經算在下面的「廠商成本」裡了，兩個一起加會把同一筆錢算兩次。
+  // 這裡「內帳支出」這個統計數字，只加總「不是廠商付款」自動產生的那些（沒有 vendorId 標記），
+  // 避免重複計算；下面的交易紀錄清單還是完整顯示每一筆，包含廠商付款那筆，只是不會被重複加進總數。
+  const cost=allItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
+  // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
+  // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
+  // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
+  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
+  const profit=income-cost-vendorCost;
+
+  const curDir=projLedgerDirFilter[id]||'all';
+  const items=curDir==='all'?allItems:allItems.filter(l=>{
+    const [book,type]=curDir.split('-');
+    return getLedgerBook(l)===book&&l.type===type;
+  });
+
+  // 依月份分組，方便案場拖得比較久（跨好幾個月）的時候不用滑一長串才找到某一筆
+  const groups={};
+  items.forEach(l=>{
+    const key=(l.date||'').slice(0,7)||'未填日期'; // "YYYY-MM"
+    (groups[key]=groups[key]||[]).push(l);
+  });
+  const monthKeys=Object.keys(groups).sort((a,b)=>b.localeCompare(a));
+  const monthLabel=key=>{
+    if(key==='未填日期')return key;
+    const [y,m]=key.split('-');
+    return y+'年'+parseInt(m)+'月';
+  };
+  const rowHtml=l=>{
+    // 廠商付款那筆是標記付款時自動產生的，真正的資料源頭是廠商報價卡片自己的付款紀錄，
+    // 這裡如果讓人直接改/刪，會跟廠商那邊的付款紀錄兜不起來，所以這種自動產生的記錄
+    // 不給編輯/刪除，要改請到「廠商報價」分頁那筆廠商卡片本身去動
+    const isVendorAuto=!!l.vendorId;
+    return `
+      <div class="ledgerRow" style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">
         <div style="width:36px;height:36px;border-radius:8px;background:${l.type==='in'?'var(--ok-bg)':'var(--bad-bg)'};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">${l.type==='in'?'💰':'📤'}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${esc(l.desc||l.cat||'記錄')}</div>
-          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}</div>
+          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}${isVendorAuto?' · <span style="color:var(--g300)">廠商付款自動記錄</span>':''}</div>
         </div>
         <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
-      </div>`).join(''):'<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">尚無帳款紀錄</div></div>'}
+        ${isVendorAuto?'':`<div style="display:flex;gap:4px;flex-shrink:0">
+          <button onclick="editLedgerFromProject(${l._id},${l.projectId})" title="編輯" style="width:26px;height:26px;border:1px solid var(--g200);background:var(--w);border-radius:var(--rxs);color:var(--g500);cursor:pointer;font-size:.72rem;padding:0">✏️</button>
+          <button onclick="delLedgerFromProject(${l._id},${l.projectId})" title="刪除" style="width:26px;height:26px;border:1px solid var(--bad-bd);background:var(--w);border-radius:var(--rxs);color:var(--bad);cursor:pointer;font-size:.72rem;padding:0">🗑</button>
+        </div>`}
+      </div>`;
+  };
+
+  const dirTabs=[
+    {key:'all',label:'全部'},
+    {key:'in-in',label:'外帳收入'},
+    {key:'in-out',label:'外帳支出'},
+    {key:'out-out',label:'內帳支出'},
+    {key:'out-in',label:'內帳收入'},
+  ];
+
+  c.innerHTML=`
+    <div class="g4" style="margin-bottom:16px">
+      <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">外帳收入</div></div>
+      <div class="stat"><div class="sn" style="color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'NT$0'}</div><div class="sl">內帳支出</div></div>
+      <div class="stat"><div class="sn" style="color:var(--bad)">${vendorCost?'NT$'+vendorCost.toLocaleString():'NT$0'}</div><div class="sl">廠商成本</div></div>
+      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
+      <button class="btn bo bsm" onclick="openProjLedgerModal(${id},'out')">＋ 新增支出</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+      ${dirTabs.map(t=>`<button onclick="setProjLedgerDir(${id},'${t.key}')" style="padding:5px 14px;border-radius:20px;border:1.5px solid ${curDir===t.key?'var(--gold)':'var(--g200)'};background:${curDir===t.key?'var(--gold)':'var(--w)'};color:${curDir===t.key?'#fff':'var(--g600)'};font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">${t.label}</button>`).join('')}
+    </div>
+    <div id="projLedgerList">
+    ${items.length?monthKeys.map(key=>{
+      const monthItems=groups[key];
+      const monthSum=monthItems.reduce((s,l)=>s+(l.type==='in'?(l.amount||0):-(l.amount||0)),0);
+      return `<div style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 2px;margin-bottom:2px;border-bottom:1.5px solid var(--g200)">
+          <span style="font-size:.8rem;font-weight:900;color:var(--g600)">${monthLabel(key)}</span>
+          <span style="font-size:.76rem;font-weight:800;color:${monthSum>=0?'var(--ok)':'var(--bad)'}">${monthSum>=0?'+':'-'}NT$${Math.abs(monthSum).toLocaleString()}</span>
+        </div>
+        ${monthItems.map(rowHtml).join('')}
+      </div>`;
+    }).join(''):`<div class="empty-state"><div class="es-ic">💰</div><div class="es-t">${curDir==='all'?'尚無帳款紀錄':'這個分類底下沒有紀錄'}</div></div>`}
     </div>`;
+}
+
+function setProjLedgerDir(id,dir){
+  projLedgerDirFilter[id]=dir;
+  const content=document.getElementById('projDetailContent');
+  if(content)renderProjLedger(id,null,content);
 }
 
 function openProjLedgerModal(projectId, dir){
   curProjectId=projectId;
   curLedgerBook=dir==='in'?'in':'out';
   curLedgerType=dir;
-  // openLedgerModal 會用 curProjectId 自動把案場選單選好，不用再另外補設定
-  openLedgerModal(curLedgerBook);
+  openLedgerModal(curLedgerBook,projectId);
 }
 
 // ── 案場進度 Tab ──────────────────────────────────────────
@@ -1096,7 +1834,7 @@ function renderProjProgress(id,p,c){
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">工程進度</div>
-      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">📷 新增進度</button>
+      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">新增進度</button>
     </div>
     ${nextItem?`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);margin-bottom:18px">
       <span style="font-size:1.4rem">👉</span>
@@ -1120,7 +1858,15 @@ function renderProjProgress(id,p,c){
               </div>
             </div>
             ${item.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(item.note)}</div>`:''}
-            ${item.photoUrl?`<img src="${item.photoUrl}" onclick="openLB('${item.photoUrl}')" style="max-width:100%;max-height:200px;border-radius:var(--rxs);margin-top:8px;cursor:pointer;object-fit:cover">`:''}
+            ${(()=>{
+              // 相容舊資料：以前每則進度只存一張照片在 photoUrl（單一字串），
+              // 現在改成 photoUrls（陣列）可以存很多張，這裡兩種格式都要能顯示出來
+              const photos=item.photoUrls&&item.photoUrls.length?item.photoUrls:(item.photoUrl?[item.photoUrl]:[]);
+              if(!photos.length)return '';
+              return `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px;margin-top:8px">
+                ${photos.map(url=>`<img src="${url}" onclick="openLB('${url}')" style="width:100%;aspect-ratio:1;border-radius:var(--rxs);cursor:pointer;object-fit:cover">`).join('')}
+              </div>`;
+            })()}
           </div>
         </div>`).join(''):'<div class="empty-state"><div class="es-ic">🔨</div><div class="es-t">尚無進度記錄</div><div class="es-s">拍張現場照片，記錄今天做到哪</div></div>'}
     </div>`;
@@ -1150,13 +1896,10 @@ function openAddProgressEntry(projectId, editId){
     <textarea id="_progNote" placeholder="補充說明（選填，業主也看得到）" rows="2" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box;resize:none">${existing?esc(existing.note||''):''}</textarea>
 
     <div style="margin-bottom:10px">
-      <div id="_progPhotoZone" style="border:2px dashed var(--g200);border-radius:var(--rs);padding:16px;text-align:center;cursor:pointer;transition:border-color var(--ease)">
-        <div id="_progPhotoPreview" style="${existing?.photoUrl?'':'display:none'}margin-bottom:8px">
-          <img src="${existing?.photoUrl||''}" style="max-width:100%;max-height:160px;border-radius:var(--rxs);object-fit:cover">
-        </div>
-        <div id="_progPhotoHint" style="font-size:.82rem;color:var(--g400)${existing?.photoUrl?';display:none':''}">📷 點這裡上傳現場照片（選填，業主可以看到）</div>
-      </div>
-      <input type="file" id="_progPhotoFile" accept="image/*" style="display:none">
+      <div style="font-size:.78rem;font-weight:700;color:var(--g500);margin-bottom:6px">📷 現場照片（選填，業主看得到，可一次選多張）</div>
+      <div id="_progPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:6px;margin-bottom:8px"></div>
+      <button type="button" id="_progPhotoAddBtn" style="width:100%;padding:12px;border:2px dashed var(--g200);border-radius:var(--rs);background:var(--g50);color:var(--g400);font-size:.82rem;cursor:pointer;font-family:inherit">＋ 選擇照片（可多選）</button>
+      <input type="file" id="_progPhotoFile" accept="image/*" multiple style="display:none">
     </div>
 
     <label style="display:flex;align-items:center;gap:9px;font-size:.86rem;color:var(--g600);cursor:pointer;margin-bottom:16px">
@@ -1165,24 +1908,43 @@ function openAddProgressEntry(projectId, editId){
 
     <div style="display:flex;gap:8px">
       <button id="_progCancel" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.86rem;cursor:pointer;font-family:inherit">取消</button>
-      <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
+      <button id="_progSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">儲存</button>
     </div>
   </div>`;
   box.addEventListener('click',()=>box.remove());
   document.body.appendChild(box);
 
-  let photoUrl=existing?.photoUrl||null;
-  const zone=document.getElementById('_progPhotoZone');
+  // 相容舊資料：既有記錄如果是單張照片存在 photoUrl，編輯時先轉成陣列處理，存檔時一律存成 photoUrls
+  let photoUrls=existing?.photoUrls&&existing.photoUrls.length?[...existing.photoUrls]:(existing?.photoUrl?[existing.photoUrl]:[]);
+  const grid=document.getElementById('_progPhotoGrid');
+  const renderPhotoGrid=()=>{
+    grid.innerHTML=photoUrls.map((url,i)=>`
+      <div style="position:relative;aspect-ratio:1">
+        <img src="${url}" style="width:100%;height:100%;border-radius:var(--rxs);object-fit:cover">
+        <button data-progphotodel="${i}" style="position:absolute;top:-6px;right:-6px;width:20px;height:20px;border-radius:50%;background:var(--bad);color:#fff;border:2px solid var(--w);cursor:pointer;font-size:.62rem;line-height:1;padding:0">✕</button>
+      </div>`).join('');
+    grid.querySelectorAll('[data-progphotodel]').forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        photoUrls.splice(parseInt(btn.dataset.progphotodel),1);
+        renderPhotoGrid();
+      });
+    });
+  };
+  renderPhotoGrid();
+
   const fileInp=document.getElementById('_progPhotoFile');
-  zone.addEventListener('click',()=>fileInp.click());
+  const addBtn=document.getElementById('_progPhotoAddBtn');
+  addBtn.addEventListener('click',()=>fileInp.click());
   fileInp.addEventListener('change',async e=>{
-    const f=e.target.files[0];if(!f)return;
-    zone.querySelector('#_progPhotoHint').textContent='壓縮處理中…';
-    const compressed=await compressImage(f,1280,0.7);
-    photoUrl=compressed;
-    const prev=document.getElementById('_progPhotoPreview');
-    prev.style.display='block';prev.querySelector('img').src=photoUrl;
-    document.getElementById('_progPhotoHint').style.display='none';
+    const files=[...e.target.files];if(!files.length)return;
+    addBtn.textContent='壓縮處理中…（共'+files.length+'張）';addBtn.disabled=true;
+    for(const f of files){
+      const compressed=await compressImage(f,1280,0.7);
+      if(compressed)photoUrls.push(compressed);
+    }
+    renderPhotoGrid();
+    addBtn.textContent='＋ 選擇照片（可多選）';addBtn.disabled=false;
+    fileInp.value=''; // 清空，不然選同一批檔案第二次不會觸發 change
   });
 
   document.getElementById('_progCancel').addEventListener('click',()=>box.remove());
@@ -1194,7 +1956,8 @@ function openAddProgressEntry(projectId, editId){
       date:document.getElementById('_progDate').value,
       note:document.getElementById('_progNote').value.trim(),
       done:document.getElementById('_progDone').checked,
-      photoUrl,
+      photoUrls,
+      photoUrl:photoUrls[0]||null, // 保留這個欄位給舊版程式碼或還沒更新的業主頁面相容用
     };
     if(editId){DB.upd('progress',editId,data);showToast('✅ 進度已更新');}
     else{DB.push('progress',{...data,summary:'進度 '+p.name+' '+text});showToast('✅ 進度已新增');}
@@ -1215,6 +1978,16 @@ function deleteProgressEntry(id,projectId){
 // vendors 資料不變，新增 payments 陣列記錄付款歷史
 function getVendorPaid(v){
   return (v.payments||[]).reduce((s,p)=>s+(p.amount||0),0);
+}
+// 這筆廠商報價「實際會花公司多少錢」——每個工項各自判斷含稅／未稅，未稅的工項要多加5%營業稅
+function getVendorTrueCost(v){
+  const items=v.items||[];
+  if(!items.length)return v.amount||0;
+  if(typeof calcItemsTax==='function')return calcItemsTax(items).total;
+  return items.reduce((s,it)=>{
+    const amt=it.amount||0;
+    return s+(it.taxType==='excl'?Math.round(amt*1.05):amt);
+  },0);
 }
 function getVendorPayStatus(v){
   const paid=getVendorPaid(v);
@@ -1254,11 +2027,13 @@ function openVendorPay(vendorId){
      <button onclick="document.getElementById('_payAmt').value=${remain}" style="padding:6px 12px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:800">付清 NT$${remain.toLocaleString()}</button>
     </div>
     <input type="number" id="_payAmt" placeholder="輸入金額" value="${remain}" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
+    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:6px">付款日期</div>
+    <input type="date" id="_payDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
     <input type="text" id="_payNote" placeholder="備注（例：第二期款）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
 
     <div style="display:flex;gap:8px">
      <button onclick="document.getElementById('_payBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
-     <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">✅ 確認付款並記帳</button>
+     <button onclick="confirmVendorPay()" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">確認付款並記帳</button>
     </div>
    </div>`;
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
@@ -1271,9 +2046,11 @@ function confirmVendorPay(){
   if(amt<=0){showToast('⚠️ 請輸入付款金額');return;}
   const note=document.getElementById('_payNote')?.value?.trim()||'';
   const today=new Date().toISOString().split('T')[0];
+  // 付款日期可以自己選，不一定是今天（常見情況：補登之前已經付過的款項）
+  const payDate=document.getElementById('_payDate')?.value||today;
 
   // 1. 記錄到廠商付款歷史
-  const payments=[...(v.payments||[]),{amount:amt,date:today,note}];
+  const payments=[...(v.payments||[]),{amount:amt,date:payDate,note}];
   const totalPaid=payments.reduce((s,p)=>s+(p.amount||0),0);
   DB.upd('vendors',v._id,{payments,paid:totalPaid>=(v.amount||0)});
 
@@ -1282,14 +2059,14 @@ function confirmVendorPay(){
     summary:'內帳支出 付款給'+(v.vendor||'廠商')+' '+fmt(amt),
     book:'out',type:'out',amount:amt,
     desc:'付款給 '+(v.vendor||'廠商')+(note?'（'+note+'）':''),
-    cat:'廠商費用',date:today,
+    cat:'廠商費用',date:payDate,
     caseN:v.caseN||'',projectId:v.projectId||null,
     vendorId:v._id,
   });
 
   document.getElementById('_payBox')?.remove();
   showToast('✅ 已付款 NT$'+amt.toLocaleString()+'，並自動記入內帳');
-  if(typeof renderVendors==='function')renderVendors(vCurrentFilter);
+  if(typeof refreshVendorViews==='function')refreshVendorViews();
   if(typeof renderLedger==='function')renderLedger();
   if(typeof renderDashboard==='function')renderDashboard();
 }
@@ -1313,7 +2090,7 @@ function quickExpense(cat){
     </select>
     <div style="display:flex;gap:8px">
      <button onclick="document.getElementById('_qeBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
-     <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">💾 記帳</button>
+     <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">記帳</button>
     </div>
    </div>`;
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
@@ -1370,7 +2147,7 @@ function renderShareBox(id){
       <input id="_shareUrl" readonly value="${url}" style="flex:1;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:monospace;background:var(--g50);color:var(--g600);min-width:0">
       <button onclick="navigator.clipboard.writeText('${url}').then(()=>showToast('✅ 已複製連結'))" style="padding:10px 14px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap">複製</button>
     </div>
-    <button id="_shareRegenBtn" style="width:100%;padding:9px;border:1.5px solid var(--bad-bd);border-radius:var(--rs);background:var(--bad-bg);color:var(--bad);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">🔄 重新產生連結（舊連結會立刻失效）</button>
+    <button id="_shareRegenBtn" style="width:100%;padding:9px;border:1.5px solid var(--bad-bd);border-radius:var(--rs);background:var(--bad-bg);color:var(--bad);font-size:.8rem;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px">重新產生連結（舊連結會立刻失效）</button>
     <div style="font-size:.72rem;color:var(--g400);margin-bottom:16px;text-align:left;line-height:1.5">💡 業主打開連結就能看到：施工進度、收款紀錄、合約摘要。<br>看不到你的成本內帳，安全放心。</div>
     <button onclick="document.getElementById('_shareBox').remove()" style="width:100%;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">關閉</button>
    </div>`;

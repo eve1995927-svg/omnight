@@ -16,25 +16,25 @@ function renderProgItems(){
 }
 
 document.getElementById('saveProgressBtn')?.addEventListener('click',()=>{
-  // 修正重點：「案場名稱」這個欄位很早之前已經從自由輸入的文字框，改成用下拉選單選既有案場
-  // （避免同一個案場打字打法不一樣，變成好幾筆對不起來），但選單存的 value 其實是案場的「編號」，
-  // 不是案場名稱本身。這段程式碼還是照舊把 .value 直接當成名字存進去，
-  // 結果存進去的是一長串數字（案場編號），不是案場名稱——這就是「工程進度變成代碼」的原因。
-  // 改成用選到的編號去查真正的案場名稱，名稱、案場關聯都存正確的值。
-  const projectIdVal=document.getElementById('progCase').value;
-  const selectedProject=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
-  if(!projectIdVal||!selectedProject){showToast('⚠️ 請選擇案場');return;}
-  const caseN=selectedProject.name;
+  // 修正重點：原本沒選案場就沒辦法存檔，但如果這個案場根本還沒在「案場總覽」建立過
+  // （例如「平鎮」還沒建案場），使用者會卡住不知道要先跳去哪裡新增。
+  // 改成用共用的防呆流程：沒選案場的話，直接跳出「選既有案場」或「新增一個案場」，
+  // 新增完會自動帶回來繼續存這筆進度，不用自己跳頁面、跳回來再重填一次。
   const client=document.getElementById('progClient').value.trim();
   const status=document.getElementById('progStatus').value;
-  if(progEditId){
-    DB.upd('progress',progEditId,{caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
-    showToast('✅ 進度已更新！');
-  }else{
-    DB.push('progress',{summary:'進度 '+caseN,caseN,client,status,projectId:selectedProject._id,items:progItems.map(x=>({...x}))});
-    showToast('✅ 案場進度已建立！');
-  }
-  closeModal('progressModal');renderProgress();progEditId=null;
+  ensureProjectSelected(document.getElementById('progCase'),(projectIdVal)=>{
+    const proj=DB.get('projects').find(p=>String(p._id)===String(projectIdVal));
+    const caseN=proj?.name||'';
+    if(!caseN){showToast('⚠️ 找不到這個案場，請重新選擇');return;}
+    if(progEditId){
+      DB.upd('progress',progEditId,{caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x})),summary:'進度 '+caseN});
+      showToast('✅ 進度已更新！');
+    }else{
+      DB.push('progress',{summary:'進度 '+caseN,caseN,projectId:proj._id,client,status,items:progItems.map(x=>({...x}))});
+      showToast('✅ 案場進度已建立！');
+    }
+    closeModal('progressModal');renderProgress();progEditId=null;
+  });
 });
 
 function renderProgress(){
@@ -46,6 +46,26 @@ function renderProgress(){
   if(sf!=='all')data=data.filter(p=>p.status===sf);
   if(!data.length){list.innerHTML='<div class="empty-state"><div class="es-ic">🔧</div><div class="es-t">尚無進度記錄</div><div class="es-s">新增合約時會自動建立，或點右上方「新增案場」</div></div>';return;}
   list.innerHTML='';
+  // 舊資料如果案場名稱存成一串數字（案場編號誤存進 caseN 欄位），先掃一次，
+  // 有壞資料的話最上面跳出「一鍵修復」，不用一筆一筆手動點編輯存檔才能修好。
+  const brokenRecs=data.filter(p=>/^\d+$/.test(p.caseN||''));
+  if(brokenRecs.length){
+    const fixBar=document.createElement('div');
+    fixBar.style.cssText='background:var(--warn-bg,#FFF3D6);border:1.5px solid var(--warn-bd,#E8CE8E);border-radius:var(--rs);padding:12px 16px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap';
+    fixBar.innerHTML='<span style="font-size:.85rem;font-weight:700;color:#8A6D1E">⚠️ 有 '+brokenRecs.length+' 筆進度記錄的案場名稱異常（顯示成一串數字）</span>'+
+      '<button class="btn bg bsm" id="fixBrokenProgBtn">一鍵修復</button>';
+    list.appendChild(fixBar);
+    document.getElementById('fixBrokenProgBtn').addEventListener('click',()=>{
+      let fixed=0,skipped=0;
+      brokenRecs.forEach(p=>{
+        const proj=DB.get('projects').find(pr=>String(pr._id)===String(p.caseN));
+        if(proj){DB.upd('progress',p._id,{caseN:proj.name,projectId:proj._id});fixed++;}
+        else skipped++;
+      });
+      renderProgress();
+      showToast(skipped?('✅ 已修復 '+fixed+' 筆，'+skipped+' 筆找不到對應案場（可能已被刪除）'):('✅ 已修復 '+fixed+' 筆'));
+    });
+  }
   const tagMap={pending:{l:'📋 未開始',cls:'start'},ing:{l:'🔨 進行中',cls:'ing'},done:{l:'✅ 結案',cls:'done'}};
   data.forEach(p=>{
     const card=document.createElement('div');card.className='progress-card';
@@ -53,25 +73,23 @@ function renderProgress(){
     const done=(p.items||[]).filter(x=>x.done).length;
     const total=(p.items||[]).length;
     const pct=total?Math.round(done/total*100):0;
-    // 修正重點：舊資料如果是在上面那個 bug 修好之前建立的，caseN 欄位存的可能是一長串案場編號、
-    // 不是名字。這裡加一層防呆：如果 caseN 看起來像純數字編號，改成用 projectId（如果有存）
-    // 或這串數字本身去查真正的案場名稱，畫面上不會再顯示一串看不懂的代碼。
-    let displayName=p.caseN;
-    if(!displayName||/^\d+$/.test(String(displayName).trim())){
-      const lookupId=p.projectId||displayName;
-      const matched=DB.get('projects').find(pr=>String(pr._id)===String(lookupId));
-      if(matched)displayName=matched.name;
+    // 防呆：如果之前存進去的 caseN 剛好是一串數字（舊 bug 造成的舊資料），
+    // 這裡用 projectId 或這串數字反查一次案場名稱，畫面上盡量不要讓使用者看到一串數字
+    let displayName=p.caseN||'';
+    if(/^\d+$/.test(displayName)){
+      const proj=DB.get('projects').find(pr=>String(pr._id)===String(p.projectId||displayName));
+      if(proj?.name)displayName=proj.name+'（原始資料異常，建議點上方「一鍵修復」）';
     }
     card.innerHTML=
       '<div class="pc-hd">'+
         '<div style="flex:1">'+
-          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName||'（未命名案場）')+'</div>'+
+          '<div style="font-size:.95rem;font-weight:900">'+esc(displayName)+'</div>'+
           (p.client?'<div style="font-size:.78rem;color:var(--g400);margin-top:2px">👤 '+esc(p.client)+'</div>':'')+
         '</div>'+
         '<span class="pc-tag '+tag.cls+'">'+tag.l+'</span>'+
         '<div style="font-size:.8rem;font-family:\'DM Mono\',monospace;font-weight:800;color:var(--g400);margin-left:8px">'+done+'/'+total+'</div>'+
         '<div style="display:flex;gap:5px;margin-left:8px">'+
-          '<button class="btn bo bxs" data-pedit="'+p._id+'">✏️ 編輯</button>'+
+          '<button class="btn bo bxs" data-pedit="'+p._id+'">編輯</button>'+
           '<button class="btn brd bxs" data-pdel="'+p._id+'">🗑</button>'+
         '</div>'+
       '</div>'+
@@ -90,13 +108,15 @@ function renderProgress(){
       '</div>';
     card.querySelector('[data-pedit]')?.addEventListener('click',()=>{
       progEditId=p._id;progItems=p.items?p.items.map(x=>({...x})):[];
-      document.getElementById('progCase').value=p.caseN||'';
+      const fallbackProjectId=p.projectId||(/^\d+$/.test(p.caseN||'')?p.caseN:null);
+      if(typeof buildProjectSelect==='function')buildProjectSelect(document.getElementById('progCase'),fallbackProjectId);
       document.getElementById('progClient').value=p.client||'';
       document.getElementById('progStatus').value=p.status||'pending';
-      document.getElementById('progModalTitle').innerHTML='編輯進度：'+esc(p.caseN)+' <button class="mcl" data-close="progressModal">✕</button>';
+      const displayName2=(typeof esc==='function')?esc(p.caseN||''):(p.caseN||'');
+      document.getElementById('progModalTitle').innerHTML='編輯進度：'+displayName2+' <button class="mcl" data-close="progressModal">✕</button>';
       renderProgItems();openModal('progressModal');
     });
-    card.querySelector('[data-pdel]')?.addEventListener('click',()=>{confirmAction('刪除「'+p.caseN+'」進度？',()=>{DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});});
+    card.querySelector('[data-pdel]')?.addEventListener('click',()=>{confirmAction('刪除「'+(p.caseN||'')+'」進度？',()=>{DB.del('progress',p._id);renderProgress();showToast('✅ 已刪除。');});});
     list.appendChild(card);
   });
 }
@@ -104,35 +124,43 @@ function renderProgress(){
 // ══ 員工管理 ══════════════════════════════════════════════
 let empEditId=null;
 
-// 勞健保自動計算
+// 勞健保／勞退：完全改成手動輸入，公司出的勞保、公司出的健保、員工自己出的勞保、員工自己出的健保、
+// 加上公司提撥的勞退。不再自動算，因為每個人的投保薪資級距不同（勞退也是分級距，不是單純比例），
+// 用百分比算出來的數字常常跟勞保局／健保局帳單對不上。
 function calcSalaryInsurance(){
   const salary=parseFloat(document.getElementById('empSalary')?.value)||0;
   const meal=parseFloat(document.getElementById('empMeal')?.value)||0;
   const transport=parseFloat(document.getElementById('empTransport')?.value)||0;
   const other=parseFloat(document.getElementById('empOther')?.value)||0;
+  const laborCompany=parseFloat(document.getElementById('empLaborCompany')?.value)||0;
+  const healthCompany=parseFloat(document.getElementById('empHealthCompany')?.value)||0;
+  const laborEmployee=parseFloat(document.getElementById('empLaborEmployee')?.value)||0;
+  const healthEmployee=parseFloat(document.getElementById('empHealthEmployee')?.value)||0;
+  const retireCompany=parseFloat(document.getElementById('empRetireCompany')?.value)||0;
   const gross=salary+meal+transport+other;
-  // 勞保：級距約 salary*0.105，員工負擔 20%
-  const labor=Math.round(salary*0.105*0.2);
-  // 健保：(salary+meal)*0.0517*0.3（員工負擔30%）
-  const health=Math.round((salary+meal)*0.0517*0.3);
-  // 勞退：雇主提撥6%（員工不扣，由公司付）
-  const retire=Math.round(salary*0.06);
-  const net=gross-labor-health;
-  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent='NT$'+v.toLocaleString();};
-  set('empLabor',labor);set('empHealth',health);set('empRetire',retire);set('empNet',net);
+  const net=gross-laborEmployee-healthEmployee;
+  const companyCost=gross+laborCompany+healthCompany+retireCompany;
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent='NT$'+Math.round(v).toLocaleString();};
+  set('empNet',net);
+  set('empCompanyCost',companyCost);
 }
-['empSalary','empMeal','empTransport','empOther'].forEach(id=>{
+['empSalary','empMeal','empTransport','empOther','empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee','empRetireCompany'].forEach(id=>{
   document.getElementById(id)?.addEventListener('input',calcSalaryInsurance);
+  document.getElementById(id)?.addEventListener('change',calcSalaryInsurance);
 });
 
 document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   empEditId=null;
   ['empName','empTitle','empPhone','empId','empBank','empAccount','empPassword'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('empSalary').value='32000';
-  document.getElementById('empMeal').value='2400';
+  document.getElementById('empMeal').value='';
   document.getElementById('empTransport').value='0';
   document.getElementById('empOther').value='0';
+  const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value='';
+  ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee','empRetireCompany'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=false;
   document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
+  const typeStaffEl=document.getElementById('empTypeStaff');if(typeStaffEl)typeStaffEl.checked=true;
   document.getElementById('empModalTitle').innerHTML='新增員工 <button class="mcl" data-close="empModal">✕</button>';
   setEmpPermCheckboxes(DEFAULT_STAFF_PERMISSIONS);
   calcSalaryInsurance();openModal('empModal');
@@ -156,14 +184,40 @@ function readEmpPermCheckboxes(){
 document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   const name=document.getElementById('empName').value.trim();
   if(!name){showToast('⚠️ 請填入員工姓名');return;}
+  // 新增（不是編輯）的時候，如果已經有同名的員工，先跳出確認，不要默默存成第二筆。
+  // 這是重複員工資料真正的源頭——通常是不小心點兩次「新增員工」，或忘記已經建過這個人，
+  // 在這裡先攔一次，比事後在列表裡發現重複、再回頭刪除有效率很多。
+  // 如果真的是同名的兩個不同人（這種情況也存在），確認之後還是可以繼續新增。
+  if(!empEditId){
+    const existing=DB.get('employees').find(e=>(e.name||'').trim()===name);
+    if(existing){
+      confirmAction('已經有一位叫「'+name+'」的員工了（職稱：'+(existing.title||'—')+'）。如果是同一個人，建議取消後改用「編輯」；如果真的是不同的兩個人，可以繼續新增。',
+        ()=>proceedSaveEmployee(name));
+      return;
+    }
+  }
+  proceedSaveEmployee(name);
+});
+function proceedSaveEmployee(name){
   const salary=parseFloat(document.getElementById('empSalary').value)||0;
   const meal=parseFloat(document.getElementById('empMeal').value)||0;
   const transport=parseFloat(document.getElementById('empTransport').value)||0;
   const other=parseFloat(document.getElementById('empOther').value)||0;
-  const labor=Math.round(salary*0.105*0.2);
-  const health=Math.round((salary+meal)*0.0517*0.3);
-  const retire=Math.round(salary*0.06);
-  const net=salary+meal+transport+other-labor-health;
+  const insuredSalary=parseFloat(document.getElementById('empInsuredSalary')?.value)||salary;
+  const laborCompany=parseFloat(document.getElementById('empLaborCompany')?.value)||0;
+  const healthCompany=parseFloat(document.getElementById('empHealthCompany')?.value)||0;
+  const laborEmployee=parseFloat(document.getElementById('empLaborEmployee')?.value)||0;
+  const healthEmployee=parseFloat(document.getElementById('empHealthEmployee')?.value)||0;
+  const retireCompany=parseFloat(document.getElementById('empRetireCompany')?.value)||0;
+  // 向下相容：保留 labor/health 欄位（薪資管理的扣除計算還在用），
+  // 這裡用「員工自行負擔」的數字填進去，跟舊版行為保持一致
+  const labor=laborEmployee;
+  const health=healthEmployee;
+  // 勞退改成跟勞健保一樣手動填（勞退提繳工資分級表也是分級距，不是單純比例，
+  // 用固定 6% 算不準，而且之前這個自動算出來的數字其實也沒有真的算進公司人事成本裡）
+  const retire=retireCompany;
+  const net=salary+meal+transport+other-laborEmployee-healthEmployee;
+  const companyCost=salary+meal+transport+other+laborCompany+healthCompany+retireCompany;
   const account=(document.getElementById('empAccount')?.value||'').trim();
   const password=(document.getElementById('empPassword')?.value||'').trim();
   // 帳號重複檢查（排除自己）
@@ -173,11 +227,12 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
     if(!password){showToast('⚠️ 設定了帳號就需要設定密碼');return;}
   }
   const permissions=readEmpPermCheckboxes();
-  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,labor,health,retire,net,account,password,permissions,summary:'員工 '+name};
+  const empType=document.querySelector('input[name="empType"]:checked')?.value||'staff';
+  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,laborCompany,healthCompany,laborEmployee,healthEmployee,retire,net,companyCost,account,password,permissions,empType,summary:'員工 '+name};
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
-});
+}
 
 function updHRStats(){
   const emps=DB.get('employees');
@@ -190,41 +245,164 @@ function updHRStats(){
   set('hrPunchToday',punched);
 }
 
+// ── 合併重複員工資料 ──────────────────────────────────────
+// 單純刪除重複的那一筆，會讓它底下累積的打卡記錄、薪資記錄變成孤兒（user/empId 對不到任何
+// 還存在的員工），合併則是先把這些記錄的歸屬轉移到你選擇留下的那一筆身上，再刪掉多的那筆，
+// 歷史資料完整保留、不會憑空消失。
+function openMergeEmployeeModal(id1,id2){
+  const emps=DB.get('employees');
+  const e1=emps.find(e=>e._id===id1),e2=emps.find(e=>e._id===id2);
+  if(!e1||!e2){showToast('⚠️ 找不到這兩筆員工資料');return;}
+  const old=document.getElementById('_mergeEmpBox');if(old)old.remove();
+  const box=document.createElement('div');box.id='_mergeEmpBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  const card=e=>{
+    const punchCount=DB.get('punch_recs').filter(r=>r.user==='emp_'+e._id).length;
+    const salaryCount=DB.get('salary_records').filter(r=>r.empId===e._id).length;
+    return '<label style="flex:1;display:block;border:1.5px solid var(--g200);border-radius:var(--rs);padding:14px;cursor:pointer" class="mergeEmpOpt">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="mergeKeep" value="'+e._id+'" style="cursor:pointer"><span style="font-weight:800">保留這筆（ID:'+e._id+'）</span></div>'+
+      '<div style="font-size:.78rem;color:var(--g500);line-height:1.6">職稱：'+esc(e.title||'—')+'<br>帳號：'+esc(e.account||'（未設定）')+'<br>身份：'+(e.empType==='punch'?'公務':'正式員工')+'<br>打卡記錄：'+punchCount+' 筆　薪資記錄：'+salaryCount+' 筆</div>'+
+    '</label>';
+  };
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:1rem;margin-bottom:4px">🔀 合併重複員工資料</div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin-bottom:16px">選擇要保留哪一筆，另一筆的打卡／薪資記錄會自動轉移過來，再刪除多的那筆</div>'+
+    '<div style="display:flex;gap:10px;margin-bottom:18px">'+card(e1)+card(e2)+'</div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button id="_mergeEmpConfirm" class="btn bg" style="flex:1">確認合併</button>'+
+      '<button id="_mergeEmpCancel" class="btn bo">取消</button>'+
+    '</div>'+
+  '</div>';
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  document.getElementById('_mergeEmpCancel').addEventListener('click',()=>box.remove());
+  document.getElementById('_mergeEmpConfirm').addEventListener('click',()=>{
+    const keepId=parseInt(document.querySelector('input[name="mergeKeep"]:checked')?.value);
+    if(!keepId){showToast('⚠️ 請先選擇要保留哪一筆');return;}
+    const dropId=keepId===id1?id2:id1;
+    confirmAction('確定合併？ID:'+dropId+' 的打卡／薪資記錄會轉移到 ID:'+keepId+'，然後 ID:'+dropId+' 這筆會被刪除，這個動作沒辦法復原。',()=>{
+      mergeEmployees(keepId,dropId);
+      box.remove();
+    });
+  });
+}
+function mergeEmployees(keepId,dropId){
+  // 打卡記錄：user 欄位是 'emp_'+員工id，把指向被刪那筆的記錄改成指向留下的那筆
+  const punchRecs=DB.get('punch_recs').filter(r=>r.user==='emp_'+dropId);
+  punchRecs.forEach(r=>DB.upd('punch_recs',r._id,{user:'emp_'+keepId}));
+  // 薪資記錄：empId 直接是員工 id，同樣轉移過去
+  const salaryRecs=DB.get('salary_records').filter(r=>r.empId===dropId);
+  salaryRecs.forEach(r=>DB.upd('salary_records',r._id,{empId:keepId}));
+  // 請假記錄也一併轉移，避免請假歷史跟著不見
+  const leaveRecs=DB.get('leave_requests').filter(r=>r.empId===dropId);
+  leaveRecs.forEach(r=>DB.upd('leave_requests',r._id,{empId:keepId}));
+  DB.upd('employees',dropId,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW'),mergedInto:keepId});
+  renderEmployees();updHRStats();
+  showToast('✅ 已合併：'+punchRecs.length+' 筆打卡、'+salaryRecs.length+' 筆薪資、'+leaveRecs.length+' 筆請假記錄已轉移');
+}
+
 function renderEmployees(){
   const list=document.getElementById('empList');if(!list)return;
   const emps=DB.get('employees');
   if(!emps.length){list.innerHTML='<div class="empty-state"><div class="es-ic">👤</div><div class="es-t">尚無員工資料</div><div class="es-s">點右上方「新增員工」</div></div>';return;}
-  list.innerHTML='';
+
+  // 重複員工偵測：同一個人不小心被存成兩筆獨立紀錄（名字一樣，或登入帳號一樣），
+  // 這種情況登入下拉選單那邊已經做了防呆不會顯示重複，但底層資料還是重複的，
+  // 兩筆各自累積打卡/薪資記錄反而更容易搞混。這裡改成提供「合併」而不是只能「刪除」——
+  // 單純刪除會讓被刪那筆底下的打卡/薪資記錄變成孤兒（找不到對應的員工），合併會把
+  // 那些記錄的歸屬轉移到留下來的那筆身上，歷史資料不會不見。
+  const dupGroups=[];
+  const byName={};
+  emps.forEach(e=>{const k=(e.name||'').trim();if(!k)return;(byName[k]=byName[k]||[]).push(e);});
+  Object.entries(byName).forEach(([name,group])=>{if(group.length>1)dupGroups.push({key:name,type:'姓名',items:group});});
+  const byAcc={};
+  emps.forEach(e=>{if(!e.account)return;(byAcc[e.account]=byAcc[e.account]||[]).push(e);});
+  Object.entries(byAcc).forEach(([acc,group])=>{if(group.length>1&&!dupGroups.find(g=>g.items.some(i=>group.includes(i))))dupGroups.push({key:acc,type:'登入帳號',items:group});});
+
+  let dupHtml='';
+  if(dupGroups.length){
+    dupHtml='<div style="background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">'+
+      '<div style="font-weight:800;color:var(--warn);margin-bottom:8px">⚠️ 發現可能重複的員工資料</div>'+
+      dupGroups.map(g=>{
+        const ids=g.items.map(e=>e._id).join(',');
+        return '<div style="font-size:.82rem;color:var(--g600);margin-bottom:6px">「'+esc(g.key)+'」這個'+g.type+'有 '+g.items.length+' 筆紀錄'+
+          (g.items.length===2?' <button onclick="openMergeEmployeeModal('+ids+')" style="margin-left:6px;padding:2px 10px;border:1px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.74rem;cursor:pointer;font-family:inherit;font-weight:700">🔀 合併這兩筆</button>':'')+
+          '：'+g.items.map(e=>'<button onclick="confirmAction(\'確定刪除這筆重複的員工紀錄？（打卡和薪資歷史會保留在系統裡，只是不會再顯示在員工列表，也不會再自動關聯到這個人——如果想保留歷史記錄的關聯，建議用上面的「合併」功能）\',()=>{DB.upd(\'employees\','+e._id+',{deleted:true,deletedAt:new Date().toLocaleString(\'zh-TW\')});renderEmployees();updHRStats();showToast(\'✅ 已刪除重複紀錄\');})" style="margin-left:6px;padding:2px 10px;border:1px solid var(--warn-bd);border-radius:20px;background:var(--w);color:var(--warn);font-size:.74rem;cursor:pointer;font-family:inherit">直接刪除 ID:'+e._id+(e.account?'（帳號:'+esc(e.account)+'）':'')+'</button>').join('')
+        +'</div>';
+      }).join('')+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:6px">建議優先用「合併」，會把打卡跟薪資記錄都轉移到留下的那筆，不會遺失歷史資料</div>'+
+    '</div>';
+  }
+
+  // 修正重點：原本每張卡片把完整薪資明細都攤開顯示，人一多畫面拉得很長。
+  // 改成小卡片＋格狀排列，一眼看到姓名、職稱、本月實領，薪資明細收起來，要看再點開。
+  list.style.cssText='display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px';
+  list.innerHTML=dupHtml?'<div style="grid-column:1/-1">'+dupHtml+'</div>':'';
   emps.forEach(e=>{
-    const card=document.createElement('div');card.className='emp-card';
+    const card=document.createElement('div');
+    card.style.cssText='background:var(--w);border:1.5px solid var(--g200);border-radius:var(--r);overflow:hidden';
+    const detailId='emp-detail-'+e._id;
     card.innerHTML=
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">'+
-        '<div class="emp-avatar">'+e.name.charAt(0)+'</div>'+
-        '<div style="flex:1"><div style="font-size:.95rem;font-weight:900">'+e.name+'</div><div style="font-size:.78rem;color:var(--g400);margin-top:2px">'+( e.title||'員工')+' ｜ 到職：'+e.startDate+'</div></div>'+
-        '<div style="display:flex;gap:5px">'+
-          '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️ 編輯</button>'+
-          '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
+      '<div style="display:flex;align-items:center;gap:10px;padding:14px">'+
+        '<div class="emp-avatar" style="flex-shrink:0">'+esc(e.name.charAt(0))+'</div>'+
+        '<div style="flex:1;min-width:0">'+
+          '<div style="font-size:.9rem;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(e.name)+'</div>'+
+          '<div style="font-size:.74rem;color:var(--g400);margin-top:1px">'+esc(e.title||'員工')+'</div>'+
+        '</div>'+
+        '<div style="text-align:right;flex-shrink:0">'+
+          '<div style="font-size:.68rem;color:var(--g400)">本月實領</div>'+
+          '<div style="font-size:.88rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(e.net||0).toLocaleString()+'</div>'+
         '</div>'+
       '</div>'+
-      '<div style="background:var(--g50);border-radius:var(--rs);padding:12px 14px">'+
-        '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+( e.salary||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+( (e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+( e.labor||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--bad)">-NT$'+( e.health||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+( e.retire||0).toLocaleString()+'</span></div>'+
-        '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+( e.net||0).toLocaleString()+'</span></div>'+
+      '<div style="display:flex;gap:6px;padding:0 14px 12px">'+
+        '<button class="btn bo bxs" data-etgl style="flex:1">▾ 詳細資料</button>'+
+        '<button class="btn bo bxs" data-eedit="'+e._id+'">✏️</button>'+
+        '<button class="btn brd bxs" data-edel="'+e._id+'">🗑</button>'+
       '</div>'+
-      (e.bank?'<div style="font-size:.75rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+e.bank+'</div>':'')+
-      (e.account?'<div style="font-size:.75rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'');
+      '<div id="'+detailId+'" style="display:none;padding:12px 14px;border-top:1px solid var(--g100);background:var(--g50)">'+
+        '<div style="font-size:.74rem;color:var(--g400);margin-bottom:8px">到職：'+esc(e.startDate||'—')+'</div>'+
+        '<div class="salary-row"><span class="sl-label">底薪</span><span class="sl-val">NT$'+(e.salary||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">伙食+交通+其他</span><span class="sl-val">NT$'+((e.meal||0)+(e.transport||0)+(e.other||0)).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞保（公司負擔）</span><span class="sl-val" style="color:var(--bad)">NT$'+(e.laborCompany||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">健保（公司負擔）</span><span class="sl-val" style="color:var(--bad)">NT$'+(e.healthCompany||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞保（員工負擔）</span><span class="sl-val" style="color:var(--g500)">-NT$'+(e.laborEmployee||e.labor||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">健保（員工負擔）</span><span class="sl-val" style="color:var(--g500)">-NT$'+(e.healthEmployee||e.health||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label">勞退（公司提撥）</span><span class="sl-val" style="color:var(--info)">NT$'+(e.retire||0).toLocaleString()+'</span></div>'+
+        '<div class="salary-row"><span class="sl-label" style="font-weight:800">本月實領</span><span class="sl-val total">NT$'+(e.net||0).toLocaleString()+'</span></div>'+
+        (e.bank?'<div style="font-size:.72rem;color:var(--g400);margin-top:8px">🏦 匯款帳號：'+esc(e.bank)+'</div>':'')+
+        (e.account?'<div style="font-size:.72rem;color:var(--gold-d);margin-top:4px;font-weight:700">🔑 打卡帳號：'+esc(e.account)+'</div>':'')+
+      '</div>';
+    card.querySelector('[data-etgl]').addEventListener('click',(ev)=>{
+      const detail=document.getElementById(detailId);
+      const open=detail.style.display==='none';
+      detail.style.display=open?'block':'none';
+      ev.target.textContent=open?'▴ 收起':'▾ 詳細資料';
+    });
     card.querySelector('[data-eedit]')?.addEventListener('click',()=>{
       empEditId=e._id;
       document.getElementById('empName').value=e.name||'';document.getElementById('empTitle').value=e.title||'';
       document.getElementById('empPhone').value=e.phone||'';document.getElementById('empId').value=e.idNum||'';
       document.getElementById('empBank').value=e.bank||'';document.getElementById('empStartDate').value=e.startDate||'';
-      document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||2400;
+      document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||'';
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
+      const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value=e.insuredSalary||'';
+      const laborInEl=document.getElementById('empLaborInput');if(laborInEl)laborInEl.value=e.labor||'';
+      const healthInEl=document.getElementById('empHealthInput');if(healthInEl)healthInEl.value=e.health||'';
+      ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{
+        const key=id.replace('emp','').replace('Company','Company').replace('Employee','Employee');
+        const fieldMap={empLaborCompany:'laborCompany',empHealthCompany:'healthCompany',empLaborEmployee:'laborEmployee',empHealthEmployee:'healthEmployee'};
+        const el=document.getElementById(id);if(el)el.value=e[fieldMap[id]]||'';
+      });
+      // 舊資料的 retire 是自動算出來的（投保金額×6%），新資料是手動填的，這裡不分兩種來源，
+      // 統一直接把 e.retire 帶進欄位——如果是舊資料，等於把之前自動算的數字當成初始值放進去，
+      // 使用者再自己依實際帳單調整即可，不用整個空白重填
+      const retireEl=document.getElementById('empRetireCompany');if(retireEl)retireEl.value=e.retire||'';
+      const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=!!e.absorbInsurance;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
+      // 舊資料沒有 empType 欄位的話，預設當作「正式員工」（跟這個功能加入前的行為一致，不會突然把既有員工都變成只能打卡）
+      const empTypeEl=document.getElementById(e.empType==='punch'?'empTypePunch':'empTypeStaff');
+      if(empTypeEl)empTypeEl.checked=true;
       setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
       document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
@@ -266,21 +444,6 @@ function renderSalaryList(){
     return;
   }
 
-  // ── 建立6個月 + 額外月份 ──
-  const recentMonths=[];
-  for(let i=0;i<6;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()-i,1);
-    recentMonths.push(fmtMonth(d.getFullYear(),d.getMonth()));
-  }
-  // 也加未來2個月
-  for(let i=1;i<=2;i++){
-    const d=new Date(now.getFullYear(),now.getMonth()+i,1);
-    recentMonths.unshift(fmtMonth(d.getFullYear(),d.getMonth()));
-  }
-
-  const allStoredMonths=JSON.parse(localStorage.getItem('zeju_salary_months')||'[]');
-  const extraMonths=allStoredMonths.filter(m=>!recentMonths.includes(m)).sort().reverse();
-
   const curMonthKey=localStorage.getItem('zeju_salary_cur_month')||fmtMonth(now.getFullYear(),now.getMonth());
 
   list.innerHTML='';
@@ -296,29 +459,25 @@ function renderSalaryList(){
     <span style="font-size:.78rem;color:var(--g400)">下次發薪：${now.getMonth()+1}月${payDate}日</span>`;
   list.appendChild(settingDiv);
 
-  // 月份選擇區：最近6個月 + 未來2個月（顯示為Tab列）
-  const tabDiv=document.createElement('div');
-  tabDiv.style.cssText='display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;align-items:center';
-
-  recentMonths.forEach(m=>{
-    const b=document.createElement('button');
-    b.className='btn '+(m===curMonthKey?'bg':'bo')+' bsm';
-    b.style.padding='6px 12px';b.style.fontSize='.78rem';
-    b.textContent=m.replace('-','年')+'月'+(m===fmtMonth(now.getFullYear(),now.getMonth())?' (本月)':m>fmtMonth(now.getFullYear(),now.getMonth())?' ▶':'');
-    b.addEventListener('click',()=>{localStorage.setItem('zeju_salary_cur_month',m);renderSalaryList();});
-    tabDiv.appendChild(b);
-  });
-
-  // 「其他月份」下拉
-  if(extraMonths.length){
-    const sep=document.createElement('span');sep.style.cssText='font-size:.75rem;color:var(--g400);margin:0 4px';sep.textContent='｜';tabDiv.appendChild(sep);
-    const sel=document.createElement('select');
-    sel.style.cssText='padding:6px 10px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.78rem;font-family:inherit;outline:none;background:var(--w)';
-    sel.innerHTML='<option value="">📅 其他月份…</option>'+extraMonths.map(m=>`<option value="${m}" ${m===curMonthKey?'selected':''}>${m.replace('-','年')}月</option>`).join('');
-    sel.addEventListener('change',()=>{if(sel.value){localStorage.setItem('zeju_salary_cur_month',sel.value);renderSalaryList();}});
-    tabDiv.appendChild(sel);
-  }
-  list.appendChild(tabDiv);
+  // 修正重點：原本是把最近6個月＋未來2個月排成一整排按鈕，用久了（用滿兩年）舊的月份會被擠出這排按鈕，
+  // 只能從「其他月份」下拉選單裡找。改成標準的月份選擇器（點了直接跳出年/月選單），
+  // 不管用多久、要往回找哪個月都一樣快，左右箭頭可以快速切上一個月/下一個月。
+  const navDiv=document.createElement('div');
+  navDiv.style.cssText='display:flex;align-items:center;gap:8px;margin-bottom:14px';
+  const [curY,curM]=curMonthKey.split('-').map(Number);
+  navDiv.innerHTML=`
+    <button class="btn bo bxs" id="salMonthPrev" style="padding:8px 12px">◀</button>
+    <input type="month" id="salMonthPicker" value="${curMonthKey}" style="padding:8px 14px;border:1.5px solid var(--g200);border-radius:var(--rxs);font-size:.88rem;font-family:inherit;font-weight:800;color:var(--g700);outline:none;background:var(--w)">
+    <button class="btn bo bxs" id="salMonthNext" style="padding:8px 12px">▶</button>
+    <button class="btn bo bxs" id="salMonthToday" style="padding:8px 12px;margin-left:4px">回到本月</button>
+    ${curMonthKey===fmtMonth(now.getFullYear(),now.getMonth())?'<span style="font-size:.76rem;color:var(--gold-d);font-weight:800;margin-left:4px">● 本月</span>':''}
+  `;
+  list.appendChild(navDiv);
+  const setMonth=(key)=>{localStorage.setItem('zeju_salary_cur_month',key);renderSalaryList();};
+  navDiv.querySelector('#salMonthPicker').addEventListener('change',e=>{if(e.target.value)setMonth(e.target.value);});
+  navDiv.querySelector('#salMonthPrev').addEventListener('click',()=>{const d=new Date(curY,curM-2,1);setMonth(fmtMonth(d.getFullYear(),d.getMonth()));});
+  navDiv.querySelector('#salMonthNext').addEventListener('click',()=>{const d=new Date(curY,curM,1);setMonth(fmtMonth(d.getFullYear(),d.getMonth()));});
+  navDiv.querySelector('#salMonthToday').addEventListener('click',()=>setMonth(fmtMonth(now.getFullYear(),now.getMonth())));
 
   // 月份薪資表
   const tableDiv=document.createElement('div');tableDiv.id='monthSalaryTable';list.appendChild(tableDiv);
@@ -359,14 +518,20 @@ function getSalaryRecord(empId, monthKey){
 function calcSalaryRecord(rec){
   const gross=(rec.baseSalary||0)+(rec.meal||0)+(rec.transport||0)+(rec.other||0)+(rec.bonus||0);
   const e=DB.get('employees').find(x=>x._id===rec.empId)||{};
-  const laborDeduct=e.labor||0;
-  const healthDeduct=e.health||0;
+  // 新版：直接用員工資料裡儲存的四個欄位（laborEmployee/laborCompany 等）。
+  // 向下相容舊資料：沒有新欄位時退回用 e.labor/e.health，如果有 absorbInsurance 勾選也照顧到。
+  const laborEmployee=e.laborEmployee!=null?e.laborEmployee:(e.absorbInsurance?0:(e.labor||0));
+  const healthEmployee=e.healthEmployee!=null?e.healthEmployee:(e.absorbInsurance?0:(e.health||0));
+  const laborCompany=e.laborCompany!=null?e.laborCompany:(e.absorbInsurance?(e.labor||0):0);
+  const healthCompany=e.healthCompany!=null?e.healthCompany:(e.absorbInsurance?(e.health||0):0);
+  // 修正重點：勞退（公司提撥）之前只有在員工卡片上顯示，沒有真的算進每月人力成本總額，
+  // 現在跟勞健保一樣直接用員工資料存的 e.retire（手動填的數字），一起計入公司成本
+  const retireCompany=e.retire||0;
+  const laborDeduct=laborEmployee;
+  const healthDeduct=healthEmployee;
   const net=gross-laborDeduct-healthDeduct+(rec.reimbursement||0);
-  const companyRetire=e.retire||0;
-  const companyLabor=Math.round((rec.baseSalary||0)*0.105*0.8);
-  const companyHealth=Math.round(((rec.baseSalary||0)+(rec.meal||0))*0.0517*0.7);
-  const companyCost=gross+companyRetire+companyLabor+companyHealth+(rec.reimbursement||0);
-  return {gross,laborDeduct,healthDeduct,net,companyCost};
+  const companyCost=gross+laborCompany+healthCompany+retireCompany+(rec.reimbursement||0);
+  return {gross,laborDeduct,healthDeduct,laborCompany,healthCompany,retireCompany,net,companyCost};
 }
 
 function renderMonthSalary(monthKey){
@@ -377,22 +542,47 @@ function renderMonthSalary(monthKey){
   const title=document.createElement('div');
   title.style.cssText='display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;padding:10px 0;border-bottom:2px solid var(--g200)';
   title.innerHTML='<span style="font-size:.9rem;font-weight:900;color:var(--g700)">'+monthKey.replace('-','年')+'月 薪資表</span>'+
-    '<button class="btn bo bsm" onclick="exportSalaryReport(\''+monthKey+'\')">📥 匯出本月薪資報表</button>';
+    '<button class="btn bo bsm" onclick="exportSalaryReport(\''+monthKey+'\')">匯出本月薪資報表</button>';
   wrap.appendChild(title);
 
-  let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0;
+  let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0,totalOtPay=0;
   emps.forEach(e=>{
     const rec=getSalaryRecord(e._id,monthKey);if(!rec)return;
     const {gross,laborDeduct,healthDeduct,net,companyCost}=calcSalaryRecord(rec);
     totalNet+=net;totalCompanyCost+=companyCost;totalBonus+=(rec.bonus||0);totalReimb+=(rec.reimbursement||0);
 
     const empPunchId=e._id?('emp_'+e._id):null;
-    const monthRecs=DB.get('punch_recs').filter(r=>(r.user===empPunchId||r.userName===e.name)&&(r.date||'').startsWith(monthKey));
-    const workDays=new Set(monthRecs.filter(r=>r.type==='in').map(r=>r.date)).size;
+    // 修正重點：這裡原本直接拿 r.date 字串跟 monthKey（"2026-09" 這種固定格式）比對開頭，
+    // 但打卡記錄的日期是瀏覽器 toLocaleDateString 產生的，不同瀏覽器/裝置格式可能不一樣
+    // （例如「2026/9/4」跟「2026-09-04」），直接比對字串開頭很容易漏掉本來該算進去的記錄，
+    // 或者反過來把同一天的兩筆記錄，因為日期字串長得不完全一樣，被當成兩個不同的日子分別計入，
+    // 導致出勤天數比實際跑一天多算好幾天。改用 normalizePunchDate 先把日期統一轉成同一種格式再比對、
+    // 再去重，不管原始格式長怎樣，同一個實際日期一定會被歸成同一天。
+    const monthRecs=DB.get('punch_recs').filter(r=>{
+      if(r.user!==empPunchId&&r.userName!==e.name)return false;
+      const norm=typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date;
+      return norm&&norm.startsWith(monthKey);
+    });
+    const workDays=new Set(monthRecs.filter(r=>r.type==='in').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
+
+    // 底薪／津貼是這筆薪資記錄剛建立時，從員工資料「複製」過來的快照，之後如果去員工資料改了底薪，
+    // 這裡不會自動跟著變（已經核發過的月份本來就不該被追溯改動）。但還沒標記匯款的月份，
+    // 這種不一致通常是「忘記同步」而不是故意的，所以這裡先比對一次，不一樣就跳出同步按鈕，
+    // 一鍵把最新的員工資料拉進來，不用手動一格一格改。
+    const salaryDrift=!rec.paid&&(rec.baseSalary!==(e.salary||0)||rec.meal!==(e.meal||0)||rec.transport!==(e.transport||0)||rec.other!==(e.other||0));
+
+    // 加班費試算：依台灣勞基法第24條自動算，晚上6點後才算加班，時薪=月薪÷240小時
+    const hourlyRate=(typeof monthlySalaryToHourlyRate==='function')?monthlySalaryToHourlyRate(rec.baseSalary||e.salary||0):0;
+    const otResult=(empPunchId&&typeof calcMonthlyOvertime==='function')?calcMonthlyOvertime(empPunchId,monthKey,hourlyRate):{totalOtHours:0,totalOtPay:0,dailyDetail:[]};
+    if(otResult.totalOtPay)totalOtPay=(totalOtPay||0)+otResult.totalOtPay;
 
     const card=document.createElement('div');
     card.style.cssText='background:var(--w);border:1.5px solid '+(rec.paid?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--rs);padding:14px 16px;margin-bottom:8px;transition:all var(--ease)';
     card.innerHTML=`
+      ${salaryDrift?`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--rxs);padding:8px 12px;margin-bottom:10px">
+        <span style="font-size:.76rem;color:var(--warn);font-weight:700">⚠️ 員工資料的底薪／津貼已經改過了，這個月的薪資記錄還是舊的</span>
+        <button onclick="syncSalaryFromEmployee(${e._id},'${monthKey}')" class="btn bo bxs" style="flex-shrink:0;white-space:nowrap">同步最新資料</button>
+      </div>`:''}
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
         <div class="emp-avatar" style="width:38px;height:38px;font-size:.9rem">${e.name.charAt(0)}</div>
         <div style="flex:1">
@@ -403,13 +593,13 @@ function renderMonthSalary(monthKey){
           <div style="font-size:.75rem;color:var(--g400)">實領薪資</div>
           <div style="font-family:var(--mono);font-weight:900;font-size:1rem;color:var(--gold-d)">NT$${net.toLocaleString()}</div>
         </div>
-        <button onclick="openSalaryEditBox('${e._id}','${monthKey}')" title="調整獎金/代墊費"
+        <button onclick="openSalaryEditBox(${e._id},'${monthKey}')" title="調整獎金/代墊費"
           style="width:32px;height:32px;border-radius:var(--rxs);border:1.5px solid var(--g200);background:var(--w);color:var(--g500);cursor:pointer;font-size:.85rem;flex-shrink:0">✏️</button>
-        <button onclick="togglePayStatus('${e._id}','${monthKey}')" 
+        <button onclick="togglePayStatus(${e._id},'${monthKey}')" 
           style="padding:8px 16px;border-radius:var(--rs);font-size:.82rem;font-weight:800;cursor:pointer;font-family:inherit;
           background:${rec.paid?'var(--ok-bg)':'var(--gold)'};color:${rec.paid?'var(--ok)':'#fff'};
           border:1.5px solid ${rec.paid?'var(--ok-bd)':'var(--gold-d)'};flex-shrink:0">
-          ${rec.paid?'✅ 已匯款':'💳 標記匯款'}
+          ${rec.paid?'已匯款':'標記匯款'}
         </button>
       </div>
       <div style="background:var(--g50);border-radius:var(--rxs);padding:10px 12px;font-size:.82rem">
@@ -417,8 +607,9 @@ function renderMonthSalary(monthKey){
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--g500)">津貼合計</span><span style="font-family:var(--mono)">NT$${((rec.meal||0)+(rec.transport||0)+(rec.other||0)).toLocaleString()}</span></div>
         ${rec.bonus?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--ok)">🎁 獎金</span><span style="font-family:var(--mono);color:var(--ok)">+NT$${rec.bonus.toLocaleString()}</span></div>`:''}
         ${rec.reimbursement?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--ok)">💵 代墊費歸還</span><span style="font-family:var(--mono);color:var(--ok)">+NT$${rec.reimbursement.toLocaleString()}</span></div>`:''}
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">勞保（員工）</span><span style="font-family:var(--mono);color:var(--bad)">-NT$${laborDeduct.toLocaleString()}</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">健保（員工）</span><span style="font-family:var(--mono);color:var(--bad)">-NT$${healthDeduct.toLocaleString()}</span></div>
+        ${otResult.totalOtPay?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#B8860B">🕐 加班費（試算，共 ${otResult.totalOtHours} 小時）</span><span style="font-family:var(--mono);color:#B8860B">+NT$${otResult.totalOtPay.toLocaleString()}</span></div>`:''}
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">勞保（${e.absorbInsurance?'公司吸收':'員工'}）</span><span style="font-family:var(--mono);color:${e.absorbInsurance?'var(--warn)':'var(--bad)'}">${e.absorbInsurance?'':'-'}NT$${(e.absorbInsurance?(e.labor||0):laborDeduct).toLocaleString()}</span></div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">健保（${e.absorbInsurance?'公司吸收':'員工'}）</span><span style="font-family:var(--mono);color:${e.absorbInsurance?'var(--warn)':'var(--bad)'}">${e.absorbInsurance?'':'-'}NT$${(e.absorbInsurance?(e.health||0):healthDeduct).toLocaleString()}</span></div>
         ${rec.note?`<div style="padding-top:6px;margin-top:2px;border-top:1px solid var(--g200);color:var(--g500);font-size:.78rem">📝 ${esc(rec.note)}</div>`:''}
         <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid var(--g200)"><span style="font-weight:800">銀行帳號</span><span style="font-family:var(--mono);color:var(--g500)">${e.bank||'尚未設定'}</span></div>
       </div>
@@ -433,9 +624,10 @@ function renderMonthSalary(monthKey){
       <div><div style="font-size:.85rem;font-weight:800;color:var(--gold-d)">本月實領薪資合計</div></div>
       <div style="font-family:var(--mono);font-size:1.3rem;font-weight:900;color:var(--gold-d)">NT$${totalNet.toLocaleString()}</div>
     </div>
-    ${(totalBonus||totalReimb)?`<div style="display:flex;gap:16px;font-size:.76rem;color:var(--gold-d);margin-bottom:10px">
+    ${(totalBonus||totalReimb||totalOtPay)?`<div style="display:flex;gap:16px;font-size:.76rem;color:var(--gold-d);margin-bottom:10px;flex-wrap:wrap">
       ${totalBonus?`<span>🎁 獎金合計 NT$${totalBonus.toLocaleString()}</span>`:''}
       ${totalReimb?`<span>💵 代墊費合計 NT$${totalReimb.toLocaleString()}</span>`:''}
+      ${totalOtPay?`<span>🕐 加班費合計（試算）NT$${totalOtPay.toLocaleString()}</span>`:''}
     </div>`:''}
     <div style="display:flex;justify-content:space-between;align-items:center;padding-top:10px;border-top:1px solid var(--gold-l)">
       <span style="font-size:.8rem;color:var(--g500);font-weight:700">💼 本月人力成本總額（含勞健保公司負擔、勞退提撥）</span>
@@ -445,12 +637,25 @@ function renderMonthSalary(monthKey){
 
   const printBtn=document.createElement('button');
   printBtn.className='btn bo bsm';printBtn.style.cssText='width:100%;margin-top:10px';
-  printBtn.textContent='🖨 列印薪資表';
+  printBtn.textContent='列印薪資表';
   printBtn.addEventListener('click',()=>window.print());
   wrap.appendChild(printBtn);
 }
 
 // 調整獎金/代墊費/備註的輕量彈窗
+// 把「員工資料」最新的底薪／伙食／交通／其他津貼，同步進某個月還沒匯款的薪資記錄，
+// 已經標記匯款的月份不會被這個功能動到（已核發的薪資不該被追溯改動）
+function syncSalaryFromEmployee(empId,monthKey){
+  const e=DB.get('employees').find(x=>x._id===empId);
+  if(!e){showToast('⚠️ 找不到這位員工的資料');return;}
+  const rec=getSalaryRecord(empId,monthKey);
+  if(!rec){showToast('⚠️ 找不到這個月的薪資記錄');return;}
+  if(rec.paid){showToast('⚠️ 這個月已經標記匯款，不會自動改動');return;}
+  DB.upd('salary_records',rec._id,{baseSalary:e.salary||0,meal:e.meal||0,transport:e.transport||0,other:e.other||0});
+  renderMonthSalary(monthKey);
+  showToast('✅ 已同步最新的底薪／津貼');
+}
+
 function openSalaryEditBox(empId,monthKey){
   const rec=getSalaryRecord(empId,monthKey);if(!rec)return;
   const e=DB.get('employees').find(x=>x._id===empId);
@@ -474,7 +679,7 @@ function openSalaryEditBox(empId,monthKey){
 
     <div style="display:flex;gap:8px">
       <button id="_salCancel" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.86rem;cursor:pointer;font-family:inherit">取消</button>
-      <button id="_salSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">💾 儲存</button>
+      <button id="_salSave" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">儲存</button>
     </div>
   </div>`;
   box.addEventListener('click',e2=>{if(e2.target===box)box.remove();});
@@ -583,21 +788,21 @@ async function exportSalaryReport(monthKey){
 
 // ══ 澤居自有工程快速新增 ══════════════════════════════════
 const ZEJU_DEFAULT_ITEMS = {
-  '拆除': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
-  '泥作': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
-  '木作': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
-  '水電': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
+  '拆除工程': [{name:'現場拆除',unit:'式',qty:1,price:0},{name:'廢棄物清運',unit:'車',qty:1,price:0}],
+  '泥作工程': [{name:'磁磚鋪貼',unit:'坪',qty:0,price:0},{name:'防水工程',unit:'式',qty:1,price:0}],
+  '木作工程': [{name:'天花板造型',unit:'式',qty:1,price:0},{name:'木作隔間',unit:'式',qty:1,price:0}],
+  '水電工程': [{name:'電路配置',unit:'式',qty:1,price:0},{name:'給排水',unit:'式',qty:1,price:0}],
   '系統傢俱': [{name:'系統衣櫃',unit:'尺',qty:0,price:0},{name:'系統廚具',unit:'式',qty:1,price:0}],
-  '油漆': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
-  '衛浴': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
-  '燈具': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
-  '其他': [{name:'工程項目',unit:'式',qty:1,price:0}],
+  '油漆工程': [{name:'全室油漆',unit:'坪',qty:0,price:0},{name:'批土整平',unit:'式',qty:1,price:0}],
+  '衛浴工程': [{name:'衛浴設備更換',unit:'式',qty:1,price:0},{name:'浴室磁磚',unit:'式',qty:1,price:0}],
+  '燈具工程': [{name:'燈具安裝',unit:'式',qty:1,price:0},{name:'線路配置',unit:'式',qty:1,price:0}],
+  '其他工程': [{name:'工程項目',unit:'式',qty:1,price:0}],
 };
 
 function addZejuSection(icon, name){
   const defaults = ZEJU_DEFAULT_ITEMS[name] || [{name:'工程項目',unit:'式',qty:1,price:0}];
   adSections.push({
-    id:mkSecId(),
+    id:'s'+Date.now(),
     icon, name,
     items: defaults.map(it=>({...it}))
   });
@@ -695,24 +900,22 @@ function renderAttendance(){
 
   list.innerHTML='<div style="font-size:.8rem;font-weight:800;color:var(--g400);margin-bottom:12px;padding:8px 12px;background:var(--info-bg);border-radius:var(--rxs)">📅 '+monthKey+'月份出缺勤統計 · 本月工作天 '+workDays+' 天</div>';
 
-  emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'}]).forEach(emp=>{
-    // 找這個帳號的打卡記錄
-    // 修正重點：這裡原本不管是哪個員工，一律拿「staff」去找打卡記錄，等於全部員工都在搶同一個帳號的紀錄。
-    // 但員工實際打卡時，如果有選自己的帳號登入，系統存的其實是「emp_員工編號」這種各自獨立的值
-    // （不是統一的 staff），導致這裡完全比對不到，看起來就像「員工打卡了，但老闆這邊看不到」。
-    // 改成比照存檔時的邏輯，個人帳號比對「emp_員工編號」，公務／共用帳號才用固定的角色名去比對。
-    const roleId=(emp._id==='punch')?'punch':('emp_'+emp._id);
+  // 修正重點：這個函式原本是「個人打卡帳號」功能出現以前寫的，用寫死的字串 'staff'／'punch'
+  // 去配對打卡記錄，還手動加了一個假的「公務帳號」員工列在最上面。但現在每個人（不管是正式員工
+  // 還是公務型）登入後打卡都是用自己的 'emp_'+員工編號 標記，跟這個舊邏輯完全對不上，
+  // 導致每個真員工的出勤都比對不到、算出來的天數是錯的。改成每個人直接用自己的個人身份去比對，
+  // 不用共用角色字串，也不需要再假裝有一個叫「公務帳號」的員工。
+  emps.forEach(emp=>{
+    const empPunchId=emp._id?('emp_'+emp._id):null;
     const myRecs=allRecs.filter(r=>{
-      if(!r.date)return false;
-      const [y,m]=r.date.includes('/')
-        ?r.date.split('/').map(Number)
-        :r.date.split('-').map(Number);
-      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&(r.user===roleId||(emp._id!=='punch'&&r.user==='staff'&&r.userName===emp.name));
+      if(r.user!==empPunchId&&r.userName!==emp.name)return false;
+      const norm=typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date;
+      return norm&&norm.startsWith(monthKey);
     });
 
-    // 統計
-    const inDays=new Set(myRecs.filter(r=>r.type==='in').map(r=>r.date)).size;
-    const outDays=new Set(myRecs.filter(r=>r.type==='out').map(r=>r.date)).size;
+    // 統計：同一天不管打了幾組（辦公室、工地各打一次），日期正規化之後用 Set 去重，只算一天
+    const inDays=new Set(myRecs.filter(r=>r.type==='in').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
+    const outDays=new Set(myRecs.filter(r=>r.type==='out').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
     const absentDays=Math.max(0,workDays-inDays);
     const pct=workDays>0?Math.round(inDays/workDays*100):0;
 
@@ -739,13 +942,101 @@ function renderAttendance(){
   });
 }
 
+// 台灣國定假日（依行政院人事行政總處公布之政府行政機關辦公日曆表，含補假）
+// ⚠️ 每年政府會重新公告日曆表，這份清單需要每年更新一次，目前只有 2026 年
+const TW_HOLIDAYS_2026=[
+  '2026-01-01', // 元旦
+  '2026-02-16', // 除夕
+  '2026-02-17','2026-02-18','2026-02-19', // 春節初一~初三
+  '2026-02-20', // 小年夜補假
+  '2026-02-27', // 和平紀念日補假
+  '2026-04-03', // 兒童節/清明節補假
+  '2026-05-01', // 勞動節
+  '2026-06-19', // 端午節
+  '2026-09-25', // 中秋節
+  '2026-09-28', // 教師節
+  '2026-10-09', // 國慶日補假
+  '2026-10-26', // 台灣光復節補假
+  '2026-12-25', // 行憲紀念日
+];
+const TW_HOLIDAYS=new Set([...TW_HOLIDAYS_2026]);
+function isTwHoliday(date){
+  const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,'0'),d=String(date.getDate()).padStart(2,'0');
+  return TW_HOLIDAYS.has(y+'-'+m+'-'+d);
+}
+
 function getWorkDaysInMonth(year,month){
+  // 修正重點：原本只排除週六日，國定假日（元旦、春節、中秋這些）沒有排除，
+  // 導致這幾天員工本來就不用上班，卻被系統算成「沒打卡=缺勤」，出勤率因此被拉低、算錯。
   let count=0;const date=new Date(year,month,1);
   while(date.getMonth()===month&&date<=new Date()){
-    const day=date.getDay();if(day!==0&&day!==6)count++;
+    const day=date.getDay();
+    if(day!==0&&day!==6&&!isTwHoliday(date))count++;
     date.setDate(date.getDate()+1);
   }
   return count;
+}
+
+// ══ 加班費計算（依台灣勞基法第24條）══════════════════════════
+// 標準上班時間：早上9點～晚上6點。超過晚上6點才算加班：
+//   前2小時：時薪 x 1.34 倍（加給1/3以上）
+//   第3、4小時：時薪 x 1.67 倍（加給2/3以上）
+// 一天正常工時+加班最多12小時，最多只能算到4小時加班。
+// 時薪算法：月薪 ÷ 240小時（每月以30天、每天8小時計算，是勞動部認定的標準公式）。
+const WORK_END_HOUR=18;
+const OT_TIER1_HOURS=2;
+const OT_TIER2_HOURS=2;
+const OT_TIER1_RATE=1.34;
+const OT_TIER2_RATE=1.67;
+const MAX_OT_HOURS_PER_DAY=4;
+
+function monthlySalaryToHourlyRate(monthlySalary){
+  return (monthlySalary||0)/240;
+}
+
+function calcDailyOvertime(clockInTime,clockOutTime,hourlyRate){
+  if(!clockOutTime)return {otHours:0,tier1Hours:0,tier2Hours:0,otPay:0};
+  const scheduledEnd=new Date(clockOutTime);
+  scheduledEnd.setHours(WORK_END_HOUR,0,0,0);
+  if(clockOutTime<=scheduledEnd)return {otHours:0,tier1Hours:0,tier2Hours:0,otPay:0};
+  let otMinutes=(clockOutTime-scheduledEnd)/60000;
+  let otHours=Math.min(otMinutes/60,MAX_OT_HOURS_PER_DAY);
+  const tier1Hours=Math.min(otHours,OT_TIER1_HOURS);
+  const tier2Hours=Math.max(0,Math.min(otHours-OT_TIER1_HOURS,OT_TIER2_HOURS));
+  const otPay=Math.round(tier1Hours*hourlyRate*OT_TIER1_RATE+tier2Hours*hourlyRate*OT_TIER2_RATE);
+  return {otHours:+otHours.toFixed(2),tier1Hours:+tier1Hours.toFixed(2),tier2Hours:+tier2Hours.toFixed(2),otPay};
+}
+
+function normalizePunchDate(dateStr){
+  if(!dateStr)return null;
+  const parts=dateStr.split(/[\/-]/).map(s=>s.trim());
+  if(parts.length!==3)return null;
+  const [y,m,d]=parts;
+  return y+'-'+String(m).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+}
+
+function calcMonthlyOvertime(empUserKey,monthKey,hourlyRate){
+  const byDate={};
+  DB.get('punch_recs').filter(r=>r.user===empUserKey&&r.date).forEach(r=>{
+    const norm=normalizePunchDate(r.date);
+    if(!norm||!norm.startsWith(monthKey))return;
+    if(!byDate[norm])byDate[norm]={in:null,out:null};
+    if(r.type==='in'&&(!byDate[norm].in||r.time<byDate[norm].in))byDate[norm].in=r.time;
+    if(r.type==='out'&&(!byDate[norm].out||r.time>byDate[norm].out))byDate[norm].out=r.time;
+  });
+  let totalOtHours=0,totalOtPay=0;
+  const dailyDetail=[];
+  Object.entries(byDate).forEach(([date,rec])=>{
+    if(!rec.out)return;
+    const outDate=new Date(date+'T'+rec.out);
+    if(isNaN(outDate.getTime()))return;
+    const {otHours,tier1Hours,tier2Hours,otPay}=calcDailyOvertime(null,outDate,hourlyRate);
+    if(otHours>0){
+      totalOtHours+=otHours;totalOtPay+=otPay;
+      dailyDetail.push({date,outTime:rec.out,otHours,tier1Hours,tier2Hours,otPay});
+    }
+  });
+  return {totalOtHours:+totalOtHours.toFixed(2),totalOtPay,dailyDetail};
 }
 
 // switchHRTab 覆寫加出缺勤
@@ -768,40 +1059,15 @@ function switchHRTab(tab){
 function compareVendorsByCat(cat){
   const vendors=DB.get('vendors').filter(v=>v.cat===cat);
   if(vendors.length<2){showToast('同類別廠商不足 2 家，無法比較');return;}
+  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+v.vendor+'</td><td style="padding:10px 14px;color:var(--g400)">'+( v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+( v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+( v._ts||'').split(' ')[0]+'</td></tr>').join('');
   const min=Math.min(...vendors.map(v=>v.amount||0));
-
-  // 修正重點：原本用「列是工項、欄是廠商」的表格硬對齊比較，但像鋁窗、隔音窗這類東西
-  // 都是照現場尺寸客製化訂做，每一戶、每一個窗戶大小都不一樣，工項名稱幾乎不會完全相同，
-  // 對齊成同一列比較意義不大，畫面上大部分格子都會是空的。
-  // 改成跟「同一家廠商比較」同一套呈現方式：一家廠商一欄，各自完整列出自己的工項，
-  // 不強行對齊，總價（唯一真正能公平比較的數字）維持最顯眼。
-  const cols=vendors.map(v=>{
-    const isMin=(v.amount||0)===min;
-    const items=v.items||[];
-    const itemRows=items.length
-      ? items.map(it=>'<div style="display:flex;justify-content:space-between;gap:6px;padding:5px 0;font-size:.74rem;border-top:1px dashed var(--g100)">'+
-          '<span style="color:var(--g600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+esc(it.name||'（未命名）')+'</span>'+
-          '<span style="font-family:monospace;color:var(--g600);flex-shrink:0">'+(it.amount||0).toLocaleString()+'</span>'+
-        '</div>').join('')
-      : '<div style="padding:6px 0;font-size:.74rem;color:var(--g400)">沒有拆細項，只有總價</div>';
-    return '<div style="min-width:210px;max-width:230px;flex-shrink:0;border:1.5px solid '+(isMin?'var(--ok-bd)':'var(--g200)')+';border-radius:var(--r);overflow:hidden'+(isMin?';background:var(--ok-bg)':'')+'">'+
-      '<div style="padding:10px 12px;background:'+(isMin?'transparent':'var(--g50)')+';border-bottom:1.5px solid '+(isMin?'var(--ok-bd)':'var(--g200)')+'">'+
-        '<div style="font-weight:900;font-size:.86rem">'+esc(v.vendor)+(isMin?' <span style="font-size:.64rem;background:var(--ok);color:#fff;padding:2px 7px;border-radius:20px;font-weight:800;margin-left:2px">💡最低</span>':'')+'</div>'+
-        '<div style="font-size:.7rem;color:var(--g400);margin-top:2px">'+esc(v.caseN||'—')+' · '+esc((v._ts||'').split(' ')[0])+'</div>'+
-        '<div style="font-family:monospace;font-weight:900;color:'+(isMin?'var(--ok)':'var(--gold-d)')+';font-size:1rem;margin-top:6px">NT$'+(v.amount||0).toLocaleString()+'</div>'+
-      '</div>'+
-      '<div style="padding:6px 12px;max-height:280px;overflow-y:auto">'+itemRows+'</div>'+
-    '</div>';
-  }).join('');
-
   const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:'+Math.min(960,260+vendors.length*230)+'px">'+
-    '<div class="mtit">'+esc(cat)+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
-    '<div style="font-size:.76rem;color:var(--g400);margin-bottom:12px;line-height:1.5">💡 這類工項通常是照現場尺寸客製訂做，每家報的細項不會完全一樣，所以用「總價」比較整體行情，細項清單讓你看各家報了些什麼、組成內容有沒有差異，不強行逐項對齊。</div>'+
-    '<div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:6px">'+cols+'</div>'+
-    '<div style="margin-top:14px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+esc(vendors.find(v=>v.amount===min)?.vendor||'')+'）</div>'+
+  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+cat+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
+    '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>廠商</th><th>案場</th><th>報價</th><th>日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+vendors.find(v=>v.amount===min)?.vendor+'）</div>'+
     '</div>';
   document.body.appendChild(modal);
+  modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
 }
 
 // ══ 進度連結付款提醒 ══════════════════════════════════════
@@ -852,7 +1118,7 @@ setTimeout(()=>{
   if(inp && API_KEY) inp.value = API_KEY;
   const dot = document.getElementById('apiDot');
   if(dot && API_KEY){
-    dot.textContent='✅ 已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)';
+    dot.textContent='已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)';
   }
 }, 500);
 
@@ -924,9 +1190,12 @@ document.getElementById('vZone')?.addEventListener('click',()=>{
   document.getElementById('vFile')?.click();
 });
 
-// 修正重點：這裡原本又重複寫了一次「點背景關閉彈窗」的邏輯，
-// 跟 misc.js 那邊的設定互相矛盾（misc.js 已經改成只能按 ✕ 關閉，這裡卻還留著點背景關閉），
-// 拿掉這段重複、互相打架的邏輯，統一以 misc.js 的規則為準：只能按 ✕ 或明確的關閉按鈕。
+// ══ Modal 點外面關閉（覆寫確保正確）══════════════════════
+document.querySelectorAll('.mov').forEach(mov=>{
+  mov.addEventListener('click',e=>{
+    if(e.target===mov) mov.classList.remove('show');
+  });
+});
 
 // 確保 data-close 也正常運作
 document.querySelectorAll('[data-close]').forEach(btn=>{
@@ -963,12 +1232,12 @@ document.getElementById('svRpl')?.addEventListener('click',()=>{
 });
 
 document.getElementById('qAddSec')?.addEventListener('click',()=>{
-  qSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  qSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('qSections',qSections,{allowDelSec:true,totIds:{sub:'pqSub',total:'pqTotal'}});
 });
 
 document.getElementById('adAddSec')?.addEventListener('click',()=>{
-  adSections.push({id:mkSecId(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
+  adSections.push({id:'s'+Date.now(),icon:'🔧',name:'新增分類',items:[{name:'',unit:'式',qty:1,price:0,cost:0}]});
   renderProQuote('adSections',adSections,{allowDelSec:true,totIds:{sub:'adSub',mgmt:'adMgmt',tax:'adTax',total:'adTotal'}});
 });
 
@@ -1214,6 +1483,7 @@ function openLeaveRequestBox(){
       <button id="_lvSubmit" style="flex:2;padding:11px;border:none;border-radius:var(--rs);background:var(--gold-d);color:#fff;font-weight:700;font-size:.86rem;cursor:pointer;font-family:inherit">送出申請</button>
     </div>
   </div>`;
+  box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
 
   const updHint=()=>{
