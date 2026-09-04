@@ -182,6 +182,21 @@ function readEmpPermCheckboxes(){
 document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   const name=document.getElementById('empName').value.trim();
   if(!name){showToast('⚠️ 請填入員工姓名');return;}
+  // 新增（不是編輯）的時候，如果已經有同名的員工，先跳出確認，不要默默存成第二筆。
+  // 這是重複員工資料真正的源頭——通常是不小心點兩次「新增員工」，或忘記已經建過這個人，
+  // 在這裡先攔一次，比事後在列表裡發現重複、再回頭刪除有效率很多。
+  // 如果真的是同名的兩個不同人（這種情況也存在），確認之後還是可以繼續新增。
+  if(!empEditId){
+    const existing=DB.get('employees').find(e=>(e.name||'').trim()===name);
+    if(existing){
+      confirmAction('已經有一位叫「'+name+'」的員工了（職稱：'+(existing.title||'—')+'）。如果是同一個人，建議取消後改用「編輯」；如果真的是不同的兩個人，可以繼續新增。',
+        ()=>proceedSaveEmployee(name));
+      return;
+    }
+  }
+  proceedSaveEmployee(name);
+});
+function proceedSaveEmployee(name){
   const salary=parseFloat(document.getElementById('empSalary').value)||0;
   const meal=parseFloat(document.getElementById('empMeal').value)||0;
   const transport=parseFloat(document.getElementById('empTransport').value)||0;
@@ -212,7 +227,7 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
-});
+}
 
 function updHRStats(){
   const emps=DB.get('employees');
@@ -225,6 +240,62 @@ function updHRStats(){
   set('hrPunchToday',punched);
 }
 
+// ── 合併重複員工資料 ──────────────────────────────────────
+// 單純刪除重複的那一筆，會讓它底下累積的打卡記錄、薪資記錄變成孤兒（user/empId 對不到任何
+// 還存在的員工），合併則是先把這些記錄的歸屬轉移到你選擇留下的那一筆身上，再刪掉多的那筆，
+// 歷史資料完整保留、不會憑空消失。
+function openMergeEmployeeModal(id1,id2){
+  const emps=DB.get('employees');
+  const e1=emps.find(e=>e._id===id1),e2=emps.find(e=>e._id===id2);
+  if(!e1||!e2){showToast('⚠️ 找不到這兩筆員工資料');return;}
+  const old=document.getElementById('_mergeEmpBox');if(old)old.remove();
+  const box=document.createElement('div');box.id='_mergeEmpBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  const card=e=>{
+    const punchCount=DB.get('punch_recs').filter(r=>r.user==='emp_'+e._id).length;
+    const salaryCount=DB.get('salary_records').filter(r=>r.empId===e._id).length;
+    return '<label style="flex:1;display:block;border:1.5px solid var(--g200);border-radius:var(--rs);padding:14px;cursor:pointer" class="mergeEmpOpt">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="radio" name="mergeKeep" value="'+e._id+'" style="cursor:pointer"><span style="font-weight:800">保留這筆（ID:'+e._id+'）</span></div>'+
+      '<div style="font-size:.78rem;color:var(--g500);line-height:1.6">職稱：'+esc(e.title||'—')+'<br>帳號：'+esc(e.account||'（未設定）')+'<br>身份：'+(e.empType==='punch'?'公務':'正式員工')+'<br>打卡記錄：'+punchCount+' 筆　薪資記錄：'+salaryCount+' 筆</div>'+
+    '</label>';
+  };
+  box.innerHTML='<div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:1rem;margin-bottom:4px">🔀 合併重複員工資料</div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin-bottom:16px">選擇要保留哪一筆，另一筆的打卡／薪資記錄會自動轉移過來，再刪除多的那筆</div>'+
+    '<div style="display:flex;gap:10px;margin-bottom:18px">'+card(e1)+card(e2)+'</div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button id="_mergeEmpConfirm" class="btn bg" style="flex:1">確認合併</button>'+
+      '<button id="_mergeEmpCancel" class="btn bo">取消</button>'+
+    '</div>'+
+  '</div>';
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  document.getElementById('_mergeEmpCancel').addEventListener('click',()=>box.remove());
+  document.getElementById('_mergeEmpConfirm').addEventListener('click',()=>{
+    const keepId=parseInt(document.querySelector('input[name="mergeKeep"]:checked')?.value);
+    if(!keepId){showToast('⚠️ 請先選擇要保留哪一筆');return;}
+    const dropId=keepId===id1?id2:id1;
+    confirmAction('確定合併？ID:'+dropId+' 的打卡／薪資記錄會轉移到 ID:'+keepId+'，然後 ID:'+dropId+' 這筆會被刪除，這個動作沒辦法復原。',()=>{
+      mergeEmployees(keepId,dropId);
+      box.remove();
+    });
+  });
+}
+function mergeEmployees(keepId,dropId){
+  // 打卡記錄：user 欄位是 'emp_'+員工id，把指向被刪那筆的記錄改成指向留下的那筆
+  const punchRecs=DB.get('punch_recs').filter(r=>r.user==='emp_'+dropId);
+  punchRecs.forEach(r=>DB.upd('punch_recs',r._id,{user:'emp_'+keepId}));
+  // 薪資記錄：empId 直接是員工 id，同樣轉移過去
+  const salaryRecs=DB.get('salary_records').filter(r=>r.empId===dropId);
+  salaryRecs.forEach(r=>DB.upd('salary_records',r._id,{empId:keepId}));
+  // 請假記錄也一併轉移，避免請假歷史跟著不見
+  const leaveRecs=DB.get('leave_requests').filter(r=>r.empId===dropId);
+  leaveRecs.forEach(r=>DB.upd('leave_requests',r._id,{empId:keepId}));
+  DB.upd('employees',dropId,{deleted:true,deletedAt:new Date().toLocaleString('zh-TW'),mergedInto:keepId});
+  renderEmployees();updHRStats();
+  showToast('✅ 已合併：'+punchRecs.length+' 筆打卡、'+salaryRecs.length+' 筆薪資、'+leaveRecs.length+' 筆請假記錄已轉移');
+}
+
 function renderEmployees(){
   const list=document.getElementById('empList');if(!list)return;
   const emps=DB.get('employees');
@@ -232,7 +303,9 @@ function renderEmployees(){
 
   // 重複員工偵測：同一個人不小心被存成兩筆獨立紀錄（名字一樣，或登入帳號一樣），
   // 這種情況登入下拉選單那邊已經做了防呆不會顯示重複，但底層資料還是重複的，
-  // 兩筆各自累積打卡/薪資記錄反而更容易搞混，這裡抓出來提醒，讓你確認後手動清掉多的那筆。
+  // 兩筆各自累積打卡/薪資記錄反而更容易搞混。這裡改成提供「合併」而不是只能「刪除」——
+  // 單純刪除會讓被刪那筆底下的打卡/薪資記錄變成孤兒（找不到對應的員工），合併會把
+  // 那些記錄的歸屬轉移到留下來的那筆身上，歷史資料不會不見。
   const dupGroups=[];
   const byName={};
   emps.forEach(e=>{const k=(e.name||'').trim();if(!k)return;(byName[k]=byName[k]||[]).push(e);});
@@ -245,10 +318,14 @@ function renderEmployees(){
   if(dupGroups.length){
     dupHtml='<div style="background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--r);padding:14px 16px;margin-bottom:14px">'+
       '<div style="font-weight:800;color:var(--warn);margin-bottom:8px">⚠️ 發現可能重複的員工資料</div>'+
-      dupGroups.map(g=>'<div style="font-size:.82rem;color:var(--g600);margin-bottom:6px">「'+esc(g.key)+'」這個'+g.type+'有 '+g.items.length+' 筆紀錄：'+
-        g.items.map(e=>'<button onclick="confirmAction(\'確定刪除這筆重複的員工紀錄？（打卡和薪資歷史會保留在系統裡，只是不會再顯示在員工列表）\',()=>{DB.upd(\'employees\','+e._id+',{deleted:true,deletedAt:new Date().toLocaleString(\'zh-TW\')});renderEmployees();updHRStats();showToast(\'✅ 已刪除重複紀錄\');})" style="margin-left:6px;padding:2px 10px;border:1px solid var(--warn-bd);border-radius:20px;background:var(--w);color:var(--warn);font-size:.74rem;cursor:pointer;font-family:inherit">刪除 ID:'+e._id+(e.account?'（帳號:'+esc(e.account)+'）':'')+'</button>').join('')
-      +'</div>').join('')+
-      '<div style="font-size:.72rem;color:var(--g400);margin-top:6px">請先確認要留哪一筆再刪除，建議留有薪資記錄或打卡歷史比較多的那筆</div>'+
+      dupGroups.map(g=>{
+        const ids=g.items.map(e=>e._id).join(',');
+        return '<div style="font-size:.82rem;color:var(--g600);margin-bottom:6px">「'+esc(g.key)+'」這個'+g.type+'有 '+g.items.length+' 筆紀錄'+
+          (g.items.length===2?' <button onclick="openMergeEmployeeModal('+ids+')" style="margin-left:6px;padding:2px 10px;border:1px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.74rem;cursor:pointer;font-family:inherit;font-weight:700">🔀 合併這兩筆</button>':'')+
+          '：'+g.items.map(e=>'<button onclick="confirmAction(\'確定刪除這筆重複的員工紀錄？（打卡和薪資歷史會保留在系統裡，只是不會再顯示在員工列表，也不會再自動關聯到這個人——如果想保留歷史記錄的關聯，建議用上面的「合併」功能）\',()=>{DB.upd(\'employees\','+e._id+',{deleted:true,deletedAt:new Date().toLocaleString(\'zh-TW\')});renderEmployees();updHRStats();showToast(\'✅ 已刪除重複紀錄\');})" style="margin-left:6px;padding:2px 10px;border:1px solid var(--warn-bd);border-radius:20px;background:var(--w);color:var(--warn);font-size:.74rem;cursor:pointer;font-family:inherit">直接刪除 ID:'+e._id+(e.account?'（帳號:'+esc(e.account)+'）':'')+'</button>').join('')
+        +'</div>';
+      }).join('')+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:6px">建議優先用「合併」，會把打卡跟薪資記錄都轉移到留下的那筆，不會遺失歷史資料</div>'+
     '</div>';
   }
 
