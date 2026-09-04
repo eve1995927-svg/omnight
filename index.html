@@ -1691,9 +1691,10 @@
      <div class="field" style="margin:0"><label class="fl">勞保費（員工負擔）</label><input class="fi" id="empLaborEmployee" type="number" placeholder="例：738"></div>
      <div class="field" style="margin:0"><label class="fl">健保費（員工負擔）</label><input class="fi" id="empHealthEmployee" type="number" placeholder="例：458"></div>
     </div>
-    <div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">以上四欄依勞保局或健保局寄來的帳單填寫，每個人的投保級距不同，自行填入才準確。<br>公司負擔部分會計入人事成本，員工負擔部分如果由公司吸收也算在成本裡。</div>
+    <div class="field" style="margin-bottom:8px"><label class="fl">勞退（公司提撥）</label><input class="fi" id="empRetireCompany" type="number" placeholder="例：2220"></div>
+    <div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">以上依勞保局或健保局寄來的帳單填寫，每個人的投保級距不同，自行填入才準確（勞退也是分級距，不是單純比例，所以一樣自行填寫較準）。<br>公司負擔部分會計入人事成本，員工負擔部分如果由公司吸收也算在成本裡。</div>
     <div style="background:var(--g50);border-radius:var(--rxs);padding:10px 12px">
-     <div class="salary-row"><span class="sl-label">公司人事總成本（底薪＋津貼＋勞保公司出＋健保公司出）</span><span class="sl-val total" id="empCompanyCost">-</span></div>
+     <div class="salary-row"><span class="sl-label">公司人事總成本（底薪＋津貼＋勞保公司出＋健保公司出＋勞退）</span><span class="sl-val total" id="empCompanyCost">-</span></div>
      <div class="salary-row"><span class="sl-label" style="font-weight:700">員工實領薪資（底薪＋津貼－員工負擔勞健保）</span><span class="sl-val total" id="empNet">-</span></div>
     </div>
    </div>
