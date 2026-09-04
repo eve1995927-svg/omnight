@@ -773,6 +773,15 @@ function renderVendors(filter){
 // ══ 打卡系統 ══════════════════════════════════════════════
 let punchInterval=null;
 // 兩個座標之間的距離（公尺），拿來算「員工現在距離工地多遠」
+// 把打卡記錄的 projectId 轉成畫面上要顯示的地點名稱，「辦公室」是固定選項不是真實案場，
+// 這裡統一處理，避免每個顯示打卡地點的地方各自漏掉這個特殊情況、誤顯示成「未指定案場」
+function getPunchLocationLabel(projectId){
+  if(!projectId)return '未指定案場';
+  if(projectId==='__office__')return '🏢 辦公室';
+  const proj=DB.get('projects').find(p=>String(p._id)===String(projectId));
+  return proj?proj.name:'未指定案場';
+}
+
 function haversineDist(lat1,lng1,lat2,lng2){
   const R=6371000;
   const toRad=d=>d*Math.PI/180;
@@ -801,6 +810,16 @@ function initPunchClock(){
   if(sel&&typeof buildProjectSelect==='function'){
     const lastId=localStorage.getItem('zeju_last_punch_proj');
     buildProjectSelect(sel,lastId,true);
+    // 辦公室不是系統裡的「案場」（案場專指裝修工程），但很多人是「先在辦公室打卡上下班，
+    // 再去工地打卡上下班」，兩邊都不選案場的話會被系統當成同一組，第二次會打不了卡。
+    // 這裡在「不指定案場」下面加一個固定的「🏢 辦公室」選項，讓辦公室打卡自成一組，
+    // 跟去工地選了實際案場的打卡分開，不會互相卡住。
+    if(!sel.querySelector('option[value="__office__"]')){
+      const officeOpt=document.createElement('option');
+      officeOpt.value='__office__';officeOpt.textContent='🏢 辦公室';
+      sel.insertBefore(officeOpt,sel.options[1]||null);
+    }
+    if(lastId==='__office__')sel.value='__office__';
     if(!sel._geoBound){
       sel._geoBound=true;
       sel.addEventListener('change',()=>{updatePunchGeoCard();updatePunchBtn();});
@@ -829,6 +848,14 @@ function updatePunchGeoCard(){
   if(!card||!sel)return;
   const pid=sel.value;
   if(!pid||!punchCurPos){card.style.display='none';return;}
+  // 辦公室是固定選項，不是真實案場，沒有地址也不用算圍籬距離，直接顯示簡單確認訊息就好
+  if(pid==='__office__'){
+    card.style.display='block';
+    document.getElementById('punchDistVal').textContent='—';
+    document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g500)">🏢 辦公室打卡，不檢查地點範圍</span>';
+    const accEl=document.getElementById('punchAccuracyVal');if(accEl)accEl.textContent=punchCurPos.acc?('定位精度 ±'+Math.round(punchCurPos.acc)+'m'):'';
+    return;
+  }
   const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
   if(!proj||proj.lat==null||proj.lng==null){
     card.style.display='block';
@@ -1091,8 +1118,7 @@ function renderHRPanel(){
             ? '<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+r.lat+', '+r.lng+'</div>'
             : '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>';
         // 一天可能跑好幾個案場，老闆這邊要看得出這筆打卡是哪個案場的，不然多筆混在一起分不出來
-        const proj=r.projectId?DB.get('projects').find(p=>String(p._id)===String(r.projectId)):null;
-        const projName=proj?.name||'';
+        const projName=r.projectId?getPunchLocationLabel(r.projectId):'';
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+

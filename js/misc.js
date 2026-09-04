@@ -438,9 +438,8 @@ function showPunchDayDetail(dateStr,recs){
   // 不指定案場的（projectId 是 null）歸在「未指定案場」那組
   const groups={};
   recs.forEach(r=>{const key=r.projectId||'none';(groups[key]=groups[key]||[]).push(r);});
-  const projects=DB.get('projects');
   const groupsHtml=Object.entries(groups).map(([key,items])=>{
-    const proj=key!=='none'?projects.find(p=>String(p._id)===String(key)):null;
+    const locLabel=key==='none'?'未指定案場':getPunchLocationLabel(key);
     const inRec=items.find(r=>r.type==='in');
     const outRec=items.find(r=>r.type==='out');
     let workHours='';
@@ -452,7 +451,7 @@ function showPunchDayDetail(dateStr,recs){
     }
     const inAddr=fmtAddr(inRec), outAddr=fmtAddr(outRec);
     return '<div style="padding:0 16px 12px">'+
-      '<div style="font-size:.76rem;font-weight:800;color:var(--gold-d);margin-bottom:6px">📍 '+(proj?esc(proj.name):'未指定案場')+'</div>'+
+      '<div style="font-size:.76rem;font-weight:800;color:var(--gold-d);margin-bottom:6px">'+(key==='__office__'?locLabel:'📍 '+esc(locLabel))+'</div>'+
       '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
       (inRec?'<div style="flex:1;min-width:100px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--ok);margin-bottom:4px">🟢 上班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+inRec.time+'</div>'+(inAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+inAddr+'</div>':'')+(inRec.photo?'<img src="'+inRec.photo+'" onclick="openLB(\''+inRec.photo+'\')" style="width:100%;max-height:90px;object-fit:cover;border-radius:var(--rxs);margin-top:8px;cursor:pointer">':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打上班卡</div>')+
       (outRec?'<div style="flex:1;min-width:100px;background:var(--info-bg);border:1.5px solid var(--info-bd);border-radius:var(--rs);padding:10px 14px"><div style="font-size:.7rem;font-weight:800;color:var(--info);margin-bottom:4px">🔵 下班打卡</div><div style="font-size:1.2rem;font-weight:900;font-family:monospace">'+outRec.time+'</div>'+(outAddr?'<div style="font-size:.68rem;color:var(--g500);margin-top:4px;line-height:1.4">'+outAddr+'</div>':'')+(outRec.photo?'<img src="'+outRec.photo+'" onclick="openLB(\''+outRec.photo+'\')" style="width:100%;max-height:90px;object-fit:cover;border-radius:var(--rxs);margin-top:8px;cursor:pointer">':'')+'</div>':'<div style="flex:1;min-width:100px;background:var(--g50);border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px 14px;color:var(--g400);font-size:.82rem;display:flex;align-items:center;justify-content:center">未打下班卡</div>')+
@@ -482,13 +481,12 @@ function updateTodayCard(){
     const key=r.projectId||'none';
     (groups[key]=groups[key]||[]).push(r);
   });
-  const projects=DB.get('projects');
   box.innerHTML=Object.entries(groups).map(([key,items])=>{
-    const proj=key!=='none'?projects.find(p=>String(p._id)===String(key)):null;
+    const locLabel=key==='none'?'未指定案場':getPunchLocationLabel(key);
     const inRec=items.find(r=>r.type==='in');
     const outRec=items.find(r=>r.type==='out');
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--g100)">
-      <div style="grid-column:1/-1;padding:8px 16px 0;font-size:.76rem;font-weight:800;color:var(--gold-d)">📍 ${proj?esc(proj.name):'未指定案場'}</div>
+      <div style="grid-column:1/-1;padding:8px 16px 0;font-size:.76rem;font-weight:800;color:var(--gold-d)">${key==='__office__'?locLabel:'📍 '+esc(locLabel)}</div>
       <div style="padding:10px 16px 14px;border-right:1px solid var(--g100)">
         <div style="font-size:.72rem;color:var(--g400);margin-bottom:6px">🟢 上班打卡</div>
         <div style="font-size:1.3rem;font-family:monospace;font-weight:900;color:${inRec?'var(--g800)':'var(--g300)'}">${inRec?inRec.time:'—'}</div>
