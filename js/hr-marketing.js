@@ -158,6 +158,7 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=false;
   document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
+  const typeStaffEl=document.getElementById('empTypeStaff');if(typeStaffEl)typeStaffEl.checked=true;
   document.getElementById('empModalTitle').innerHTML='新增員工 <button class="mcl" data-close="empModal">✕</button>';
   setEmpPermCheckboxes(DEFAULT_STAFF_PERMISSIONS);
   calcSalaryInsurance();openModal('empModal');
@@ -206,7 +207,8 @@ document.getElementById('saveEmpBtn')?.addEventListener('click',()=>{
     if(!password){showToast('⚠️ 設定了帳號就需要設定密碼');return;}
   }
   const permissions=readEmpPermCheckboxes();
-  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,laborCompany,healthCompany,laborEmployee,healthEmployee,retire,net,companyCost,account,password,permissions,summary:'員工 '+name};
+  const empType=document.querySelector('input[name="empType"]:checked')?.value||'staff';
+  const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,laborCompany,healthCompany,laborEmployee,healthEmployee,retire,net,companyCost,account,password,permissions,empType,summary:'員工 '+name};
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
@@ -312,6 +314,9 @@ function renderEmployees(){
       const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=!!e.absorbInsurance;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
+      // 舊資料沒有 empType 欄位的話，預設當作「正式員工」（跟這個功能加入前的行為一致，不會突然把既有員工都變成只能打卡）
+      const empTypeEl=document.getElementById(e.empType==='punch'?'empTypePunch':'empTypeStaff');
+      if(empTypeEl)empTypeEl.checked=true;
       setEmpPermCheckboxes(e.permissions||DEFAULT_STAFF_PERMISSIONS);
       document.getElementById('empModalTitle').innerHTML='編輯員工：'+esc(e.name)+' <button class="mcl" data-close="empModal">✕</button>';
       calcSalaryInsurance();openModal('empModal');
@@ -458,8 +463,18 @@ function renderMonthSalary(monthKey){
     totalNet+=net;totalCompanyCost+=companyCost;totalBonus+=(rec.bonus||0);totalReimb+=(rec.reimbursement||0);
 
     const empPunchId=e._id?('emp_'+e._id):null;
-    const monthRecs=DB.get('punch_recs').filter(r=>(r.user===empPunchId||r.userName===e.name)&&(r.date||'').startsWith(monthKey));
-    const workDays=new Set(monthRecs.filter(r=>r.type==='in').map(r=>r.date)).size;
+    // 修正重點：這裡原本直接拿 r.date 字串跟 monthKey（"2026-09" 這種固定格式）比對開頭，
+    // 但打卡記錄的日期是瀏覽器 toLocaleDateString 產生的，不同瀏覽器/裝置格式可能不一樣
+    // （例如「2026/9/4」跟「2026-09-04」），直接比對字串開頭很容易漏掉本來該算進去的記錄，
+    // 或者反過來把同一天的兩筆記錄，因為日期字串長得不完全一樣，被當成兩個不同的日子分別計入，
+    // 導致出勤天數比實際跑一天多算好幾天。改用 normalizePunchDate 先把日期統一轉成同一種格式再比對、
+    // 再去重，不管原始格式長怎樣，同一個實際日期一定會被歸成同一天。
+    const monthRecs=DB.get('punch_recs').filter(r=>{
+      if(r.user!==empPunchId&&r.userName!==e.name)return false;
+      const norm=typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date;
+      return norm&&norm.startsWith(monthKey);
+    });
+    const workDays=new Set(monthRecs.filter(r=>r.type==='in').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
 
     // 底薪／津貼是這筆薪資記錄剛建立時，從員工資料「複製」過來的快照，之後如果去員工資料改了底薪，
     // 這裡不會自動跟著變（已經核發過的月份本來就不該被追溯改動）。但還沒標記匯款的月份，
@@ -796,20 +811,22 @@ function renderAttendance(){
 
   list.innerHTML='<div style="font-size:.8rem;font-weight:800;color:var(--g400);margin-bottom:12px;padding:8px 12px;background:var(--info-bg);border-radius:var(--rxs)">📅 '+monthKey+'月份出缺勤統計 · 本月工作天 '+workDays+' 天</div>';
 
-  emps.concat([{_id:'punch',name:'公務帳號',title:'打卡'}]).forEach(emp=>{
-    // 找這個帳號的打卡記錄
-    const roleId=emp._id==='punch'?'punch':'staff';
+  // 修正重點：這個函式原本是「個人打卡帳號」功能出現以前寫的，用寫死的字串 'staff'／'punch'
+  // 去配對打卡記錄，還手動加了一個假的「公務帳號」員工列在最上面。但現在每個人（不管是正式員工
+  // 還是公務型）登入後打卡都是用自己的 'emp_'+員工編號 標記，跟這個舊邏輯完全對不上，
+  // 導致每個真員工的出勤都比對不到、算出來的天數是錯的。改成每個人直接用自己的個人身份去比對，
+  // 不用共用角色字串，也不需要再假裝有一個叫「公務帳號」的員工。
+  emps.forEach(emp=>{
+    const empPunchId=emp._id?('emp_'+emp._id):null;
     const myRecs=allRecs.filter(r=>{
-      if(!r.date)return false;
-      const [y,m]=r.date.includes('/')
-        ?r.date.split('/').map(Number)
-        :r.date.split('-').map(Number);
-      return (y===now.getFullYear()||(y>2000&&r.date.includes(now.getFullYear().toString())))&&r.user===roleId;
+      if(r.user!==empPunchId&&r.userName!==emp.name)return false;
+      const norm=typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date;
+      return norm&&norm.startsWith(monthKey);
     });
 
-    // 統計
-    const inDays=new Set(myRecs.filter(r=>r.type==='in').map(r=>r.date)).size;
-    const outDays=new Set(myRecs.filter(r=>r.type==='out').map(r=>r.date)).size;
+    // 統計：同一天不管打了幾組（辦公室、工地各打一次），日期正規化之後用 Set 去重，只算一天
+    const inDays=new Set(myRecs.filter(r=>r.type==='in').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
+    const outDays=new Set(myRecs.filter(r=>r.type==='out').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
     const absentDays=Math.max(0,workDays-inDays);
     const pct=workDays>0?Math.round(inDays/workDays*100):0;
 
