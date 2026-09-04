@@ -124,8 +124,9 @@ function renderProgress(){
 // ══ 員工管理 ══════════════════════════════════════════════
 let empEditId=null;
 
-// 勞健保：完全改成手動輸入，四個欄位分別填公司出的勞保、公司出的健保、員工自己出的勞保、員工自己出的健保。
-// 不再自動算，因為每個人的投保薪資級距不同，用百分比算出來的數字常常跟勞保局／健保局帳單對不上。
+// 勞健保／勞退：完全改成手動輸入，公司出的勞保、公司出的健保、員工自己出的勞保、員工自己出的健保、
+// 加上公司提撥的勞退。不再自動算，因為每個人的投保薪資級距不同（勞退也是分級距，不是單純比例），
+// 用百分比算出來的數字常常跟勞保局／健保局帳單對不上。
 function calcSalaryInsurance(){
   const salary=parseFloat(document.getElementById('empSalary')?.value)||0;
   const meal=parseFloat(document.getElementById('empMeal')?.value)||0;
@@ -135,14 +136,15 @@ function calcSalaryInsurance(){
   const healthCompany=parseFloat(document.getElementById('empHealthCompany')?.value)||0;
   const laborEmployee=parseFloat(document.getElementById('empLaborEmployee')?.value)||0;
   const healthEmployee=parseFloat(document.getElementById('empHealthEmployee')?.value)||0;
+  const retireCompany=parseFloat(document.getElementById('empRetireCompany')?.value)||0;
   const gross=salary+meal+transport+other;
   const net=gross-laborEmployee-healthEmployee;
-  const companyCost=gross+laborCompany+healthCompany;
+  const companyCost=gross+laborCompany+healthCompany+retireCompany;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent='NT$'+Math.round(v).toLocaleString();};
   set('empNet',net);
   set('empCompanyCost',companyCost);
 }
-['empSalary','empMeal','empTransport','empOther','empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{
+['empSalary','empMeal','empTransport','empOther','empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee','empRetireCompany'].forEach(id=>{
   document.getElementById(id)?.addEventListener('input',calcSalaryInsurance);
   document.getElementById(id)?.addEventListener('change',calcSalaryInsurance);
 });
@@ -155,7 +157,7 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   document.getElementById('empTransport').value='0';
   document.getElementById('empOther').value='0';
   const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value='';
-  ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee','empRetireCompany'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=false;
   document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
   const typeStaffEl=document.getElementById('empTypeStaff');if(typeStaffEl)typeStaffEl.checked=true;
@@ -206,13 +208,16 @@ function proceedSaveEmployee(name){
   const healthCompany=parseFloat(document.getElementById('empHealthCompany')?.value)||0;
   const laborEmployee=parseFloat(document.getElementById('empLaborEmployee')?.value)||0;
   const healthEmployee=parseFloat(document.getElementById('empHealthEmployee')?.value)||0;
+  const retireCompany=parseFloat(document.getElementById('empRetireCompany')?.value)||0;
   // 向下相容：保留 labor/health 欄位（薪資管理的扣除計算還在用），
   // 這裡用「員工自行負擔」的數字填進去，跟舊版行為保持一致
   const labor=laborEmployee;
   const health=healthEmployee;
-  const retire=Math.round(insuredSalary*0.06);
+  // 勞退改成跟勞健保一樣手動填（勞退提繳工資分級表也是分級距，不是單純比例，
+  // 用固定 6% 算不準，而且之前這個自動算出來的數字其實也沒有真的算進公司人事成本裡）
+  const retire=retireCompany;
   const net=salary+meal+transport+other-laborEmployee-healthEmployee;
-  const companyCost=salary+meal+transport+other+laborCompany+healthCompany;
+  const companyCost=salary+meal+transport+other+laborCompany+healthCompany+retireCompany;
   const account=(document.getElementById('empAccount')?.value||'').trim();
   const password=(document.getElementById('empPassword')?.value||'').trim();
   // 帳號重複檢查（排除自己）
@@ -388,6 +393,10 @@ function renderEmployees(){
         const fieldMap={empLaborCompany:'laborCompany',empHealthCompany:'healthCompany',empLaborEmployee:'laborEmployee',empHealthEmployee:'healthEmployee'};
         const el=document.getElementById(id);if(el)el.value=e[fieldMap[id]]||'';
       });
+      // 舊資料的 retire 是自動算出來的（投保金額×6%），新資料是手動填的，這裡不分兩種來源，
+      // 統一直接把 e.retire 帶進欄位——如果是舊資料，等於把之前自動算的數字當成初始值放進去，
+      // 使用者再自己依實際帳單調整即可，不用整個空白重填
+      const retireEl=document.getElementById('empRetireCompany');if(retireEl)retireEl.value=e.retire||'';
       const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=!!e.absorbInsurance;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
@@ -515,11 +524,14 @@ function calcSalaryRecord(rec){
   const healthEmployee=e.healthEmployee!=null?e.healthEmployee:(e.absorbInsurance?0:(e.health||0));
   const laborCompany=e.laborCompany!=null?e.laborCompany:(e.absorbInsurance?(e.labor||0):0);
   const healthCompany=e.healthCompany!=null?e.healthCompany:(e.absorbInsurance?(e.health||0):0);
+  // 修正重點：勞退（公司提撥）之前只有在員工卡片上顯示，沒有真的算進每月人力成本總額，
+  // 現在跟勞健保一樣直接用員工資料存的 e.retire（手動填的數字），一起計入公司成本
+  const retireCompany=e.retire||0;
   const laborDeduct=laborEmployee;
   const healthDeduct=healthEmployee;
   const net=gross-laborDeduct-healthDeduct+(rec.reimbursement||0);
-  const companyCost=gross+laborCompany+healthCompany+(rec.reimbursement||0);
-  return {gross,laborDeduct,healthDeduct,laborCompany,healthCompany,net,companyCost};
+  const companyCost=gross+laborCompany+healthCompany+retireCompany+(rec.reimbursement||0);
+  return {gross,laborDeduct,healthDeduct,laborCompany,healthCompany,retireCompany,net,companyCost};
 }
 
 function renderMonthSalary(monthKey){

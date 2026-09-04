@@ -1538,7 +1538,8 @@ function buildCatProfitHtml(projectId){
 function wireCatProfitInputs(container,projectId){
   if(!container)return;
   container.querySelectorAll('.catProfitInput').forEach(inp=>{
-    inp.addEventListener('change',()=>{
+    let debounceTimer=null;
+    const commit=()=>{
       const cat=inp.dataset.cat,field=inp.dataset.field;
       const p=DB.get('projects').find(x=>x._id===projectId);if(!p)return;
       const overrides={};
@@ -1555,7 +1556,15 @@ function wireCatProfitInputs(container,projectId){
       DB.upd('projects',projectId,{catProfitOverride:overrides});
       showToast('✅ 已更新工種毛利');
       refreshCatProfitViews(projectId);
+    };
+    // 用 input（打字/清空當下就觸發）而不是 change（要失焦才觸發）：
+    // 之前如果直接把數字清空但沒有再點別的地方讓欄位失焦，change 事件不會發生，
+    // 畫面看起來清空了、但其實還沒存回去，也沒有真的變回自動計算的數字，就是「沒辦法歸零」的原因。
+    inp.addEventListener('input',()=>{
+      clearTimeout(debounceTimer);
+      debounceTimer=setTimeout(commit,600); // 停止打字 0.6 秒後才存檔，不會每打一個字就存一次
     });
+    inp.addEventListener('blur',()=>{clearTimeout(debounceTimer);commit();}); // 失焦時立刻存，不用等
   });
 }
 
