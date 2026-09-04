@@ -999,17 +999,26 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
       const withAccount=empList.filter(e=>e&&e.account&&!e.deleted);
-      // 防呆：員工資料如果不小心存成兩筆重複紀錄（同一個帳號被存了兩次），
-      // 這裡先用「帳號」去重，確保選單上每個人只出現一次，不會選誰都搞不清楚選到哪一筆。
-      // 真正該做的是把底層重複的紀錄清掉，這裡只是先讓畫面不要顯示壞掉。
+      // 防呆：如果兩筆重複紀錄的帳號剛好一樣，去重合併成一個選項是安全的（帳號密碼都相同，選哪筆都能登入）。
+      // 但如果帳號不一樣（例如其中一筆帳號打錯字或忘記填），不能隨便藏掉一筆——
+      // 萬一那個人的密碼其實設定在被藏起來的那筆上，會變成完全登入不了，風險更大。
+      // 這種情況兩筆都保留顯示，但在名字後面加帳號後幾碼當提示，讓人看得出是不同筆、選得到自己要的那組，
+      // 真正該做的是去「人資管理」把底層重複的資料清乾淨，這裡只是先讓畫面看起來合理、不誤導。
       const seenAcc=new Set();
       const dedupList=withAccount.filter(e=>{
         if(seenAcc.has(e.account))return false;
         seenAcc.add(e.account);return true;
       });
+      const nameCount={};
+      dedupList.forEach(e=>{nameCount[e.name]=(nameCount[e.name]||0)+1;});
       if(dedupList.length){
+        const hasDup=Object.values(nameCount).some(c=>c>1);
         empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
-          dedupList.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
+          dedupList.map(e=>{
+            const showAcc=nameCount[e.name]>1;
+            return '<option value="'+e.account+'">👤 '+e.name+(showAcc?'（帳號：'+e.account+'）':'')+'</option>';
+          }).join('')+
+          (hasDup?'<option value="" disabled>⚠️ 有同名的人，請找老闆到「人資管理」清掉重複資料</option>':'');
       } else {
         empSelEl.innerHTML='<option value="">尚無員工帳號，請聯絡老闆設定</option>';
       }
@@ -1045,9 +1054,15 @@ async function silentRefreshEmployeesForLogin(){
         if(seenAcc.has(e.account))return false;
         seenAcc.add(e.account);return true;
       });
+      const nameCount={};
+      dedupList.forEach(e=>{nameCount[e.name]=(nameCount[e.name]||0)+1;});
+      const hasDup=Object.values(nameCount).some(c=>c>1);
       const curVal=empSelEl.value;
       empSelEl.innerHTML=dedupList.length
-        ?'<option value="">請選擇你的名字…</option>'+dedupList.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('')
+        ?'<option value="">請選擇你的名字…</option>'+dedupList.map(e=>{
+            const showAcc=nameCount[e.name]>1;
+            return '<option value="'+e.account+'">👤 '+e.name+(showAcc?'（帳號：'+e.account+'）':'')+'</option>';
+          }).join('')+(hasDup?'<option value="" disabled>⚠️ 有同名的人，請找老闆到「人資管理」清掉重複資料</option>':'')
         :'<option value="">尚無員工帳號，請聯絡老闆設定</option>';
       if(curVal)empSelEl.value=curVal;
     }
