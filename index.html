@@ -61,6 +61,12 @@
   <div class="tlogo"><span class="tlogo-mark"></span><span id="tlogoText">澤居</span></div>
   <div class="rtabs" id="rTabs"></div>
   <div class="tright">
+   <button onclick="openGlobalSearch()" title="全站搜尋（案場、客戶、廠商、報價、發票、合約）"
+     style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:.75rem;
+            font-weight:700;cursor:pointer;margin-right:6px;border:1.5px solid var(--g200);
+            background:var(--w);color:var(--g500);font-family:inherit;transition:all var(--ease)">
+    <span style="font-size:.9rem">🔍</span><span class="gsLabel">搜尋</span>
+   </button>
    <div id="syncDot" onclick="showFirebaseStatus()" title="點擊查看同步詳情"
      style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
             font-size:.75rem;font-weight:700;cursor:pointer;margin-right:6px;
@@ -1072,6 +1078,18 @@
   <div class="field"><label class="fl">收款帳號（請填入後儲存）</label><input class="fi" id="bankAcct" placeholder="請輸入公司帳號…"></div>
   <div class="field"><label class="fl">月費基本金額</label><input class="fi" value="NT$9,000" readonly style="background:var(--g50)"></div>
   <button class="btn bg bsm" onclick="saveBankAcct()">儲存帳號</button>
+ </div>
+
+ <!-- 資料備份 -->
+ <div class="settings-section">
+  <div class="ss-title">💾 資料備份</div>
+  <p style="font-size:.82rem;color:var(--g400);margin-bottom:12px">系統資料只存在雲端（Firebase），建議定期下載一份備份存在自己電腦裡。萬一雲端出狀況、或不小心刪錯東西，可以用備份檔還原。</p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+   <button class="btn bg bsm" onclick="exportAllData()">⬇️ 下載完整備份</button>
+   <button class="btn bo bsm" onclick="document.getElementById('restoreFileInput').click()">⬆️ 從備份檔還原</button>
+   <input type="file" id="restoreFileInput" accept=".json" style="display:none" onchange="importAllData(this)">
+  </div>
+  <div id="lastBackupInfo" style="font-size:.76rem;color:var(--g400)"></div>
  </div>
 
  <!-- 垃圾桶 -->
