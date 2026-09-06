@@ -75,6 +75,27 @@ function migrateEmployeePermissions(perms){
 // 目的：自由輸入常常打法不一致（「民有十三街」跟「民有13街」變成兩個不同案場），
 // 導致同一場的報價、廠商報價、帳款、進度散在不同地方兜不起來。改成一定要先在
 // 「案場總覽」新增案場，這裡才選得到，同一場的所有資料就會透過 projectId 準確歸在一起。
+// ══ 案場毛利計算（全站唯一定義）═══════════════════════════════
+// 這之前是各頁面各自算，公式還不一樣：案場詳情有扣廠商成本，但「帳款總覽→案場分析」
+// 跟「財務報表→毛利分析」沒扣，導致同一個案場在不同頁面看到的毛利數字不同（差距就是整筆廠商成本）。
+// 現在全站都改成呼叫這裡，只有一個定義、改一次全部同步。
+//
+// 毛利 = 外帳收入 − 內帳支出（不含廠商付款自動記錄）− 廠商成本
+// 註：標記廠商付款時系統會自動在帳款裡多記一筆內帳支出方便對帳，那筆錢已經算在「廠商成本」裡，
+//     所以計算內帳支出時要排除掉有 vendorId 標記的，避免同一筆錢被算兩次。
+function calcProjectProfit(projectId){
+  const ledger=DB.get('ledger').filter(l=>String(l.projectId)===String(projectId));
+  const bookOf=r=>(typeof getLedgerBook==='function'?getLedgerBook(r):(r.book||(r.type==='in'?'in':'out')));
+  const income=ledger.filter(l=>bookOf(l)==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+  const cost=ledger.filter(l=>bookOf(l)==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
+  const vendorCost=DB.get('vendors')
+    .filter(v=>String(v.projectId)===String(projectId)&&!v.deleted)
+    .reduce((s,v)=>s+(typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0)),0);
+  const profit=income-cost-vendorCost;
+  const margin=income>0?Math.round(profit/income*100):null;
+  return {income,cost,vendorCost,profit,margin};
+}
+
 function buildProjectSelect(selectEl, selectedId, allowEmpty){
   if(!selectEl) return;
   const projects=DB.get('projects');
@@ -648,6 +669,92 @@ function renderTrashBin(){
 // base64 圖片佔的空間比一般文字資料大很多，60 天前的打卡記錄照片已經不太需要留，
 // 這裡在每次登入時跑一次清理，把超過 60 天的那些打卡記錄的 photo 欄位清空（不刪整筆記錄，只清照片）。
 // 清完的記錄只是少了照片，打卡時間、地址、姓名都還在。
+// ══ 資料備份／還原 ═══════════════════════════════════════════
+// 系統資料只存在 Firebase 雲端，沒有本地副本。萬一誤刪、或雲端出狀況（例如額度爆掉、專案被停用），
+// 沒有備份就救不回來。這裡提供「下載完整備份」跟「從備份檔還原」兩個功能。
+function exportAllData(){
+  try{
+    const backup={
+      _meta:{
+        exportedAt:new Date().toLocaleString('zh-TW'),
+        exportedBy:document.getElementById('uName')?.textContent||curRole,
+        version:1,
+        company:(typeof getCompanyProfile==='function'?getCompanyProfile().name:'')||'',
+      },
+      data:{}
+    };
+    let totalRecords=0;
+    _KEYS.forEach(k=>{
+      const rows=DB.getAll(k); // 用 getAll：連已軟刪除（垃圾桶裡）的也一起備份，還原時才完整
+      backup.data[k]=rows;
+      totalRecords+=rows.length;
+    });
+    // 公司設定存在 localStorage，不在 _KEYS 裡，也一起備份
+    try{ backup.companyProfile=JSON.parse(localStorage.getItem('zeju_company_profile')||'null'); }catch{}
+
+    const blob=new Blob([JSON.stringify(backup,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    const d=new Date();
+    const stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'-'+String(d.getHours()).padStart(2,'0')+String(d.getMinutes()).padStart(2,'0');
+    a.href=url;a.download='澤居備份-'+stamp+'.json';
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    localStorage.setItem('zeju_last_backup',new Date().toLocaleString('zh-TW'));
+    updateLastBackupInfo();
+    showToast('✅ 已下載備份（共 '+totalRecords.toLocaleString()+' 筆資料）');
+  }catch(e){
+    showToast('⚠️ 備份失敗：'+e.message);
+  }
+}
+
+function updateLastBackupInfo(){
+  const el=document.getElementById('lastBackupInfo');if(!el)return;
+  const last=localStorage.getItem('zeju_last_backup');
+  el.textContent=last?('上次備份：'+last+'（這個記錄只存在目前這台裝置）'):'還沒有備份過，建議現在下載一份';
+}
+
+function importAllData(input){
+  const file=input.files&&input.files[0];
+  if(!file){return;}
+  const reader=new FileReader();
+  reader.onload=()=>{
+    let backup;
+    try{ backup=JSON.parse(reader.result); }
+    catch{ showToast('⚠️ 這個檔案讀不到內容，請確認是從本系統下載的備份檔'); input.value=''; return; }
+    if(!backup||!backup.data||typeof backup.data!=='object'){
+      showToast('⚠️ 這不是本系統的備份檔格式'); input.value=''; return;
+    }
+    const keys=Object.keys(backup.data).filter(k=>_KEYS.includes(k));
+    const total=keys.reduce((s,k)=>s+(Array.isArray(backup.data[k])?backup.data[k].length:0),0);
+    const when=backup._meta?.exportedAt||'未知時間';
+    // 還原是破壞性動作，講清楚會發生什麼再讓人確認
+    showToast('⚠️ 還原會用備份取代目前雲端上的所有資料，建議先另外下載一份現在的備份');
+    confirmAction(
+      '確定用「'+when+'」這份備份（'+total.toLocaleString()+' 筆）取代目前所有資料？目前的資料會被覆蓋掉。',
+      ()=>{
+        try{
+          keys.forEach(k=>{
+            const rows=Array.isArray(backup.data[k])?backup.data[k]:[];
+            DB.set(k,rows); // set 是整批取代，正是還原要的行為
+          });
+          if(backup.companyProfile){
+            try{ localStorage.setItem('zeju_company_profile',JSON.stringify(backup.companyProfile)); }catch{}
+          }
+          showToast('✅ 已還原 '+total.toLocaleString()+' 筆資料，畫面即將重新整理');
+          setTimeout(()=>location.reload(),1500);
+        }catch(e){
+          showToast('⚠️ 還原過程出錯：'+e.message);
+        }
+      },
+      false // 用一般確認樣式（danger 樣式的按鈕文字是「確定刪除」，跟還原這個動作對不上）
+    );
+    input.value='';
+  };
+  reader.onerror=()=>{ showToast('⚠️ 檔案讀取失敗'); input.value=''; };
+  reader.readAsText(file);
+}
+
 function cleanupOldPunchPhotos(){
   const cutoffMs=Date.now()-(60*24*60*60*1000); // 60天前的毫秒時間戳
   const recs=DB.get('punch_recs').filter(r=>r.photo&&r._id<cutoffMs);
@@ -1444,6 +1551,7 @@ function switchRole(role){curRole=role;const a=ACCTS[role];document.getElementBy
 function showPanel(id){
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
   if(id==='inbox') setTimeout(()=>renderInboxPanel(),50);
+  if(id==='settings') setTimeout(()=>{if(typeof updateLastBackupInfo==='function')updateLastBackupInfo();},50);
   // 切換到新建報價時重設按鈕綁定
   if(id==='ad-settings'){
     const btn=document.getElementById('adSave');

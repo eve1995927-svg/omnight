@@ -506,26 +506,50 @@ function renderLedgerByProject(){
   const c=document.getElementById('ledger-project-table');if(!c)return;
   const all=curLedgerMonth?DB.get('ledger').filter(r=>(r.date||'').startsWith(curLedgerMonth)):DB.get('ledger');
   const projects=DB.get('projects');
+  const allVendors=DB.get('vendors').filter(v=>!v.deleted);
   const byP={};
   all.forEach(r=>{const k=r.projectId?String(r.projectId):'_other';if(!byP[k])byP[k]=[];byP[k].push(r);});
   c.innerHTML='';
+  const cols='1fr 100px 100px 100px 100px';
   const hd=document.createElement('div');
-  hd.style.cssText='display:grid;grid-template-columns:1fr 100px 100px 100px;gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
-  hd.innerHTML='<span>案場</span><span style="text-align:right">收入</span><span style="text-align:right">支出</span><span style="text-align:right">毛利</span>';
+  hd.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:8px 12px;background:var(--g100);border-radius:var(--rs);font-size:.72rem;font-weight:900;color:var(--g400);margin-bottom:8px';
+  hd.innerHTML='<span>案場</span><span style="text-align:right">收入</span><span style="text-align:right">內帳支出</span><span style="text-align:right">廠商成本</span><span style="text-align:right">毛利</span>';
   c.appendChild(hd);
-  const calcP=recs=>recs.filter(r=>r.type==='in').reduce((s,r)=>s+(r.amount||0),0)-recs.filter(r=>r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-  Object.entries(byP).sort((a,b)=>calcP(b[1])-calcP(a[1])).forEach(([key,recs])=>{
-    const proj=key!=='_other'?projects.find(p=>String(p._id)===key):null;
+
+  // 修正重點：這裡原本毛利只算「收入－支出」，完全沒把廠商成本算進去，
+  // 導致同一個案場在這裡看到的毛利，跟案場詳情頁看到的差了整筆廠商成本（可能好幾百萬），
+  // 對帳的時候會兜不起來。現在補上廠商成本，公式跟全站其他地方一致。
+  // 註：看「全期」時用案場的完整廠商成本；有選特定月份時，只算那個月實際付款的廠商金額，
+  //     這樣月份篩選才有意義（不然選任何一個月都會被整筆廠商總成本蓋過去）。
+  const vendorCostOf=(projKey)=>{
+    if(projKey==='_other')return 0;
+    if(!curLedgerMonth){
+      return allVendors.filter(v=>String(v.projectId)===projKey)
+        .reduce((s,v)=>s+(typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0)),0);
+    }
+    return allVendors.filter(v=>String(v.projectId)===projKey)
+      .reduce((s,v)=>s+(v.payments||[])
+        .filter(pay=>(pay.date||'').startsWith(curLedgerMonth))
+        .reduce((ps,pay)=>ps+(pay.amount||0),0),0);
+  };
+
+  const rowsData=Object.entries(byP).map(([key,recs])=>{
     const income=recs.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
-    const cost=recs.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-    const profit=income-cost;
+    const cost=recs.filter(r=>getLedgerBook(r)==='out'&&r.type==='out'&&!r.vendorId).reduce((s,r)=>s+(r.amount||0),0);
+    const vendorCost=vendorCostOf(key);
+    return {key,recs,income,cost,vendorCost,profit:income-cost-vendorCost};
+  }).sort((a,b)=>b.profit-a.profit);
+
+  rowsData.forEach(({key,recs,income,cost,vendorCost,profit})=>{
+    const proj=key!=='_other'?projects.find(p=>String(p._id)===key):null;
     const row=document.createElement('div');
-    row.style.cssText='display:grid;grid-template-columns:1fr 100px 100px 100px;gap:6px;padding:10px 12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease);font-size:.85rem;align-items:center';
+    row.style.cssText='display:grid;grid-template-columns:'+cols+';gap:6px;padding:10px 12px;border-bottom:1px solid var(--g100);cursor:pointer;transition:background var(--ease);font-size:.85rem;align-items:center';
     row.innerHTML='<div><div style="font-weight:800;color:var(--g700)">'+esc(proj?proj.name:(recs[0]?.caseN||'未指定案場'))+'</div>'+
       (proj?'<div style="font-size:.7rem;color:var(--g400)">'+esc(proj.client||'')+' '+recs.length+' 筆</div>':'<div style="font-size:.7rem;color:var(--g400)">'+recs.length+' 筆</div>')+
       '</div>'+
       '<span style="text-align:right;color:var(--ok);font-weight:700">'+(income?'NT$'+income.toLocaleString():'—')+'</span>'+
       '<span style="text-align:right;color:var(--bad);font-weight:700">'+(cost?'NT$'+cost.toLocaleString():'—')+'</span>'+
+      '<span style="text-align:right;color:var(--bad);font-weight:700">'+(vendorCost?'NT$'+vendorCost.toLocaleString():'—')+'</span>'+
       '<span style="text-align:right;color:'+(profit>=0?'var(--ok)':'var(--bad)')+';font-weight:800;">'+(profit?'NT$'+profit.toLocaleString():'—')+'</span>';
     if(proj)row.addEventListener('click',()=>openProject(proj._id,'ledger'));
     row.addEventListener('mouseenter',()=>row.style.background='var(--g50)');
@@ -1154,13 +1178,22 @@ const RPTS={
       if(!Object.keys(byP).length)return '<p style="color:var(--g400)">尚無帳款資料</p>';
       const rows=Object.entries(byP).map(([key,recs])=>{
         const proj=key!=='_other'?projects.find(p=>String(p._id)===key):null;
-        const income=recs.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
-        const cost=recs.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
-        const profit=income-cost;const rate=income>0?Math.round(profit/income*100):0;
+        // 修正重點：這份報表原本毛利只算「收入－支出」，沒把廠商成本算進去，
+        // 跟案場詳情頁的毛利差了整筆廠商成本。有對應到案場的就用全站唯一的計算函式；
+        // 「未指定案場」那組沒有案場可以對應，只能照原本的方式算（本來就沒有廠商成本可歸屬）。
+        let income,cost,vendorCost,profit;
+        if(proj){
+          ({income,cost,vendorCost,profit}=calcProjectProfit(proj._id));
+        }else{
+          income=recs.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
+          cost=recs.filter(r=>getLedgerBook(r)==='out'&&r.type==='out'&&!r.vendorId).reduce((s,r)=>s+(r.amount||0),0);
+          vendorCost=0;profit=income-cost;
+        }
+        const rate=income>0?Math.round(profit/income*100):0;
         const name=proj?proj.name:(recs[0]?.caseN||'未指定案場');
-        return {profit,html:`<tr><td style="padding:8px 12px;font-weight:700">${esc(name)}</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${income?'NT$'+income.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${income?rate+'%':'—'}</td></tr>`};
+        return {profit,html:`<tr><td style="padding:8px 12px;font-weight:700">${esc(name)}</td><td style="padding:8px 12px;text-align:right;color:var(--ok)">${income?'NT$'+income.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:var(--bad)">${vendorCost?'NT$'+vendorCost.toLocaleString():'—'}</td><td style="padding:8px 12px;text-align:right;color:${profit>=0?'var(--ok)':'var(--bad)'}">NT$${profit.toLocaleString()}</td><td style="padding:8px 12px;text-align:right">${income?rate+'%':'—'}</td></tr>`};
       }).sort((a,b)=>b.profit-a.profit).map(r=>r.html).join('');
-      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">收入</th><th style="padding:8px 12px;text-align:right">支出</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody>${rows}</tbody></table>`;
+      return `<table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">收入</th><th style="padding:8px 12px;text-align:right">內帳支出</th><th style="padding:8px 12px;text-align:right">廠商成本</th><th style="padding:8px 12px;text-align:right">毛利</th><th style="padding:8px 12px;text-align:right">毛利率</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
   },
   payable:{

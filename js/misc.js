@@ -946,3 +946,123 @@ document.getElementById('inboxSettingsBtn')?.addEventListener('click',()=>{
   localStorage.setItem('zeju_inbox_secret',v.trim());
   showToast('✅ 已儲存連線密碼');
 });
+
+// ══ 全站搜尋 ═════════════════════════════════════════════════
+// 之前每個頁面各自有搜尋框（案場、客戶、廠商、合約、發票各一個），
+// 如果只記得「陳小姐」，得先自己想她是客戶還是某案場的業主，再去對應頁面找。
+// 這裡一次搜所有資料類型，直接跳到那筆資料所在的位置。
+function openGlobalSearch(){
+  const old=document.getElementById('_gsBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_gsBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.45);z-index:9600;display:flex;align-items:flex-start;justify-content:center;padding:60px 20px 20px';
+  box.innerHTML=`
+    <div style="background:var(--w);border-radius:var(--r);width:100%;max-width:600px;max-height:80vh;display:flex;flex-direction:column;box-shadow:0 16px 50px rgba(0,0,0,.3);overflow:hidden" onclick="event.stopPropagation()">
+      <div style="padding:16px 18px;border-bottom:1px solid var(--g100);display:flex;align-items:center;gap:10px">
+        <span style="font-size:1.1rem">🔍</span>
+        <input id="_gsInput" placeholder="搜尋案場、客戶、廠商、報價、發票、合約…" autocomplete="off"
+          style="flex:1;border:none;outline:none;font-size:1rem;font-family:inherit;color:var(--g800);background:none">
+        <button onclick="document.getElementById('_gsBox').remove()"
+          style="border:none;background:none;color:var(--g400);font-size:1.1rem;cursor:pointer;padding:0 4px">✕</button>
+      </div>
+      <div id="_gsResults" style="flex:1;overflow-y:auto;padding:8px 0">
+        <div style="padding:24px;text-align:center;color:var(--g400);font-size:.85rem">輸入關鍵字開始搜尋</div>
+      </div>
+    </div>`;
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  const inp=document.getElementById('_gsInput');
+  inp.focus();
+  let t=null;
+  inp.addEventListener('input',()=>{clearTimeout(t);t=setTimeout(()=>runGlobalSearch(inp.value.trim()),180);});
+  inp.addEventListener('keydown',e=>{if(e.key==='Escape')box.remove();});
+}
+
+function runGlobalSearch(kw){
+  const out=document.getElementById('_gsResults');if(!out)return;
+  if(!kw){out.innerHTML='<div style="padding:24px;text-align:center;color:var(--g400);font-size:.85rem">輸入關鍵字開始搜尋</div>';return;}
+  const k=kw.toLowerCase();
+  const hit=(...vals)=>vals.some(v=>String(v||'').toLowerCase().includes(k));
+  const groups=[];
+
+  const projects=DB.get('projects').filter(p=>hit(p.name,p.client,p.address,p.type));
+  if(projects.length)groups.push({label:'🏗️ 案場',items:projects.map(p=>({
+    title:p.name||'未命名案場',
+    sub:[p.client,p.address].filter(Boolean).join(' · '),
+    go:()=>{openProject(p._id);}
+  }))});
+
+  const clients=DB.get('clients').filter(c=>hit(c.name,c.phone,c.addr,c.note));
+  if(clients.length)groups.push({label:'👥 客戶',items:clients.map(c=>({
+    title:c.name||'未命名客戶',
+    sub:[c.phone,c.addr].filter(Boolean).join(' · '),
+    go:()=>showPanel('crm')
+  }))});
+
+  const vendors=DB.get('vendors').filter(v=>!v.deleted&&hit(v.vendor,v.cat,v.caseN,v.note));
+  if(vendors.length)groups.push({label:'🔧 廠商報價',items:vendors.slice(0,20).map(v=>({
+    title:(v.vendor||'未填廠商')+(v.cat?'（'+v.cat+'）':''),
+    sub:[v.caseN,v.amount?'NT$'+(v.amount||0).toLocaleString():''].filter(Boolean).join(' · '),
+    go:()=>{v.projectId?openProject(v.projectId,'vendor'):showPanel('ad-progress');}
+  }))});
+
+  const quotes=DB.get('quotes').filter(q=>hit(q.name,q.caseN,q.addr));
+  if(quotes.length)groups.push({label:'📋 報價單',items:quotes.slice(0,20).map(q=>({
+    title:(q.name||'未命名')+(q.total?'　NT$'+(q.total||0).toLocaleString():''),
+    sub:[q.caseN,(q._ts||'').split(' ')[0]].filter(Boolean).join(' · '),
+    go:()=>{q.projectId?openProject(q.projectId,'quote'):showPanel('ad-quote');}
+  }))});
+
+  const contracts=DB.get('contracts').filter(c=>!c.deleted&&hit(c.name,c.client,c.note));
+  if(contracts.length)groups.push({label:'📝 合約',items:contracts.map(c=>({
+    title:c.name||'未命名合約',
+    sub:[c.client,c.amount?'NT$'+(c.amount||0).toLocaleString():''].filter(Boolean).join(' · '),
+    go:()=>{c.projectId?openProject(c.projectId,'contract'):showPanel('contract');}
+  }))});
+
+  const invoices=DB.get('invoices').filter(v=>hit(v.no,v.desc,v.cat));
+  if(invoices.length)groups.push({label:'🧾 發票',items:invoices.slice(0,20).map(v=>({
+    title:(v.no||'無號碼')+'　NT$'+(v.amount||0).toLocaleString(),
+    sub:[v.desc,v.date].filter(Boolean).join(' · '),
+    go:()=>{showPanel('ac-overview');setTimeout(()=>switchLedgerView('invoice'),100);}
+  }))});
+
+  const ledger=DB.get('ledger').filter(l=>!l.deleted&&hit(l.desc,l.cat,l.caseN));
+  if(ledger.length)groups.push({label:'💰 帳款',items:ledger.slice(0,15).map(l=>({
+    title:(l.desc||l.cat||'記錄')+'　'+(l.type==='in'?'+':'-')+'NT$'+(l.amount||0).toLocaleString(),
+    sub:[l.date,l.caseN].filter(Boolean).join(' · '),
+    go:()=>{l.projectId?openProject(l.projectId,'ledger'):showPanel('ac-overview');}
+  }))});
+
+  const total=groups.reduce((s,g)=>s+g.items.length,0);
+  if(!total){
+    out.innerHTML='<div style="padding:24px;text-align:center;color:var(--g400);font-size:.85rem">找不到「'+esc(kw)+'」相關的資料</div>';
+    return;
+  }
+  out.innerHTML=groups.map((g,gi)=>
+    '<div style="padding:6px 18px 4px;font-size:.72rem;font-weight:900;color:var(--g400);'+(gi?'border-top:1px solid var(--g100);margin-top:4px;padding-top:10px':'')+'">'+g.label+'（'+g.items.length+'）</div>'+
+    g.items.map((it,ii)=>
+      '<div class="_gsItem" data-g="'+gi+'" data-i="'+ii+'" style="padding:9px 18px;cursor:pointer;transition:background var(--ease)">'+
+        '<div style="font-size:.88rem;font-weight:700;color:var(--g700)">'+esc(it.title)+'</div>'+
+        (it.sub?'<div style="font-size:.74rem;color:var(--g400);margin-top:1px">'+esc(it.sub)+'</div>':'')+
+      '</div>'
+    ).join('')
+  ).join('');
+  out.querySelectorAll('._gsItem').forEach(el=>{
+    el.addEventListener('mouseenter',()=>el.style.background='var(--g50)');
+    el.addEventListener('mouseleave',()=>el.style.background='');
+    el.addEventListener('click',()=>{
+      const g=groups[parseInt(el.dataset.g)],it=g&&g.items[parseInt(el.dataset.i)];
+      document.getElementById('_gsBox')?.remove();
+      if(it&&it.go)it.go();
+    });
+  });
+}
+
+// 鍵盤快速鍵：Ctrl/Cmd + K 開啟全站搜尋（跟大多數工具一致的習慣）
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){
+    e.preventDefault();
+    if(document.getElementById('app')?.style.display!=='none')openGlobalSearch();
+  }
+});

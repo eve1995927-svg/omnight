@@ -93,6 +93,69 @@ function getTodayTodos(){
       action:()=>showPanel('projects')});
   }
 
+  // 6. 今天還沒打上班卡的員工（只在上班時段之後才提醒，太早提醒沒意義）
+  const nowDate=new Date();
+  const hour=nowDate.getHours();
+  const isWeekday=nowDate.getDay()>=1&&nowDate.getDay()<=5;
+  if(isWeekday&&hour>=10&&hour<20){
+    const today=nowDate.toLocaleDateString('zh-TW');
+    const normToday=typeof normalizePunchDate==='function'?normalizePunchDate(today):today;
+    const todayPunched=new Set(
+      DB.get('punch_recs')
+        .filter(r=>{
+          const n=typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date;
+          return n===normToday&&r.type==='in';
+        })
+        .map(r=>r.user)
+    );
+    const notPunched=DB.get('employees').filter(e=>e._id&&!todayPunched.has('emp_'+e._id));
+    if(notPunched.length){
+      todos.push({type:'nopunch',level:'info',icon:'🕐',
+        title:`${notPunched.length} 位員工今天還沒打上班卡`,
+        desc:notPunched.map(e=>e.name).join('、'),
+        action:()=>showPanel('hr-settings')});
+    }
+  }
+
+  // 7. 毛利率低於公司目標的施工中案場（早點發現，還來得及調整）
+  const profile=typeof getCompanyProfile==='function'?getCompanyProfile():{};
+  const targetLow=parseFloat(String(profile.targetMarginLow||'').replace('%',''))||0;
+  if(targetLow>0&&typeof calcProjectProfit==='function'){
+    const lowMargin=projects.filter(p=>{
+      if(p.status!=='progress')return false;
+      const {income,margin}=calcProjectProfit(p._id);
+      return income>0&&margin!==null&&margin<targetLow;
+    });
+    if(lowMargin.length){
+      todos.push({type:'margin',level:'warn',icon:'📉',
+        title:`${lowMargin.length} 個施工中案場毛利率低於目標（${targetLow}%）`,
+        desc:lowMargin.map(p=>{
+          const {margin}=calcProjectProfit(p._id);
+          return p.name+' '+margin+'%';
+        }).join('、'),
+        action:()=>showPanel('projects')});
+    }
+  }
+
+  // 8. 廠商成本已經超過對客戶的報價（做下去就是虧錢，要最優先處理）
+  if(typeof getVendorTrueCost==='function'){
+    const overrun=projects.filter(p=>{
+      if(p.status==='done'||p.status==='archived')return false;
+      const quotes=DB.get('quotes').filter(q=>q.projectId===p._id&&q.status!=='rejected');
+      const quoteTotal=quotes.reduce((s,q)=>s+(q.total||0),0);
+      if(quoteTotal<=0)return false;
+      const vendorCost=DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted)
+        .reduce((s,v)=>s+getVendorTrueCost(v),0);
+      return vendorCost>quoteTotal;
+    });
+    if(overrun.length){
+      todos.push({type:'overrun',level:'bad',icon:'🚨',
+        title:`${overrun.length} 個案場的廠商成本已超過報價金額`,
+        desc:overrun.map(p=>p.name).join('、')+'　（再做下去會虧錢，建議儘快確認）',
+        action:()=>showPanel('projects')});
+    }
+  }
+
   return todos;
 }
 
@@ -998,14 +1061,9 @@ function renderProjOverview(id,p,c){
   const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
   const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
   const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
-  const income=ledgerItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
-  // 修正重點：在廠商報價那邊「標記付款」時，系統會自動在帳款裡多記一筆內帳支出（雙式記帳，方便對帳），
-  // 但這筆帳原本的錢，其實已經算在下面的 vendorCost（廠商報價金額）裡了——
-  // 一筆錢被算了兩次：一次是「廠商報價本身」，一次是「付款時自動產生的內帳支出」。
-  // 這裡改成內帳支出只算「跟廠商付款無關」的那些（沒有 vendorId 標記的），廠商的錢統一只透過 vendorCost 算一次。
-  const cost=ledgerItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
-  const vendorCost=vendors.reduce((s,v)=>s+getVendorTrueCost(v),0);
-  const profit=income-cost-vendorCost;
+  // 毛利改用全站唯一的計算函式（core.js 的 calcProjectProfit），
+  // 避免各頁面各自寫一套公式、算出來的數字兜不起來
+  const {income,cost,vendorCost,profit}=calcProjectProfit(id);
   const st=PROJECT_STATUS[p.status||'inquiry'];
 
   c.innerHTML=`
@@ -1589,10 +1647,8 @@ function showProjProfitDetail(projectId){
   const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
   const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
   const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
-  const income=incomeItems.reduce((s,l)=>s+(l.amount||0),0);
-  const cost=costItems.reduce((s,l)=>s+(l.amount||0),0);
-  const vendorCost=vendorList.reduce((s,v)=>s+getVendorTrueCost(v),0);
-  const profit=income-cost-vendorCost;
+  // 毛利用全站唯一的計算函式，明細清單仍在上面各自取（要逐筆列出來給人看）
+  const {income,cost,vendorCost,profit}=calcProjectProfit(projectId);
 
   const section=(title,rows,total,color)=>{
     const rowsHtml=rows.length
@@ -1726,17 +1782,8 @@ function renderProjLedger(id,p,c){
   // 改成用「交易日期」排序而不是建立順序：付款日期現在可以自己選（例如補登之前的付款），
   // 用建立順序排會讓補登的舊款項跑到最上面，跟月份分組對不起來
   const allItems=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
-  const income=allItems.filter(l=>l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
-  // 修正重點：標記廠商付款時，系統會自動在這裡多記一筆內帳支出方便對帳，
-  // 但那筆錢已經算在下面的「廠商成本」裡了，兩個一起加會把同一筆錢算兩次。
-  // 這裡「內帳支出」這個統計數字，只加總「不是廠商付款」自動產生的那些（沒有 vendorId 標記），
-  // 避免重複計算；下面的交易紀錄清單還是完整顯示每一筆，包含廠商付款那筆，只是不會被重複加進總數。
-  const cost=allItems.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
-  // 修正重點：這裡原本毛利只算「收入－內帳支出」，沒有把廠商成本算進去，
-  // 跟「案場總覽」分頁的毛利算法不一致，同一個案場兩個地方會顯示不同的毛利數字，容易搞混。
-  // 現在改成跟總覽分頁同一套公式（收入－內帳支出－廠商成本），兩邊看到的毛利數字會一致。
-  const vendorCost=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted).reduce((s,v)=>s+getVendorTrueCost(v),0);
-  const profit=income-cost-vendorCost;
+  // 上方統計卡片的數字用全站唯一的計算函式，跟案場總覽、毛利明細完全一致
+  const {income,cost,vendorCost,profit}=calcProjectProfit(id);
 
   const curDir=projLedgerDirFilter[id]||'all';
   const items=curDir==='all'?allItems:allItems.filter(l=>{
