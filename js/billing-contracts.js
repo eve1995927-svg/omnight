@@ -396,17 +396,10 @@ function renderLedger(){
   sr.innerHTML='<span style="color:var(--g600)">'+items.length+' 筆記錄</span><span style="color:'+(runTotal>=0?'var(--ok)':'var(--bad)')+'">'+( runTotal>=0?'+':'')+'NT$'+Math.abs(runTotal).toLocaleString()+'</span>';
   c.appendChild(sr);
 }
-let curLedgerMonthlyYear=null; // null 代表還沒初始化，第一次渲染時會自動抓最新有資料的那個會計年度
-
-// 會計年度是從每年9月開始算一整個週期（例如「2025年度」＝2025年9月～2026年8月），
-// 不是照日曆年1月到12月分。這裡把一個 "YYYY-MM" 月份字串換算成它屬於哪個會計年度。
-function monthToFiscalYear(monthKey){
-  const y=parseInt(monthKey.slice(0,4)),m=parseInt(monthKey.slice(5,7));
-  return m>=9?y:y-1; // 9月～12月算當年度；1月～8月算前一年度
-}
+let curLedgerMonthlyYear=null; // null 代表還沒初始化，第一次渲染時會自動抓最新有資料的那一年
 
 function changeLedgerMonthlyYear(dir){
-  curLedgerMonthlyYear=(curLedgerMonthlyYear||monthToFiscalYear(new Date().getFullYear()+'-'+(new Date().getMonth()+1).toString().padStart(2,'0')))+dir;
+  curLedgerMonthlyYear=(curLedgerMonthlyYear||new Date().getFullYear())+dir;
   renderLedgerMonthly();
 }
 
@@ -426,20 +419,21 @@ function renderLedgerMonthly(){
   const allMonths=[...months].sort().reverse();
   if(!allMonths.length){c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">尚無帳款記錄</div></div>';return;}
 
-  // 年度篩選：原本是所有月份無限往下滑，跨了好幾年會很難找特定月份，
-  // 改成一次只看一個會計年度（9月～隔年8月），跨年度用上面的「← 上一年度／下一年度 →」切換。
-  // 第一次進來（curLedgerMonthlyYear 還沒設定過）自動抓「最新有資料的那個會計年度」當起點，
+  // 年度篩選：照日曆年分（1月～12月），跨年度用上面的「← 上一年／下一年 →」切換。
+  // 2025年因為系統資料是9月才開始有，所以2025年度會只顯示9~12月，其他年度是完整1~12月，
+  // 這不用特別處理，只是剛好那年資料本來就只有那幾個月。
+  // 第一次進來（curLedgerMonthlyYear 還沒設定過）自動抓「最新有資料的那一年」當起點，
   // 不用手動翻到最新的那年。
   if(curLedgerMonthlyYear==null){
-    curLedgerMonthlyYear=monthToFiscalYear(allMonths[0]);
+    curLedgerMonthlyYear=parseInt(allMonths[0].slice(0,4));
   }
   const yearLabel=document.getElementById('ledgerMonthlyYearLabel');
-  if(yearLabel)yearLabel.textContent=curLedgerMonthlyYear+'年9月–'+(curLedgerMonthlyYear+1)+'年8月';
-  const sm=allMonths.filter(m=>monthToFiscalYear(m)===curLedgerMonthlyYear);
+  if(yearLabel)yearLabel.textContent=curLedgerMonthlyYear+'年';
+  const sm=allMonths.filter(m=>m.startsWith(String(curLedgerMonthlyYear)));
 
   c.innerHTML='';
   if(!sm.length){
-    c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">'+curLedgerMonthlyYear+'年9月–'+(curLedgerMonthlyYear+1)+'年8月沒有帳款記錄</div></div>';
+    c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">'+curLedgerMonthlyYear+'年沒有帳款記錄</div></div>';
     return;
   }
   const cols='90px 1fr 1fr 1fr 60px 1fr 1fr';

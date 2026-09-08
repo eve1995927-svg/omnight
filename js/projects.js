@@ -1559,6 +1559,9 @@ function refreshCatProfitViews(projectId){
 
 function buildCatProfitHtml(projectId){
   const {catRows,catTotal,hiddenCount}=getProjCatProfitRows(projectId);
+  const vcTotal=catRows.reduce((s,r)=>s+(r.vc||0),0);
+  const ccTotal=catRows.reduce((s,r)=>s+(r.cc||0),0);
+  const marginTotal=ccTotal?Math.round(catTotal/ccTotal*1000)/10:null;
   const inputStyle=overridden=>'width:92px;text-align:right;padding:4px 6px;border:1.5px solid '+(overridden?'var(--gold-l)':'var(--g200)')+';border-radius:var(--rxs);font-family:monospace;font-size:.8rem;background:'+(overridden?'var(--gold-pale)':'var(--w)')+';outline:none';
   const catTableHtml=catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px">'+
     '<thead><tr style="border-bottom:1.5px solid var(--g200)">'+
@@ -1585,10 +1588,16 @@ function buildCatProfitHtml(projectId){
   return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。用不到的類別可以點右邊 ✕ 藏起來。</div>'+
     catTableHtml+
     hiddenLink+
-    '<div style="padding:12px 16px;margin-top:10px;border-radius:var(--rs);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(catTotal>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
-      '<span style="font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">各工種毛利合計</span>'+
-      '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+'NT$'+catTotal.toLocaleString()+'</span>'+
-    '</div>';
+    (catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px;margin-top:10px">'+
+      '<tr style="border-top:2px solid var(--g300);background:'+(catTotal>=0?'var(--ok-bg)':'var(--bad-bg)')+'">'+
+        '<td style="padding:10px 4px;font-weight:900;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">合計</td>'+
+        '<td></td>'+
+        '<td style="padding:10px 4px;text-align:right;font-family:monospace;font-weight:800">'+vcTotal.toLocaleString()+'</td>'+
+        '<td style="padding:10px 4px;text-align:right;font-family:monospace;font-weight:800">'+ccTotal.toLocaleString()+'</td>'+
+        '<td style="padding:10px 4px;text-align:right;font-family:monospace;font-weight:900;white-space:nowrap;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(catTotal>=0?'+':'')+catTotal.toLocaleString()+'</td>'+
+        '<td style="padding:10px 4px;text-align:right;font-family:monospace;font-weight:800;color:'+(catTotal>=0?'var(--ok)':'var(--bad)')+'">'+(marginTotal===null?'－':marginTotal+'%')+'</td>'+
+        '<td></td>'+
+      '</tr></table></div>':'');
 }
 
 // 幫「工種毛利」表裡的手動輸入框接上事件：改完（欄位失焦或按 Enter）就存進案場資料，
@@ -1648,7 +1657,7 @@ function showProjProfitDetail(projectId){
   const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
   const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
   // 毛利用全站唯一的計算函式，明細清單仍在上面各自取（要逐筆列出來給人看）
-  const {income,cost,vendorCost,profit}=calcProjectProfit(projectId);
+  const {income,cost,vendorCost,profit,margin}=calcProjectProfit(projectId);
 
   const section=(title,rows,total,color)=>{
     const rowsHtml=rows.length
@@ -1674,7 +1683,10 @@ function showProjProfitDetail(projectId){
       section('🏗️ 廠商成本',vendorList.map(v=>({name:v.vendor+'（'+getVendorTrueCost(v).toLocaleString()+'）',amount:getVendorTrueCost(v)})),vendorCost,'var(--bad)')+
       '<div style="padding:12px 16px;border-radius:var(--rs);background:'+(profit>=0?'var(--ok-bg)':'var(--bad-bg)')+';border:1.5px solid '+(profit>=0?'var(--ok-bd)':'var(--bad-bd)')+';display:flex;justify-content:space-between;align-items:center">'+
         '<span style="font-weight:800;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">毛利＝收入－內帳支出－廠商成本</span>'+
-        '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">'+(profit>=0?'+':'-')+'NT$'+Math.abs(profit).toLocaleString()+'</span>'+
+        '<span style="text-align:right">'+
+          '<span style="font-family:monospace;font-weight:900;font-size:1.1rem;color:'+(profit>=0?'var(--ok)':'var(--bad)')+'">'+(profit>=0?'+':'-')+'NT$'+Math.abs(profit).toLocaleString()+'</span>'+
+          '<span style="font-family:monospace;font-weight:700;font-size:.85rem;color:'+(profit>=0?'var(--ok)':'var(--bad)')+';margin-left:8px">（'+(margin===null?'－':margin+'%')+'）</span>'+
+        '</span>'+
       '</div>'+
     '</div>'+
     '<div id="profitPaneCat" style="display:none">'+
