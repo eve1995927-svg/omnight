@@ -450,20 +450,27 @@ function renderLedgerMonthly(){
     const outIn=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
     const profit=(inIn-inOut)-(outOut-outIn);const rate=inIn>0?Math.round(profit/inIn*100):0;
     tIn+=inIn;tOut+=outOut;
-    // 人事成本：按月份抓薪資記錄，計算每個員工那個月的總額（跟原本「月度損益報表」同一套算法）
+    // 人事成本：按月份抓薪資記錄，用全站統一的薪資計算函式（跟「薪資管理」頁同一套算法），
+    // 這樣才會把公司負擔的勞健保、勞退也算進去，不會只算到底薪跟津貼。
+    // 修正重點：這裡原本自己另外寫了一套簡化算法（只加底薪+津貼+獎金+代墊），
+    // 完全沒把「員工的勞健保由公司負擔」跟「勞退」算進去，導致某些月份（例如有員工勞健保由公司吸收）
+    // 這裡顯示的人事成本比實際低很多，跟「薪資管理」頁看到的公司人事總成本對不起來。
     const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
-    const personnel=monthSalaries.reduce((s,r)=>s+(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0),0);
+    const personnel=monthSalaries.reduce((s,r)=>s+(typeof calcSalaryRecord==='function'?calcSalaryRecord(r).companyCost:((r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0))),0);
     tPersonnel+=personnel;
     const netProfit=profit-personnel;
     const personnelDetailId='pd-'+month.replace('-','');
     const personnelDetailRows=monthSalaries.map(r=>{
       const e=emps.find(x=>x._id===r.empId)||{name:'（已刪除員工）'};
-      const gross=(r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0);
+      const calc=typeof calcSalaryRecord==='function'?calcSalaryRecord(r):null;
+      const gross=calc?calc.companyCost:((r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0));
       const parts=[];
       if(r.baseSalary)parts.push('底薪'+r.baseSalary.toLocaleString());
       if(r.meal||r.transport||r.other)parts.push('津貼'+((r.meal||0)+(r.transport||0)+(r.other||0)).toLocaleString());
       if(r.bonus)parts.push('獎金'+r.bonus.toLocaleString());
       if(r.reimbursement)parts.push('代墊'+r.reimbursement.toLocaleString());
+      if(calc&&(calc.laborCompany||calc.healthCompany))parts.push('勞健保(公司)'+((calc.laborCompany||0)+(calc.healthCompany||0)).toLocaleString());
+      if(calc&&calc.retireCompany)parts.push('勞退'+calc.retireCompany.toLocaleString());
       return '<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--g100)"><span style="color:var(--g600)">'+esc(e.name||'員工')+(r.paid?' ✅':' ⏳未匯款')+'</span><span style="font-family:monospace;color:var(--bad)">NT$'+gross.toLocaleString()+'<span style="font-size:.68rem;color:var(--g400);margin-left:4px">('+(parts.join('+')||'—')+')</span></span></div>';
     }).join('')||'<div style="color:var(--g400);font-size:.78rem">尚無薪資記錄</div>';
 
