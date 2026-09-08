@@ -651,8 +651,9 @@ function buildVendorCard(v){
         '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;'+(i<payments.length-1?'border-bottom:1px dashed var(--g200)':'')+'">'+
           '<div><span style="font-size:.78rem;color:var(--g600);font-weight:700">第'+(i+1)+'期</span> '+
           '<span style="font-size:.72rem;color:var(--g400)">'+esc(p.date||'')+(p.note?' · '+esc(p.note):'')+'</span></div>'+
-          '<div style="display:flex;align-items:center;gap:8px">'+
+          '<div style="display:flex;align-items:center;gap:6px">'+
             '<span style="font-family:monospace;font-weight:800;color:var(--ok);font-size:.82rem">NT$'+(p.amount||0).toLocaleString()+'</span>'+
+            '<button data-vpayedit="'+i+'" title="編輯這筆付款記錄（日期或金額打錯的時候用）" style="width:20px;height:20px;border:none;background:none;color:var(--g400);cursor:pointer;font-size:.68rem;padding:0">✏️</button>'+
             '<button data-vpaydel="'+i+'" title="刪除這筆付款記錄（打錯或重複記的時候用）" style="width:20px;height:20px;border:none;background:none;color:var(--g300);cursor:pointer;font-size:.68rem;padding:0">✕</button>'+
           '</div>'+
         '</div>').join('');
@@ -665,6 +666,12 @@ function buildVendorCard(v){
     body.appendChild(basicEdit);body.appendChild(itemWrap);body.appendChild(subTotEl);body.appendChild(payHistWrap);body.appendChild(saveBar);
     renderVCardItems();
 
+    payHistWrap.querySelectorAll('[data-vpayedit]').forEach(btn=>{
+      btn.addEventListener('click',e=>{
+        e.stopPropagation();
+        if(typeof openEditVendorPayModal==='function')openEditVendorPayModal(v._id,parseInt(btn.dataset.vpayedit));
+      });
+    });
     payHistWrap.querySelectorAll('[data-vpaydel]').forEach(btn=>{
       btn.addEventListener('click',e=>{
         e.stopPropagation();

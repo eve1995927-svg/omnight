@@ -2107,9 +2107,12 @@ function confirmVendorPay(){
   const today=new Date().toISOString().split('T')[0];
   // 付款日期可以自己選，不一定是今天（常見情況：補登之前已經付過的款項）
   const payDate=document.getElementById('_payDate')?.value||today;
+  // 給這筆付款一個獨立的識別碼，跟它自動產生的那筆內帳支出綁在一起，
+  // 之後如果要編輯這筆付款（例如日期打錯），才能準確找到對應的帳款記錄一起改，不會改錯或改到別筆
+  const payId=Date.now();
 
   // 1. 記錄到廠商付款歷史
-  const payments=[...(v.payments||[]),{amount:amt,date:payDate,note}];
+  const payments=[...(v.payments||[]),{payId,amount:amt,date:payDate,note}];
   const totalPaid=payments.reduce((s,p)=>s+(p.amount||0),0);
   DB.upd('vendors',v._id,{payments,paid:totalPaid>=(v.amount||0)});
 
@@ -2120,7 +2123,7 @@ function confirmVendorPay(){
     desc:'付款給 '+(v.vendor||'廠商')+(note?'（'+note+'）':''),
     cat:'廠商費用',date:payDate,
     caseN:v.caseN||'',projectId:v.projectId||null,
-    vendorId:v._id,
+    vendorId:v._id,payRecordId:payId,
   });
 
   document.getElementById('_payBox')?.remove();
@@ -2128,6 +2131,63 @@ function confirmVendorPay(){
   if(typeof refreshVendorViews==='function')refreshVendorViews();
   if(typeof renderLedger==='function')renderLedger();
   if(typeof renderDashboard==='function')renderDashboard();
+}
+
+// ── 編輯既有的付款記錄（例如日期輸入錯了要改）──────────────────────
+// 同時更新這筆付款自己的記錄，跟它當初自動產生的那筆內帳支出（用 payId／payRecordId 對應），
+// 兩邊會一起改，不用擔心改了一邊、另一邊忘記跟著改而對不起來。
+// 舊資料（這個功能上線前記錄的付款）沒有 payId，還是可以編輯付款記錄本身，
+// 只是找不到對應的帳款那筆，會提醒使用者自己去帳款那邊手動修正。
+function openEditVendorPayModal(vendorId,payIdx){
+  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const pay=(v.payments||[])[payIdx];if(!pay)return;
+  const old=document.getElementById('_payEditBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_payEditBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9400;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`
+   <div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">
+    <div style="font-weight:900;font-size:1rem;margin-bottom:16px;color:var(--g800)">✏️ 編輯第${payIdx+1}期付款</div>
+    <div class="field" style="margin-bottom:10px"><label class="fl">金額</label><input class="fi" type="number" id="_payEditAmt" value="${pay.amount||0}"></div>
+    <div class="field" style="margin-bottom:10px"><label class="fl">付款日期</label><input class="fi" type="date" id="_payEditDate" value="${pay.date||''}"></div>
+    <div class="field" style="margin-bottom:16px"><label class="fl">備注</label><input class="fi" id="_payEditNote" value="${esc(pay.note||'')}" placeholder="選填"></div>
+    ${pay.payId?'':'<div style="font-size:.74rem;color:var(--warn);margin-bottom:14px;line-height:1.5">⚠️ 這是舊的付款記錄，改完這裡之後，記得也要去「帳款」那邊手動修正對應的那一筆，系統沒辦法自動幫這筆對起來。</div>'}
+    <div style="display:flex;gap:8px">
+     <button class="btn bg" id="_payEditSaveBtn" style="flex:1">儲存</button>
+     <button class="btn bo" id="_payEditCancelBtn">取消</button>
+    </div>
+   </div>`;
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  document.getElementById('_payEditCancelBtn').addEventListener('click',()=>box.remove());
+  document.getElementById('_payEditSaveBtn').addEventListener('click',()=>{
+    const newAmt=parseInt(document.getElementById('_payEditAmt').value)||0;
+    const newDate=document.getElementById('_payEditDate').value;
+    const newNote=document.getElementById('_payEditNote').value.trim();
+    if(newAmt<=0){showToast('⚠️ 請輸入正確的金額');return;}
+    if(!newDate){showToast('⚠️ 請選擇日期');return;}
+    const freshV=DB.get('vendors').find(r=>r._id===vendorId);if(!freshV)return;
+    const newPayments=[...(freshV.payments||[])];
+    newPayments[payIdx]={...newPayments[payIdx],amount:newAmt,date:newDate,note:newNote};
+    const totalPaid=newPayments.reduce((s,p)=>s+(p.amount||0),0);
+    DB.upd('vendors',vendorId,{payments:newPayments,paid:totalPaid>=(freshV.amount||0)});
+    // 有 payId 的話，一併找到並更新對應的那筆內帳支出，兩邊保持一致
+    if(pay.payId){
+      const linkedLedger=DB.get('ledger').find(l=>l.vendorId===vendorId&&l.payRecordId===pay.payId);
+      if(linkedLedger){
+        DB.upd('ledger',linkedLedger._id,{
+          amount:newAmt,date:newDate,
+          summary:'內帳支出 付款給'+(freshV.vendor||'廠商')+' '+fmt(newAmt),
+          desc:'付款給 '+(freshV.vendor||'廠商')+(newNote?'（'+newNote+'）':''),
+        });
+      }
+    }
+    box.remove();
+    showToast('✅ 已更新這筆付款記錄'+(pay.payId?'（帳款那邊也一併更新了）':''));
+    if(typeof refreshVendorViews==='function')refreshVendorViews();
+    if(typeof renderLedger==='function')renderLedger();
+    if(typeof renderDashboard==='function')renderDashboard();
+  });
 }
 
 // ══ 雜項快速記帳（3 秒完成）═══════════════════════════════
