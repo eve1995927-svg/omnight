@@ -915,14 +915,19 @@ function openSignaturePad(contractId){
   const end=()=>{drawing=false;};
   canvas.addEventListener('mousedown',start);canvas.addEventListener('mousemove',move);window.addEventListener('mouseup',end);
   canvas.addEventListener('touchstart',start,{passive:false});canvas.addEventListener('touchmove',move,{passive:false});canvas.addEventListener('touchend',end);
+  // 修正重點：這個 mouseup 監聽器是掛在 window 上（畫筆移出畫布外再放開也要偵測得到），
+  // 但之前只有加、沒有在視窗關掉時移除，每簽一次名就多留一個在瀏覽器裡，永遠不會釋放，
+  // 簽越多次、累積越多，是手機用久了越來越卡的原因之一。改成視窗關閉（不管取消還是確認）都清掉。
+  const cleanupSigListener=()=>window.removeEventListener('mouseup',end);
 
   document.getElementById('_sigClearBtn').addEventListener('click',()=>{ctx.clearRect(0,0,canvas.width,canvas.height);hasSigned=false;});
-  document.getElementById('_sigCancelBtn').addEventListener('click',()=>box.remove());
+  document.getElementById('_sigCancelBtn').addEventListener('click',()=>{cleanupSigListener();box.remove();});
   document.getElementById('_sigConfirmBtn').addEventListener('click',()=>{
     if(!hasSigned){showToast('⚠️ 還沒有簽名，請先在框內簽名');return;}
     const signatureUrl=canvas.toDataURL('image/png');
     const signedAt=new Date().toLocaleString('zh-TW');
     DB.upd('contracts',contractId,{signatureUrl,signedAt,status:'signed'});
+    cleanupSigListener();
     box.remove();
     renderContracts();updContractStats();
     showToast('✅ 已完成簽署，合約標記為結案');

@@ -1370,12 +1370,16 @@ function openProjDesignUpload(projectId){
     const files=[...input.files];if(!files.length)return;
     let count=0;
     for(const file of files){
-      const reader=new FileReader();
-      await new Promise(res=>{ reader.onload=()=>{
-        const imgDataUrl=reader.result;
-        DB.push('design_files',{projectId,name:file.name,date:new Date().toISOString().split('T')[0],imgDataUrl,summary:'設計圖 '+file.name});
-        count++;res();
-      };reader.readAsDataURL(file);});
+      // 設計圖照片一樣先壓縮再存（原因同上：原圖太大，累積下來手機記憶體吃不消）；
+      // PDF 沒辦法用這個方式壓縮，原樣保留
+      let imgDataUrl;
+      if(file.type.startsWith('image/')){
+        imgDataUrl=await compressImage(file,1800,0.8)||await new Promise(res=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.readAsDataURL(file);});
+      }else{
+        imgDataUrl=await new Promise(res=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.readAsDataURL(file);});
+      }
+      DB.push('design_files',{projectId,name:file.name,date:new Date().toISOString().split('T')[0],imgDataUrl,summary:'設計圖 '+file.name});
+      count++;
     }
     renderProjDesign(projectId,null,document.getElementById('projDetailContent'));
     showToast('✅ 已上傳 '+count+' 張設計圖');
@@ -1437,13 +1441,13 @@ function openProjMemoModal(projectId,memoId){
   box.addEventListener('click',()=>box.remove());
   document.body.appendChild(box);
   let _memoImg=ex?.imgDataUrl||null;
-  document.getElementById('_memoFileInp').addEventListener('change',function(){
+  document.getElementById('_memoFileInp').addEventListener('change',async function(){
     const f=this.files[0];if(!f)return;
-    const r=new FileReader();r.onload=()=>{
-      _memoImg=r.result;
-      const prev=document.getElementById('_memoImgPreview');
-      prev.src=_memoImg;prev.style.display='block';
-    };r.readAsDataURL(f);
+    // 備忘錄照片也一樣先壓縮再存，理由同上
+    const compressed=await compressImage(f,1600,0.75);
+    _memoImg=compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.readAsDataURL(f);});
+    const prev=document.getElementById('_memoImgPreview');
+    prev.src=_memoImg;prev.style.display='block';
   });
   document.getElementById('_memoSaveBtn').addEventListener('click',()=>{
     const content=document.getElementById('_memoContent').value.trim();

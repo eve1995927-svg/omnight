@@ -1177,9 +1177,14 @@ function rejectReq(id){DB.upd('punch_requests',id,{status:'rejected'});renderHRP
 document.getElementById('ldZone')?.addEventListener('click',()=>document.getElementById('ldFile').click());
 document.getElementById('ldFile').addEventListener('change',async e=>{
   const f=e.target.files[0];if(!f)return;e.target.value='';
-  const rd=new FileReader();
-  rd.onload=async ev=>{
-    ldImgUrl=ev.target.result;
+  // 發票/單據照片先壓縮再存（PDF 沒辦法用這個方式處理，原樣保留）——原本存的是手機拍的原始大圖，
+  // 這些會永久存在帳款記錄裡、同步到每個裝置，累積越多手機記憶體吃越多，是用越久越卡的原因之一
+  if(f.type.startsWith('image/')){
+    ldImgUrl=await compressImage(f,1600,0.8)||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+  }else{
+    ldImgUrl=await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+  }
+  {
     const fc=document.getElementById('ldFileCard');fc.style.display='block';
     const thumb=document.getElementById('ldThumb');
     if(f.type.startsWith('image/')){thumb.src=ldImgUrl;thumb.style.display='block';}
@@ -1188,7 +1193,7 @@ document.getElementById('ldFile').addEventListener('change',async e=>{
     document.getElementById('ldFileStatus').textContent='已上傳';
     const ocr=document.getElementById('ldOcr');ocr.classList.add('show');
     try{
-      const b64=ldImgUrl.split(',')[1],mime=f.type.startsWith('image/')?f.type:'application/pdf';
+      const b64=ldImgUrl.split(',')[1],mime=f.type.startsWith('image/')?'image/jpeg':'application/pdf';
       const contentType=f.type.startsWith('image/')?'image':'document';
       const parts=[
         {type:contentType,source:{type:'base64',media_type:mime,data:b64}},
@@ -1203,7 +1208,7 @@ document.getElementById('ldFile').addEventListener('change',async e=>{
       document.getElementById('ldFileStatus').textContent='AI 辨識完成';
     }catch(err){document.getElementById('ldFileStatus').textContent='AI辨識失敗，請手動填寫（'+friendlyAIError(err).replace('⚠️ ','')+'）';}
     ocr.classList.remove('show');
-  };rd.readAsDataURL(f);
+  }
 });
 
 document.getElementById('ldDelFile')?.addEventListener('click',()=>{

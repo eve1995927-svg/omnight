@@ -1659,7 +1659,14 @@ function chatFiles(cid,ev,prId){
   const st=cSt[cid];const prev=document.getElementById(prId);
   Array.from(ev.target.files).forEach(f=>{
     if(f.type.startsWith('image/')){
-      const rd=new FileReader();rd.onload=e=>{const url=e.target.result;st.imgs.push({name:f.name,b64:url.split(',')[1],mime:f.type,url});const w=document.createElement('div');w.className='ithw';const img=document.createElement('img');img.className='ith';img.src=url;img.style.cssText='width:52px;height:52px';img.addEventListener('click',()=>openLB(url));const d=document.createElement('div');d.className='idel';d.textContent='✕';d.addEventListener('click',()=>{st.imgs=st.imgs.filter(i=>i.name!==f.name);w.remove();});w.appendChild(img);w.appendChild(d);prev.appendChild(w);};rd.readAsDataURL(f);
+      // 同樣的原因：AI 對話裡傳的照片會永久存在對話紀錄裡、同步到每個裝置，
+      // 原本存的是原始大圖，這裡也改成先壓縮再存
+      (async()=>{
+        const compressed=await compressImage(f,1600,0.8);
+        const url=compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=e=>res(e.target.result);rd.readAsDataURL(f);});
+        st.imgs.push({name:f.name,b64:url.split(',')[1],mime:'image/jpeg',url});
+        const w=document.createElement('div');w.className='ithw';const img=document.createElement('img');img.className='ith';img.src=url;img.style.cssText='width:52px;height:52px';img.addEventListener('click',()=>openLB(url));const d=document.createElement('div');d.className='idel';d.textContent='✕';d.addEventListener('click',()=>{st.imgs=st.imgs.filter(i=>i.name!==f.name);w.remove();});w.appendChild(img);w.appendChild(d);prev.appendChild(w);
+      })();
     }else{st.files.push({name:f.name});const t=document.createElement('div');t.style.cssText='font-size:.75rem;display:inline-flex;align-items:center;gap:6px;background:var(--info-bg);border:1px solid var(--info-bd);color:var(--info);padding:5px 12px;border-radius:20px;font-weight:700';t.textContent='📄 '+f.name;const d=document.createElement('span');d.style.cssText='cursor:pointer;color:var(--bad);font-weight:900;margin-left:2px';d.textContent=' ✕';d.addEventListener('click',()=>{st.files=st.files.filter(fi=>fi.name!==f.name);t.remove();});t.appendChild(d);prev.appendChild(t);}
   });
 }
@@ -1701,7 +1708,17 @@ function addFiles(files,prevId,key){
   const prev=document.getElementById(prevId);const st=uSt[key];if(!st)return;
   Array.from(files).forEach(f=>{
     if(f.type.startsWith('image/')){
-      const rd=new FileReader();rd.onload=ev=>{const url=ev.target.result;st.imgs.push({name:f.name,url,b64:url.split(',')[1],mime:f.type});if(prev){const w=document.createElement('div');w.className='ithw';const img=document.createElement('img');img.className='ith';img.src=url;img.title='點擊放大';img.addEventListener('click',()=>openLB(url));const d=document.createElement('div');d.className='idel';d.textContent='✕';d.addEventListener('click',()=>{st.imgs=st.imgs.filter(i=>i.name!==f.name);w.remove();});w.appendChild(img);w.appendChild(d);prev.appendChild(w);}};rd.readAsDataURL(f);
+      // 修正重點：這裡原本直接存手機相機拍出來的原始大圖（常常 3-8MB 一張），
+      // 而且是「廠商報價／報價單／跨案場報價」三個功能共用的同一支程式，等於這三個地方全部都沒壓縮。
+      // 這些照片會透過即時同步永久存在 Firebase、同步到每個人的裝置，累積越多、手機記憶體吃越多，
+      // 用越久越卡的主因就是這個。改成用 compressImage 先壓縮再存，1600px/0.8 品質對報價單這種
+      // 要拿去給 AI 辨識文字的用途來說仍然夠清楚，檔案大小可以縮小到原本的一小部分。
+      (async()=>{
+        const compressed=await compressImage(f,1600,0.8);
+        const url=compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+        st.imgs.push({name:f.name,url,b64:url.split(',')[1],mime:'image/jpeg'});
+        if(prev){const w=document.createElement('div');w.className='ithw';const img=document.createElement('img');img.className='ith';img.src=url;img.title='點擊放大';img.addEventListener('click',()=>openLB(url));const d=document.createElement('div');d.className='idel';d.textContent='✕';d.addEventListener('click',()=>{st.imgs=st.imgs.filter(i=>i.name!==f.name);w.remove();});w.appendChild(img);w.appendChild(d);prev.appendChild(w);}
+      })();
     }else{st.files.push({name:f.name});if(prev){const t=document.createElement('div');t.style.cssText='display:inline-flex;align-items:center;gap:6px;background:var(--info-bg);border:1px solid var(--info-bd);color:var(--info);padding:5px 12px;border-radius:20px;font-size:.78rem;font-weight:700;margin:3px';t.textContent='📄 '+f.name;const d=document.createElement('span');d.style.cssText='cursor:pointer;color:var(--bad);font-weight:900;margin-left:2px';d.textContent=' ✕';d.addEventListener('click',()=>{st.files=st.files.filter(fi=>fi.name!==f.name);t.remove();});t.appendChild(d);prev.appendChild(t);}}
   });
 }
