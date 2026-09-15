@@ -86,12 +86,38 @@ function renderBilling(){
   }
 
   // ── 明細列表 ──────────────────────────────────────
+  // 修正重點：這裡原本一次列出最多 100 筆逐一對話記錄，畫面會拉得非常長。
+  // 改成收合的區塊（預設收起來），展開後也只先顯示一部分，點「顯示更多」再往下載入，
+  // 不會一打開帳單頁面就看到一長串滑不完的清單。
+  _bilRecsCache=recs; // 存起來給「顯示更多」用，不用每次都重新算一次
+  _bilShownCount=15;
+  renderBilListPage();
+}
+let _bilRecsCache=[];
+let _bilShownCount=15;
+function toggleBilListDetail(){
+  const wrap=document.getElementById('bilListWrap');
+  const icon=document.getElementById('bilListToggleIcon');
+  if(!wrap)return;
+  const isOpen=wrap.style.display!=='none';
+  wrap.style.display=isOpen?'none':'block';
+  if(icon)icon.textContent=isOpen?'▾ 展開':'▴ 收起';
+}
+function loadMoreBilList(){
+  _bilShownCount+=15;
+  renderBilListPage();
+}
+function renderBilListPage(){
+  const list=document.getElementById('bilList');if(!list)return;
+  const recs=_bilRecsCache;
   if(!recs.length){
     list.innerHTML='<div class="empty-state"><div class="es-ic">📊</div><div class="es-t">本月尚無使用記錄</div></div>';
+    const moreBtn=document.getElementById('bilLoadMoreBtn');if(moreBtn)moreBtn.style.display='none';
     return;
   }
+  const shown=recs.slice(0,_bilShownCount);
   list.innerHTML='';
-  recs.slice(0,100).forEach(r=>{
+  shown.forEach(r=>{
     const row=document.createElement('div');
     row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:9px 14px;border-bottom:1px solid var(--g100);font-size:.84rem';
     row.innerHTML=
@@ -102,6 +128,12 @@ function renderBilling(){
        <div style="font-family:monospace;font-weight:900;color:var(--bad);white-space:nowrap">-${(r.points||0)} 點</div>`;
     list.appendChild(row);
   });
+  const moreBtn=document.getElementById('bilLoadMoreBtn');
+  if(moreBtn){
+    const remaining=recs.length-shown.length;
+    moreBtn.style.display=remaining>0?'inline-block':'none';
+    moreBtn.textContent='顯示更多（還有 '+remaining+' 筆）';
+  }
 }
 
 // ── 系統設定：分類管理 ─────────────────────────────────────
