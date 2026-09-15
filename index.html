@@ -1117,7 +1117,15 @@
    <select id="bilMonthSel" class="fs" style="font-size:.82rem;padding:6px 10px;width:auto"></select>
   </div>
   <div id="bilStat" style="background:var(--g50);border-radius:var(--rs);padding:12px 14px;margin-bottom:12px;border:1px solid var(--g200)"></div>
-  <div id="bilList"></div>
+  <div style="border-top:1px solid var(--g100);padding-top:10px">
+   <button onclick="toggleBilListDetail()" id="bilListToggleBtn" style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:8px 2px;border:none;background:none;cursor:pointer;font-family:inherit;font-size:.82rem;font-weight:800;color:var(--g500)">
+    <span>📜 詳細使用記錄（每一筆對話）</span><span id="bilListToggleIcon">▾ 展開</span>
+   </button>
+   <div id="bilListWrap" style="display:none">
+    <div id="bilList"></div>
+    <div style="text-align:center;margin-top:8px"><button id="bilLoadMoreBtn" onclick="loadMoreBilList()" style="display:none;padding:8px 20px;border:1.5px solid var(--g200);border-radius:20px;background:var(--w);color:var(--g500);font-size:.8rem;cursor:pointer;font-family:inherit">顯示更多</button></div>
+   </div>
+  </div>
  </div>
 
  <!-- 繳費資訊 -->
