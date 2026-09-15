@@ -236,7 +236,10 @@ function proceedSaveEmployee(name){
 
 function updHRStats(){
   const emps=DB.get('employees');
-  const total=emps.reduce((s,e)=>s+(e.net||0),0);
+  // 修正重點：這裡原本只加總每個員工的「實領淨額」（底薪＋津貼－員工自己負擔的勞健保），
+  // 沒有把公司負擔的勞健保、勞退算進去，導致「本月薪資總計」看起來比公司實際要付出的金額少很多。
+  // 改成用「公司人事總成本」加總，跟員工卡片、薪資管理頁看到的公司成本口徑一致。
+  const total=emps.reduce((s,e)=>s+(e.companyCost||e.net||0),0);
   const today=new Date().toLocaleDateString('zh-TW');
   const punched=new Set(DB.get('punch_recs').filter(r=>r.date===today).map(r=>r.user)).size;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
