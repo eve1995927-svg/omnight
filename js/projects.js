@@ -1546,6 +1546,81 @@ function unhideAllCatProfitRows(projectId){
   DB.upd('projects',projectId,{catProfitHidden:[]});
   refreshCatProfitViews(projectId);
 }
+// 只復原被隱藏的其中一個類別，不用整批「全部顯示」
+function showCatProfitRow(projectId,cat){
+  const p=DB.get('projects').find(x=>x._id===projectId);if(!p)return;
+  const hidden=(p.catProfitHidden||[]).filter(c=>c!==cat);
+  DB.upd('projects',projectId,{catProfitHidden:hidden});
+  refreshCatProfitViews(projectId);
+}
+
+// ── 工種毛利表裡直接改名，回寫到報價單對應的大項 ──────────────────────
+// 這個名稱在「工種毛利」表裡，可能同時來自「報價單的大項名稱」跟「廠商的工程類別」兩種來源，
+// 這裡改名只處理報價單那邊（找這個案場底下所有報價單，把大項名稱等於舊名稱的都改成新名稱），
+// 不會動到廠商的工程類別欄位——如果剛好兩邊名稱相同，改名後這兩者會分成兩列分開顯示，
+// 這是正常現象，不是壞掉，因為只指定了要改報價單那邊。
+function openRenameCatModal(projectId,oldCat){
+  const old=document.getElementById('_renameCatBox');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_renameCatBox';
+  box.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:9400;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.innerHTML=`
+   <div style="background:var(--w);border-radius:var(--r);padding:22px 24px;max-width:380px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.3)" onclick="event.stopPropagation()">
+    <div style="font-weight:900;font-size:1rem;margin-bottom:6px;color:var(--g800)">✏️ 修改工種名稱</div>
+    <div style="font-size:.76rem;color:var(--g400);margin-bottom:14px;line-height:1.5">會把這個案場所有報價單裡，叫做「${esc(oldCat)}」的大項名稱一起改掉。廠商的工程類別不會被這個動作影響。</div>
+    <div class="field" style="margin-bottom:16px"><label class="fl">新名稱</label><input class="fi" id="_renameCatInput" value="${esc(oldCat)}"></div>
+    <div style="display:flex;gap:8px">
+     <button class="btn bg" id="_renameCatSaveBtn" style="flex:1">儲存</button>
+     <button class="btn bo" id="_renameCatCancelBtn">取消</button>
+    </div>
+   </div>`;
+  box.addEventListener('click',()=>box.remove());
+  document.body.appendChild(box);
+  document.getElementById('_renameCatCancelBtn').addEventListener('click',()=>box.remove());
+  const inp=document.getElementById('_renameCatInput');
+  inp.focus();inp.select();
+  document.getElementById('_renameCatSaveBtn').addEventListener('click',()=>{
+    const newCat=inp.value.trim();
+    if(!newCat){showToast('⚠️ 請輸入名稱');return;}
+    if(newCat===oldCat){box.remove();return;}
+    renameCatProfitRow(projectId,oldCat,newCat);
+    box.remove();
+  });
+}
+function renameCatProfitRow(projectId,oldCat,newCat){
+  // 1. 找這個案場所有報價單，把大項名稱等於舊名稱的都改成新名稱
+  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
+  let changedSections=0;
+  quotes.forEach(q=>{
+    if(!q.sections||!q.sections.length)return;
+    let touched=false;
+    const newSections=q.sections.map(sec=>{
+      if(sec.name===oldCat){touched=true;changedSections++;return {...sec,name:newCat};}
+      return sec;
+    });
+    if(touched)DB.upd('quotes',q._id,{sections:newSections});
+  });
+  // 2. 手動輸入過的金額（catProfitOverride）、隱藏狀態（catProfitHidden）如果掛在舊名稱下，
+  //    一併搬到新名稱底下，不然改完名字這些設定會找不到對應的列、憑空消失
+  const p=DB.get('projects').find(x=>x._id===projectId);
+  if(p){
+    const patch={};
+    const overrides=p.catProfitOverride||{};
+    if(overrides[oldCat]&&!overrides[newCat]){
+      const newOverrides={...overrides};
+      newOverrides[newCat]=newOverrides[oldCat];
+      delete newOverrides[oldCat];
+      patch.catProfitOverride=newOverrides;
+    }
+    const hidden=p.catProfitHidden||[];
+    if(hidden.includes(oldCat)){
+      patch.catProfitHidden=hidden.map(c=>c===oldCat?newCat:c);
+    }
+    if(Object.keys(patch).length)DB.upd('projects',projectId,patch);
+  }
+  refreshCatProfitViews(projectId);
+  showToast(changedSections?'✅ 已改名，同步更新了 '+changedSections+' 份報價單裡的大項':'✅ 已改名（沒有找到對應的報價單大項，可能這個名稱原本只來自廠商工程類別）');
+}
 // 工種毛利現在有兩個地方會顯示（案場總覽的展開卡片、毛利明細彈窗），
 // 隱藏／復原／改手動輸入之後兩邊都要一起更新，而且重畫過的輸入框要重新接上事件才會繼續能改
 function refreshCatProfitViews(projectId){
@@ -1578,7 +1653,9 @@ function buildCatProfitHtml(projectId){
       '<th style="width:26px"></th>'+
     '</tr></thead>'+
     '<tbody>'+catRows.map(r=>'<tr style="border-bottom:1px dashed var(--g100)">'+
-      '<td style="padding:6px 4px;font-weight:700;white-space:nowrap">'+esc(r.cat)+'</td>'+
+      '<td style="padding:6px 4px;font-weight:700;white-space:nowrap">'+esc(r.cat)+
+        ' <button onclick="openRenameCatModal('+projectId+',\''+esc(r.cat).replace(/'/g,"\\'")+'\')" title="修改這個名稱（會直接改到報價單裡對應的大項，不用切去報價單頁面；不會動到廠商的工程類別）" style="border:none;background:none;color:var(--g300);cursor:pointer;font-size:.68rem;padding:0;vertical-align:middle">✏️</button>'+
+      '</td>'+
       '<td style="padding:6px 4px;color:var(--g500);white-space:nowrap">'+(r.vendor?esc(r.vendor):'<span style="color:var(--g300)">未標記採用</span>')+'</td>'+
       '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="vc" value="'+r.vc+'" inputmode="numeric" style="'+inputStyle(r.vcOverridden)+'"></td>'+
       '<td style="padding:4px 2px;text-align:right"><input class="catProfitInput" data-cat="'+esc(r.cat)+'" data-field="cc" value="'+r.cc+'" inputmode="numeric" style="'+inputStyle(r.ccOverridden)+'"></td>'+
@@ -1588,8 +1665,15 @@ function buildCatProfitHtml(projectId){
     '</tr>').join('')+
     '</tbody></table></div>'
     :'<div style="padding:10px 0;font-size:.82rem;color:var(--g400)">尚無廠商報價或客戶報價單資料，無法拆分工種</div>';
-  const hiddenLink=hiddenCount?'<div style="text-align:right;margin-top:6px"><span style="font-size:.72rem;color:var(--g400)">已隱藏 '+hiddenCount+' 個類別　</span><button onclick="unhideAllCatProfitRows('+projectId+')" style="background:none;border:none;color:var(--gold-d);font-size:.72rem;font-weight:700;cursor:pointer;text-decoration:underline;padding:0">全部顯示</button></div>':'';
-  return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。用不到的類別可以點右邊 ✕ 藏起來。</div>'+
+  // 修正重點：之前隱藏的類別只能「全部顯示」一次復原全部，沒辦法只挑一個復原。
+  // 改成每個被隱藏的類別各自列出來、各自有自己的「顯示」按鈕，可以只復原其中一個。
+  const hiddenCats=(DB.get('projects').find(x=>x._id===projectId)||{}).catProfitHidden||[];
+  const hiddenLink=hiddenCats.length?'<div style="margin-top:8px;padding:8px 10px;background:var(--g50);border-radius:var(--rxs);font-size:.74rem;color:var(--g500)">'+
+    '已隱藏：'+hiddenCats.map(c=>'<span style="display:inline-flex;align-items:center;gap:4px;background:var(--w);border:1px solid var(--g200);border-radius:20px;padding:2px 10px;margin:2px 4px 2px 0">'+esc(c)+
+      '<button onclick="showCatProfitRow('+projectId+',\''+esc(c).replace(/'/g,"\\'")+'\')" title="復原這個類別" style="border:none;background:none;color:var(--gold-d);cursor:pointer;font-size:.7rem;padding:0;font-weight:900">↺</button></span>').join('')+
+    (hiddenCats.length>1?'<button onclick="unhideAllCatProfitRows('+projectId+')" style="background:none;border:none;color:var(--g400);font-size:.72rem;text-decoration:underline;cursor:pointer;padding:0;margin-left:6px">全部顯示</button>':'')+
+  '</div>':'';
+  return '<div style="font-size:.74rem;color:var(--g400);margin-bottom:10px;line-height:1.5">💡 廠商成本只計算每個工種已標記「✅ 已採用」的那家廠商；金額也可以直接點格子改成手動輸入（改過的欄位會用金色標示），把輸入框清空就會改回自動計算。用不到的類別可以點右邊 ✕ 藏起來；名稱旁邊的 ✏️ 可以直接改名（會回寫到報價單對應的大項，廠商工程類別不受影響）。</div>'+
     catTableHtml+
     hiddenLink+
     (catRows.length?'<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.82rem;min-width:640px;margin-top:10px">'+
@@ -1829,7 +1913,10 @@ function renderProjLedger(id,p,c){
         <div style="width:36px;height:36px;border-radius:8px;background:${l.type==='in'?'var(--ok-bg)':'var(--bad-bg)'};display:flex;align-items:center;justify-content:center;font-size:.9rem;flex-shrink:0">${l.type==='in'?'💰':'📤'}</div>
         <div style="flex:1;min-width:0">
           <div style="font-size:.85rem;font-weight:700;color:var(--g700)">${esc(l.desc||l.cat||'記錄')}</div>
-          <div style="font-size:.72rem;color:var(--g400)">${l.date||''} ${l.cat?' · '+esc(l.cat):''}${isVendorAuto?' · <span style="color:var(--g300)">廠商付款自動記錄</span>':''}</div>
+          <div style="font-size:.72rem;color:var(--g400);display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span>${l.date||''}${l.cat?' · '+esc(l.cat):''}${isVendorAuto?' · <span style="color:var(--g300)">廠商付款自動記錄</span>':''}</span>
+            ${l.imgUrl?'<button onclick="event.stopPropagation();openLB(\''+l.imgUrl+'\')" title="查看收據照片" style="border:none;background:none;color:var(--info);cursor:pointer;font-size:.72rem;padding:0">🧾 收據</button>':''}
+          </div>
         </div>
         <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
         ${isVendorAuto?'':`<div style="display:flex;gap:4px;flex-shrink:0">
@@ -2062,6 +2149,8 @@ function getVendorPayStatus(v){
 
 // 開啟付款視窗
 let _payVendorId=null;
+let _payInvoiceUrl=null; // 這次付款掃描的發票照片（選填），跟 _payVendorId 一樣是彈窗期間暫存用
+let _qeReceiptUrl=null; // 快速記一筆附的收據照片（選填），彈窗期間暫存用
 function openVendorPay(vendorId){
   _payVendorId=vendorId;
   const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
@@ -2071,9 +2160,9 @@ function openVendorPay(vendorId){
   const old=document.getElementById('_payBox');if(old)old.remove();
   const box=document.createElement('div');
   box.id='_payBox';
-  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px';
+  box.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9500;display:flex;align-items:center;justify-content:center;padding:20px;overflow-y:auto';
   box.innerHTML=`
-   <div style="background:var(--w);border-radius:var(--rl);padding:24px;max-width:420px;width:100%;box-shadow:var(--sh4)" onclick="event.stopPropagation()">
+   <div style="background:var(--w);border-radius:var(--rl);padding:24px;max-width:420px;width:100%;box-shadow:var(--sh4);margin:auto" onclick="event.stopPropagation()">
     <div style="font-size:1.05rem;font-weight:900;color:var(--g800);margin-bottom:4px">💳 付款給 ${esc(v.vendor||'廠商')}</div>
     <div style="font-size:.8rem;color:var(--g400);margin-bottom:16px">${esc(v.cat||'')} ${v.caseN?'· '+esc(v.caseN):''}</div>
 
@@ -2083,13 +2172,29 @@ function openVendorPay(vendorId){
      <div style="display:flex;justify-content:space-between;font-size:.9rem;padding-top:8px;border-top:1px solid var(--g200)"><span style="font-weight:800">尚欠</span><span style="font-weight:900;color:var(--bad)">NT$${remain.toLocaleString()}</span></div>
     </div>
 
-    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:8px">這次付多少？</div>
-    <div style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
+    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:8px">📷 有發票的話可以先掃描，自動帶入金額日期</div>
+    <div id="_payInvoiceZone" style="border:1.5px dashed var(--g200);border-radius:var(--rs);padding:10px;text-align:center;margin-bottom:14px;cursor:pointer;font-size:.8rem;color:var(--g400)">
+      點這裡拍照或選擇發票照片
+    </div>
+    <input type="file" id="_payInvoiceFile" accept="image/*" style="display:none">
+    <div id="_payInvoicePreviewWrap" style="display:none;margin-bottom:14px">
+      <img id="_payInvoicePreview" style="max-width:100%;max-height:140px;border-radius:var(--rxs);display:block;margin-bottom:4px">
+      <div id="_payInvoiceStatus" style="font-size:.75rem;color:var(--info)"></div>
+    </div>
+
+    <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:8px">這次付多少？（分期付款的話，這裡填每一期實際要付的金額就好，不用整筆一次付清）</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap">
      <button onclick="document.getElementById('_payAmt').value=${Math.round(remain*0.3)}" style="padding:6px 12px;border:1.5px solid var(--g200);border-radius:20px;background:var(--w);font-size:.78rem;cursor:pointer;font-family:inherit">3成 NT$${Math.round(remain*0.3).toLocaleString()}</button>
      <button onclick="document.getElementById('_payAmt').value=${Math.round(remain*0.5)}" style="padding:6px 12px;border:1.5px solid var(--g200);border-radius:20px;background:var(--w);font-size:.78rem;cursor:pointer;font-family:inherit">5成 NT$${Math.round(remain*0.5).toLocaleString()}</button>
      <button onclick="document.getElementById('_payAmt').value=${remain}" style="padding:6px 12px;border:1.5px solid var(--gold-l);border-radius:20px;background:var(--gold-pale);color:var(--gold-d);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:800">付清 NT$${remain.toLocaleString()}</button>
     </div>
-    <input type="number" id="_payAmt" placeholder="輸入金額" value="${remain}" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px">
+     <input type="number" id="_payPct" placeholder="自訂成數，例如35" style="width:120px;padding:8px 10px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit">
+     <span style="font-size:.82rem;color:var(--g400)">%</span>
+     <button onclick="const p=parseFloat(document.getElementById('_payPct').value)||0;if(p>0)document.getElementById('_payAmt').value=Math.round(${remain}*p/100);" style="padding:7px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);background:var(--w);font-size:.78rem;cursor:pointer;font-family:inherit">帶入</button>
+     <span style="font-size:.72rem;color:var(--g300)">（以尚欠金額計算）</span>
+    </div>
+    <input type="number" id="_payAmt" placeholder="輸入這次實際要付的金額" style="width:100%;padding:12px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:1rem;font-family:monospace;font-weight:700;margin-bottom:10px;box-sizing:border-box">
     <div style="font-size:.78rem;font-weight:800;color:var(--g500);margin-bottom:6px">付款日期</div>
     <input type="date" id="_payDate" value="${new Date().toISOString().split('T')[0]}" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.9rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
     <input type="text" id="_payNote" placeholder="備注（例：第二期款）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
@@ -2101,6 +2206,37 @@ function openVendorPay(vendorId){
    </div>`;
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
+
+  // 掃描發票：跟「帳款」那邊的發票辨識用同一套邏輯，拍照/選圖後先壓縮再存，
+  // 用 AI 辨識金額跟日期，辨識完自動帶入上面的付款金額、日期欄位，不用自己再讀單子上的數字用打的
+  _payInvoiceUrl=null; // 每次開這個彈窗都重設，不會不小心沿用到上一筆付款的發票照片
+  const zone=document.getElementById('_payInvoiceZone');
+  const fileInp=document.getElementById('_payInvoiceFile');
+  zone.addEventListener('click',()=>fileInp.click());
+  fileInp.addEventListener('change',async e=>{
+    const f=e.target.files[0];if(!f)return;e.target.value='';
+    zone.textContent='處理中…';
+    _payInvoiceUrl=await compressImage(f,1600,0.8)||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+    const prevWrap=document.getElementById('_payInvoicePreviewWrap');
+    document.getElementById('_payInvoicePreview').src=_payInvoiceUrl;
+    prevWrap.style.display='block';
+    const statusEl=document.getElementById('_payInvoiceStatus');
+    statusEl.textContent='AI 辨識中…';
+    zone.textContent='點這裡拍照或選擇發票照片（重新選擇會取代目前這張）';
+    try{
+      const b64=_payInvoiceUrl.split(',')[1];
+      const rep=await callAI('ac',[
+        {type:'image',source:{type:'base64',media_type:'image/jpeg',data:b64}},
+        {type:'text',text:'請從這張廠商發票/收據辨識金額跟日期，只回覆純JSON（不要加```），格式：{"amount":金額數字,"date":"YYYY-MM-DD"}。無法辨識的欄位填0或空字串。'}
+      ],500,20,'廠商付款發票辨識');
+      const dat=JSON.parse(rep.replace(/```json|```/g,'').trim());
+      if(dat.amount){document.getElementById('_payAmt').value=dat.amount;}
+      if(dat.date){document.getElementById('_payDate').value=dat.date;}
+      statusEl.textContent='✅ 已自動帶入金額／日期，記得核對一下數字對不對';
+    }catch(err){
+      statusEl.textContent='⚠️ 辨識失敗，請自己填金額日期（照片還是會存起來備查）';
+    }
+  });
 }
 
 function confirmVendorPay(){
@@ -2115,12 +2251,12 @@ function confirmVendorPay(){
   // 之後如果要編輯這筆付款（例如日期打錯），才能準確找到對應的帳款記錄一起改，不會改錯或改到別筆
   const payId=Date.now();
 
-  // 1. 記錄到廠商付款歷史
-  const payments=[...(v.payments||[]),{payId,amount:amt,date:payDate,note}];
+  // 1. 記錄到廠商付款歷史（如果有掃描發票，一併存進這筆付款記錄，之後可以點開查驗）
+  const payments=[...(v.payments||[]),{payId,amount:amt,date:payDate,note,invoiceUrl:_payInvoiceUrl||null}];
   const totalPaid=payments.reduce((s,p)=>s+(p.amount||0),0);
   DB.upd('vendors',v._id,{payments,paid:totalPaid>=(v.amount||0)});
 
-  // 2. 自動記入內帳支出（雙式記帳，這是 ERP 核心）
+  // 2. 自動記入內帳支出（雙式記帳，這是 ERP 核心），發票照片也存到帳款記錄的憑證欄位
   DB.push('ledger',{
     summary:'內帳支出 付款給'+(v.vendor||'廠商')+' '+fmt(amt),
     book:'out',type:'out',amount:amt,
@@ -2128,8 +2264,10 @@ function confirmVendorPay(){
     cat:'廠商費用',date:payDate,
     caseN:v.caseN||'',projectId:v.projectId||null,
     vendorId:v._id,payRecordId:payId,
+    imgUrl:_payInvoiceUrl||null,
   });
 
+  _payInvoiceUrl=null;
   document.getElementById('_payBox')?.remove();
   showToast('✅ 已付款 NT$'+amt.toLocaleString()+'，並自動記入內帳');
   if(typeof refreshVendorViews==='function')refreshVendorViews();
@@ -2207,10 +2345,13 @@ function quickExpense(cat){
     <div style="font-size:1.05rem;font-weight:900;color:var(--g800);margin-bottom:16px">${icons[cat]||'💸'} 記一筆${cat}</div>
     <input type="number" id="_qeAmt" placeholder="金額" autofocus style="width:100%;padding:14px;border:1.5px solid var(--gold-l);border-radius:var(--rs);font-size:1.3rem;font-family:monospace;font-weight:800;margin-bottom:10px;box-sizing:border-box;text-align:center">
     <input type="text" id="_qeNote" placeholder="說明（選填）" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box">
-    <select id="_qeProj" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box;background:var(--w);cursor:pointer">
+    <select id="_qeProj" style="width:100%;padding:10px 14px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:10px;box-sizing:border-box;background:var(--w);cursor:pointer">
      <option value="">不指定案場</option>
      ${projects.map(p=>'<option value="'+p._id+'">'+esc(p.name)+'</option>').join('')}
     </select>
+    <div id="_qeReceiptZone" style="border:1.5px dashed var(--g200);border-radius:var(--rs);padding:8px;text-align:center;margin-bottom:16px;cursor:pointer;font-size:.78rem;color:var(--g400)">📷 收據照片留底（選填）</div>
+    <input type="file" id="_qeReceiptFile" accept="image/*" style="display:none">
+    <img id="_qeReceiptPreview" style="display:none;max-width:100%;max-height:100px;border-radius:var(--rxs);margin-bottom:10px">
     <div style="display:flex;gap:8px">
      <button onclick="document.getElementById('_qeBox').remove()" style="flex:1;padding:12px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.9rem;cursor:pointer;font-family:inherit">取消</button>
      <button onclick="saveQuickExpense('${cat}')" style="flex:2;padding:12px;border:none;border-radius:var(--rs);background:var(--gold);color:#fff;font-size:.9rem;font-weight:800;cursor:pointer;font-family:inherit">記帳</button>
@@ -2219,6 +2360,21 @@ function quickExpense(cat){
   box.addEventListener('click',e=>{if(e.target===box)box.remove();});
   document.body.appendChild(box);
   setTimeout(()=>document.getElementById('_qeAmt')?.focus(),100);
+
+  // 收據照片：這裡只是單純留底備查，不做 AI 辨識（這個入口本來就是設計成快速記帳，
+  // 想要辨識金額日期自動帶入的話，用「會計 → 帳款總覽」那邊的「新增支出」會更完整）
+  _qeReceiptUrl=null;
+  const zone=document.getElementById('_qeReceiptZone');
+  const fileInp=document.getElementById('_qeReceiptFile');
+  zone.addEventListener('click',()=>fileInp.click());
+  fileInp.addEventListener('change',async e=>{
+    const f=e.target.files[0];if(!f)return;e.target.value='';
+    zone.textContent='處理中…';
+    _qeReceiptUrl=await compressImage(f,1600,0.75)||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+    const prev=document.getElementById('_qeReceiptPreview');
+    prev.src=_qeReceiptUrl;prev.style.display='block';
+    zone.textContent='📷 已附上照片（點這裡可重新選擇）';
+  });
 }
 
 function saveQuickExpense(cat){
@@ -2232,7 +2388,9 @@ function saveQuickExpense(cat){
     desc:note||cat,cat:cat==='交通油錢'?'其他支出':cat,
     date:new Date().toISOString().split('T')[0],
     projectId:projId?parseInt(projId):null,
+    imgUrl:_qeReceiptUrl||null,
   });
+  _qeReceiptUrl=null;
   document.getElementById('_qeBox')?.remove();
   showToast('✅ 已記帳 NT$'+amt.toLocaleString());
   if(typeof renderLedger==='function')renderLedger();

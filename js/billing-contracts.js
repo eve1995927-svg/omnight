@@ -381,6 +381,7 @@ function renderLedger(){
         '<span style="font-size:.68rem;padding:2px 7px;border-radius:10px;background:'+(book==='in'?'var(--ok-bg)':'var(--bad-bg)')+';color:'+(book==='in'?'var(--ok)':'var(--bad)')+';">'+(book==='in'?'外帳':'內帳')+'</span>'+
         (proj?'<span style="font-size:.68rem;color:var(--g400)">📍'+esc(proj.name)+'</span>':'')+
         (r.caseN&&!proj?'<span style="font-size:.68rem;color:var(--g400)">📍'+esc(r.caseN)+'</span>':'')+
+        (r.imgUrl?'<button onclick="event.stopPropagation();openLB(\''+r.imgUrl+'\')" title="查看收據照片" style="border:none;background:none;color:var(--info);cursor:pointer;font-size:.72rem;padding:0">🧾 收據</button>':'')+
         '</div></div>'+
         '<div style="text-align:right;flex-shrink:0"><div style="font-weight:900;font-size:.95rem;color:'+(isIn?'var(--ok)':'var(--bad)')+';">'+(isIn?'+':'-')+'NT$'+(r.amount||0).toLocaleString()+'</div>'+
         (r.vendorId?'<span style="font-size:.65rem;color:var(--g300)">廠商付款自動記錄</span>':
