@@ -236,7 +236,10 @@ function proceedSaveEmployee(name){
 
 function updHRStats(){
   const emps=DB.get('employees');
-  const total=emps.reduce((s,e)=>s+(e.net||0),0);
+  // 修正重點：這裡原本只加總每個員工的「實領淨額」（底薪＋津貼－員工自己負擔的勞健保），
+  // 沒有把公司負擔的勞健保、勞退算進去，導致「本月薪資總計」看起來比公司實際要付出的金額少很多。
+  // 改成用「公司人事總成本」加總，跟員工卡片、薪資管理頁看到的公司成本口徑一致。
+  const total=emps.reduce((s,e)=>s+(e.companyCost||e.net||0),0);
   const today=new Date().toLocaleDateString('zh-TW');
   const punched=new Set(DB.get('punch_recs').filter(r=>r.date===today).map(r=>r.user)).size;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
@@ -397,7 +400,6 @@ function renderEmployees(){
       // 統一直接把 e.retire 帶進欄位——如果是舊資料，等於把之前自動算的數字當成初始值放進去，
       // 使用者再自己依實際帳單調整即可，不用整個空白重填
       const retireEl=document.getElementById('empRetireCompany');if(retireEl)retireEl.value=e.retire||'';
-      const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=!!e.absorbInsurance;
       const accEl=document.getElementById('empAccount');if(accEl)accEl.value=e.account||'';
       const pwEl=document.getElementById('empPassword');if(pwEl)pwEl.value=e.password||'';
       // 舊資料沒有 empType 欄位的話，預設當作「正式員工」（跟這個功能加入前的行為一致，不會突然把既有員工都變成只能打卡）
@@ -548,7 +550,7 @@ function renderMonthSalary(monthKey){
   let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0,totalOtPay=0;
   emps.forEach(e=>{
     const rec=getSalaryRecord(e._id,monthKey);if(!rec)return;
-    const {gross,laborDeduct,healthDeduct,net,companyCost}=calcSalaryRecord(rec);
+    const {gross,laborDeduct,healthDeduct,laborCompany,healthCompany,retireCompany,net,companyCost}=calcSalaryRecord(rec);
     totalNet+=net;totalCompanyCost+=companyCost;totalBonus+=(rec.bonus||0);totalReimb+=(rec.reimbursement||0);
 
     const empPunchId=e._id?('emp_'+e._id):null;
@@ -608,8 +610,14 @@ function renderMonthSalary(monthKey){
         ${rec.bonus?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--ok)">🎁 獎金</span><span style="font-family:var(--mono);color:var(--ok)">+NT$${rec.bonus.toLocaleString()}</span></div>`:''}
         ${rec.reimbursement?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--ok)">💵 代墊費歸還</span><span style="font-family:var(--mono);color:var(--ok)">+NT$${rec.reimbursement.toLocaleString()}</span></div>`:''}
         ${otResult.totalOtPay?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:#B8860B">🕐 加班費（試算，共 ${otResult.totalOtHours} 小時）</span><span style="font-family:var(--mono);color:#B8860B">+NT$${otResult.totalOtPay.toLocaleString()}</span></div>`:''}
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">勞保（${e.absorbInsurance?'公司吸收':'員工'}）</span><span style="font-family:var(--mono);color:${e.absorbInsurance?'var(--warn)':'var(--bad)'}">${e.absorbInsurance?'':'-'}NT$${(e.absorbInsurance?(e.labor||0):laborDeduct).toLocaleString()}</span></div>
-        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">健保（${e.absorbInsurance?'公司吸收':'員工'}）</span><span style="font-family:var(--mono);color:${e.absorbInsurance?'var(--warn)':'var(--bad)'}">${e.absorbInsurance?'':'-'}NT$${(e.absorbInsurance?(e.health||0):healthDeduct).toLocaleString()}</span></div>
+        ${laborDeduct?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">勞保（員工負擔，從薪資扣）</span><span style="font-family:var(--mono);color:var(--bad)">-NT$${laborDeduct.toLocaleString()}</span></div>`:''}
+        ${healthDeduct?`<div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--bad)">健保（員工負擔，從薪資扣）</span><span style="font-family:var(--mono);color:var(--bad)">-NT$${healthDeduct.toLocaleString()}</span></div>`:''}
+        ${(laborCompany||healthCompany||retireCompany)?`<div style="padding-top:6px;margin-top:2px;border-top:1px dashed var(--g200)">
+          <div style="font-size:.72rem;color:var(--g400);margin-bottom:3px">以下由公司負擔，不影響實領薪資，但算進公司人事成本：</div>
+          ${laborCompany?`<div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="color:var(--g500)">勞保（公司出）</span><span style="font-family:var(--mono);color:var(--g500)">NT$${laborCompany.toLocaleString()}</span></div>`:''}
+          ${healthCompany?`<div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="color:var(--g500)">健保（公司出）</span><span style="font-family:var(--mono);color:var(--g500)">NT$${healthCompany.toLocaleString()}</span></div>`:''}
+          ${retireCompany?`<div style="display:flex;justify-content:space-between;margin-bottom:2px"><span style="color:var(--g500)">勞退（公司提撥）</span><span style="font-family:var(--mono);color:var(--g500)">NT$${retireCompany.toLocaleString()}</span></div>`:''}
+        </div>`:''}
         ${rec.note?`<div style="padding-top:6px;margin-top:2px;border-top:1px solid var(--g200);color:var(--g500);font-size:.78rem">📝 ${esc(rec.note)}</div>`:''}
         <div style="display:flex;justify-content:space-between;padding-top:6px;border-top:1px solid var(--g200)"><span style="font-weight:800">銀行帳號</span><span style="font-family:var(--mono);color:var(--g500)">${e.bank||'尚未設定'}</span></div>
       </div>
@@ -659,6 +667,7 @@ function syncSalaryFromEmployee(empId,monthKey){
 function openSalaryEditBox(empId,monthKey){
   const rec=getSalaryRecord(empId,monthKey);if(!rec)return;
   const e=DB.get('employees').find(x=>x._id===empId);
+  const calc=e?calcSalaryRecord(rec):null;
 
   const old=document.getElementById('_salBox');if(old)old.remove();
   const box=document.createElement('div');
@@ -676,6 +685,18 @@ function openSalaryEditBox(empId,monthKey){
 
     <label style="font-size:.78rem;font-weight:700;color:var(--g500);display:block;margin-bottom:5px">📝 備註（選填，例如：代墊材料費、業績獎金…）</label>
     <input type="text" id="_salNote" value="${esc(rec.note||'')}" placeholder="說明這筆獎金/代墊費的原因" style="width:100%;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.85rem;font-family:inherit;margin-bottom:16px;box-sizing:border-box">
+
+    ${calc?`<div style="background:var(--g50);border-radius:var(--rxs);padding:10px 12px;margin-bottom:16px">
+      <div style="font-size:.74rem;font-weight:800;color:var(--g500);margin-bottom:6px">🏥 勞健保／勞退（自動套用員工資料裡設定的數字，不用每個月重填）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:.78rem;color:var(--g600)">
+        <span>勞保（公司出）NT$${(calc.laborCompany||0).toLocaleString()}</span>
+        <span>健保（公司出）NT$${(calc.healthCompany||0).toLocaleString()}</span>
+        <span>勞保（員工出）NT$${(calc.laborDeduct||0).toLocaleString()}</span>
+        <span>健保（員工出）NT$${(calc.healthDeduct||0).toLocaleString()}</span>
+        <span style="grid-column:1/-1">勞退（公司提撥）NT$${(calc.retireCompany||0).toLocaleString()}</span>
+      </div>
+      <div style="font-size:.7rem;color:var(--g400);margin-top:6px">這幾個數字要改的話，請到「人資管理→員工資料」編輯這位員工，改完下個月會自動套用新數字</div>
+    </div>`:''}
 
     <div style="display:flex;gap:8px">
       <button id="_salCancel" style="flex:1;padding:11px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g500);font-size:.86rem;cursor:pointer;font-family:inherit">取消</button>
