@@ -424,6 +424,14 @@ function _cloudSetAll(k, arr){
 }
 
 // 初始化：從雲端載入所有資料到 cache
+// 用上次留在這台裝置的舊資料先把畫面撐起來，不用整個等雲端資料下載完才看得到東西。
+// 這個只是「先讀本機快取」，不影響之後 initCloudDB／startCloudSync 抓最新資料回來蓋過去。
+function preloadCacheFromLocalStorage(){
+  _KEYS.forEach(k=>{
+    try{const v=localStorage.getItem('z7_'+k);if(v)_cache[k]=_normalizeToKeyedObj(JSON.parse(v));}catch{}
+  });
+}
+
 async function initCloudDB(){
   // 先嘗試 Firebase
   if(initFirebase()){
@@ -1084,9 +1092,16 @@ function getPunchUser(){
       if(!ls||!app)return;
       ls.style.display='none';
       app.style.display='flex';
+      // 修正重點：原本一定要等整個雲端資料庫下載完才會顯示畫面，手機網路比較慢的時候，
+      // 每次打開都要盯著轉圈圈等好幾秒到十幾秒。改成先用上次留在這台裝置的資料立刻把畫面撐開，
+      // 讓人馬上能看能用，最新資料在背景默默抓，抓完會透過即時同步自動更新畫面內容，不用整個擋在那裡等。
+      preloadCacheFromLocalStorage();
+      setupApp(curRole);
       initCloudDB().then(()=>{
         startCloudSync();
-        setupApp(curRole);
+        // 剛登入很可能還停在剛打開的第一個畫面（通常是儀表板），資料抓新的回來後刷新一次，
+        // 不然畫面會一直停在稍微舊一點的快取資料，要等使用者自己切換頁面才會看到最新的
+        if(document.getElementById('p-owner-dash')?.classList.contains('on')&&typeof renderDashboard==='function')renderDashboard();
         setTimeout(cleanupOldPunchPhotos,5000); // 登入後5秒跑清理，等資料同步完
       });
     });
@@ -1278,14 +1293,18 @@ function doLogin(){
   const ls=document.getElementById('ls');
   ls.style.opacity='0';
   ls.style.transition='opacity .4s';
-  const loadingEl=document.getElementById('lBtn');
-  if(loadingEl){loadingEl.textContent='⏳ 同步資料中…';loadingEl.disabled=true;}
+  // 修正重點：同樣的原因，登入這條路徑之前也是等整個雲端資料下載完才顯示畫面。
+  // 這台裝置如果之前登入過（就算是別人的帳號），localStorage 裡多少會留有一些舊資料，
+  // 先拿來墊著讓畫面馬上跑出來，比空等好；就算完全是新裝置沒有任何快取，這一步也不會出錯，
+  // 只是畫面剛顯示時暫時是空的，資料抓回來後一樣會正常補上。
+  preloadCacheFromLocalStorage();
+  ls.style.display='none';
+  const app=document.getElementById('app');
+  app.style.display='flex';
+  setupApp(curRole);
   initCloudDB().then(()=>{
     startCloudSync();
-    ls.style.display='none';
-    const app=document.getElementById('app');
-    app.style.display='flex';
-    setupApp(curRole);
+    if(document.getElementById('p-owner-dash')?.classList.contains('on')&&typeof renderDashboard==='function')renderDashboard();
   });
 }
 
