@@ -221,7 +221,7 @@ document.getElementById('qSave')?.addEventListener('click',()=>{
   const n=document.getElementById('qN')?.value||'業主';
   const tp=document.getElementById('qTp')?.value||'全室裝修';
   const sub=calcAll(qSections);
-  const savedQ=DB.push('quotes',{summary:'報價 '+n+' '+sub,name:n,type:tp,projectId:curProjectId||null,sections:JSON.parse(JSON.stringify(qSections)),total:sub});
+  const savedQ=DB.push('quotes',{summary:'報價 '+n+' '+sub,name:n,type:tp,projectId:curProjectId||null,sections:JSON.parse(JSON.stringify(qSections)),total:sub,updatedAt:new Date().toLocaleString('zh-TW')});
   updStats();renderQTable();
   // 下一步提示
   if(typeof showNextStep==='function'){

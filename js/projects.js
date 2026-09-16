@@ -3,12 +3,12 @@
 
 // ── 案場狀態定義 ─────────────────────────────────────────
 const PROJECT_STATUS = {
-  inquiry:  {label:'詢價中',   color:'var(--info)',    bg:'var(--info-bg)',  icon:'💬'},
-  quoting:  {label:'報價中',   color:'var(--warn)',    bg:'var(--warn-bg)',  icon:'📋'},
-  signed:   {label:'已簽約',   color:'var(--ok)',      bg:'var(--ok-bg)',    icon:'✅'},
-  progress: {label:'施工中',   color:'#7C3AED',        bg:'#F3E8FF',         icon:'🔨'},
-  done:     {label:'完工',     color:'var(--g500)',    bg:'var(--g100)',      icon:'🏠'},
-  paused:   {label:'暫停',     color:'var(--bad)',     bg:'var(--bad-bg)',   icon:'⏸️'},
+  inquiry:  {label:'洽談/未報價', color:'var(--info)',    bg:'var(--info-bg)',  icon:'💬'},
+  quoting:  {label:'報價中',      color:'var(--warn)',    bg:'var(--warn-bg)',  icon:'📋'},
+  signed:   {label:'已簽約',      color:'var(--ok)',      bg:'var(--ok-bg)',    icon:'✅'},
+  progress: {label:'施工中',      color:'#7C3AED',        bg:'#F3E8FF',         icon:'🔨'},
+  done:     {label:'完工',        color:'var(--g500)',    bg:'var(--g100)',      icon:'🏠'},
+  paused:   {label:'暫停',        color:'var(--bad)',     bg:'var(--bad-bg)',   icon:'⏸️'},
 };
 
 const PROJECT_TYPES = ['全室翻新','老屋翻新','局部裝修','新成屋裝修','商業空間','辦公室','廚衛翻修','其他'];
@@ -1349,12 +1349,14 @@ function renderProjDesign(id,p,c){
   if(!items.length){
     grid.innerHTML='<div class="empty-state" style="grid-column:1/-1"><div class="es-ic">🖼️</div><div class="es-t">尚無設計圖</div><div class="es-s">點右上方「上傳設計圖」，可上傳平面圖、設計圖、渲染圖等</div></div>';
   } else {
-    items.forEach(d=>{
+    const galleryImgs=items.filter(d=>d.imgDataUrl).map(d=>({src:d.imgDataUrl,name:d.name||d.date||'設計圖'}));
+    items.forEach((d,i)=>{
       const card=document.createElement('div');
       card.style.cssText='position:relative;border-radius:var(--rs);overflow:hidden;background:var(--g100);aspect-ratio:4/3;cursor:pointer';
+      const galleryIdx=galleryImgs.findIndex(g=>g.src===d.imgDataUrl);
       if(d.imgDataUrl){
         card.innerHTML=`<img src="${d.imgDataUrl}" style="width:100%;height:100%;object-fit:cover;display:block">`;
-        card.addEventListener('click',()=>openLB(d.imgDataUrl));
+        card.addEventListener('click',()=>openLBGallery(galleryImgs,galleryIdx>=0?galleryIdx:0));
       }else{
         card.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;font-size:1.5rem">📄</div>';
       }

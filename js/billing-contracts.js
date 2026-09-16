@@ -462,7 +462,10 @@ function renderLedgerMonthly(){
   }
   const yearLabel=document.getElementById('ledgerMonthlyYearLabel');
   if(yearLabel)yearLabel.textContent=curLedgerMonthlyYear+'年';
-  const sm=allMonths.filter(m=>m.startsWith(String(curLedgerMonthlyYear)));
+  const today=new Date();
+  const currentMonthKey=today.getFullYear()+'-'+(today.getMonth()+1).toString().padStart(2,'0');
+  // 只顯示已經到過的月份（≤本月），未來的月份本來就是零，顯示出來會誤導以為沒有收入
+  const sm=allMonths.filter(m=>m.startsWith(String(curLedgerMonthlyYear))&&m<=currentMonthKey);
 
   c.innerHTML='';
   if(!sm.length){
@@ -805,7 +808,7 @@ function renderContracts(){
       '<div class="cc-hd">'+
         '<div class="cc-icon">'+( (c.fileUrls||[]).length>1?'📚'+(c.fileUrls.length)+'頁':isImageUrl(c.fileUrl)?'🖼️':'📄')+'</div>'+
         '<div class="cc-info">'+
-          '<div class="cc-name">'+c.name+'<span class="cc-badge '+(c.status==='signed'?'signed':'pending')+'">'+( c.status==='signed'?'✅ 結案':'📋 未開始')+'</span>'+
+          '<div class="cc-name">'+c.name+'<span class="cc-badge '+(c.status==='signed'?'signed':c.status==='progress'?'progress':'pending')+'">'+( c.status==='signed'?'✅ 結案':c.status==='progress'?'🔨 施工中':'📋 未開始')+'</span>'+
             (c.signatureUrl?'<span class="cc-badge" style="background:var(--info-bg);color:var(--info)">✍️ 已簽名</span>':'')+
           '</div>'+
           '<div class="cc-meta">業主：'+(c.client||'—')+' ｜ '+(c.amount?fmt(c.amount):'未填金額')+' ｜ '+(c._ts||'').split(' ')[0]+'</div>'+
@@ -817,7 +820,7 @@ function renderContracts(){
           '<div style="display:flex;gap:5px">'+
             (c.signatureUrl?'':'<button class="btn bo bxs" data-csign="'+c._id+'" title="現場請業主在螢幕上簽名">✍️ 簽名</button>')+
             '<button class="btn bo bxs" data-cedit="'+c._id+'">✏️</button>'+
-            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'未開始':'結案')+'</button>'+
+            '<button class="btn bo bxs" data-ctog="'+c._id+'">'+( c.status==='signed'?'↩ 未開始':c.status==='progress'?'✅ 結案':'🔨 施工中')+'</button>'+
             '<button class="btn brd bxs" data-cdel="'+c._id+'">🗑</button>'+
           '</div>'+
         '</div>'+
@@ -900,9 +903,13 @@ function previewContract(id){
 }
 function toggleContractStatus(id){
   const c=DB.get('contracts').find(r=>r._id===id);if(!c)return;
-  DB.upd('contracts',id,{status:c.status==='signed'?'pending':'signed'});
+  // 循環切換：未開始 → 施工中 → 結案 → 未開始
+  const cycle={pending:'progress',progress:'signed',signed:'pending'};
+  const next=cycle[c.status]||'progress';
+  const labels={pending:'📋 未開始',progress:'🔨 施工中',signed:'✅ 結案'};
+  DB.upd('contracts',id,{status:next});
   renderContracts();updContractStats();
-  showToast(c.status==='signed'?'已改為未開始':'✅ 已標記結案');
+  showToast('已更新為：'+labels[next]);
 }
 
 // ══ 合約電子簽名（現場請業主直接在螢幕上簽） ══════════════════
@@ -1055,7 +1062,8 @@ function initAdQuote(){
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
         projectId:selectedProject?._id||null,
-        sections:JSON.parse(JSON.stringify(adSections)),total:sub};
+        sections:JSON.parse(JSON.stringify(adSections)),total:sub,
+        updatedAt:new Date().toLocaleString('zh-TW')};
       if(qEditId){
         DB.upd('quotes',qEditId,payload);
         qEditId=null;

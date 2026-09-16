@@ -453,7 +453,7 @@ function renderQTable(){
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--g100);${q.archived?'opacity:.55':''}">
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:.86rem">${esc(q.name||'未命名')}${q.archived?' <span style="font-size:.65rem;background:var(--g100);color:var(--g500);padding:1px 7px;border-radius:20px;font-weight:700">📦 已封存</span>':''}</div>
-          <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(q.type||'—')} · ${esc((q._ts||'').split(' ')[0])}</div>
+          <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(q.type||'—')} · 修改於 ${esc((q.updatedAt||q._ts||'').split(' ')[0])}</div>
         </div>
         <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
         <div style="display:flex;gap:5px;flex-shrink:0">

@@ -946,12 +946,35 @@ function showInfoBox(title,message){
 function showToast(msg,dur=2600){const t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),dur);}
 
 // ══ LIGHTBOX ═════════════════════════════════════════════
+let _lbGallery=null,_lbGalleryIdx=0;
 function openLB(src,filename){
   document.getElementById('lbimg').src=src;
   document.getElementById('lb').classList.add('show');
   document.getElementById('lb').dataset.curSrc=src;
   document.getElementById('lb').dataset.curName=filename||('照片_'+Date.now()+'.jpg');
+  _lbGallery=null;_lbGalleryIdx=0;
 }
+// 設計圖用的 gallery 版本：傳入整組圖片清單跟起始索引，方向鍵可以在圖片之間切換
+function openLBGallery(images,idx){
+  _lbGallery=images;_lbGalleryIdx=Math.max(0,Math.min(idx,images.length-1));
+  const img=images[_lbGalleryIdx];
+  document.getElementById('lbimg').src=img.src;
+  document.getElementById('lb').classList.add('show');
+  document.getElementById('lb').dataset.curSrc=img.src;
+  document.getElementById('lb').dataset.curName=img.name||'設計圖.jpg';
+}
+function lbGalleryNav(dir){
+  if(!_lbGallery||_lbGallery.length<=1)return;
+  _lbGalleryIdx=(_lbGalleryIdx+dir+_lbGallery.length)%_lbGallery.length;
+  openLBGallery(_lbGallery,_lbGalleryIdx);
+}
+// 鍵盤左右切換設計圖（只在 lightbox 開著的時候作用，不影響其他地方的鍵盤操作）
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('lb')?.classList.contains('show'))return;
+  if(e.key==='ArrowLeft'){e.preventDefault();lbGalleryNav(-1);}
+  else if(e.key==='ArrowRight'){e.preventDefault();lbGalleryNav(1);}
+  else if(e.key==='Escape'){document.getElementById('lb')?.classList.remove('show');}
+});
 function downloadCurrentLB(){
   const lb=document.getElementById('lb');
   const src=lb.dataset.curSrc;if(!src)return;
@@ -1138,13 +1161,21 @@ document.getElementById('lRoleGrid')?.addEventListener('click',e=>{
       try{ const raw=localStorage.getItem('z7_employees'); if(raw) empList=JSON.parse(raw); }catch{}
       if(!empList.length) empList=(typeof DB!=='undefined'?DB.getAll('employees'):[]);
       const allWithAccount=empList.filter(e=>e&&e.account&&!e.deleted);
+      // 防呆：不管上游資料（本機快取跟雲端資料交錯寫入時）為什麼會讓同一個帳號出現兩次，
+      // 這裡畫出選單之前先用「帳號」去重一次，保證同一個人不會在選單裡看到兩次。
+      // 帳號本來就是一個人唯一的登入依據，去重完全不會有選錯人的風險。
+      const seenAcc=new Set();
+      const dedupedList=allWithAccount.filter(e=>{
+        if(seenAcc.has(e.account))return false;
+        seenAcc.add(e.account);return true;
+      });
       // 「員工」跟「公務」是兩個獨立功能，登入要選的名單也要分開，不能共用同一份：
       // 公務只是打卡用，顯示所有有帳號的人（含公務型跟正式員工，不管哪種身份都能打卡）；
       // 員工 tab 只顯示明確設定成「正式員工」的人，才能用到案場、業務、會計那些完整功能。
       // 舊資料沒有 empType 欄位的話，當作正式員工處理（維持這個功能加入前的既有行為）。
       const withAccount=curRole==='punch'
-        ? allWithAccount
-        : allWithAccount.filter(e=>e.empType!=='punch');
+        ? dedupedList
+        : dedupedList.filter(e=>e.empType!=='punch');
       if(withAccount.length){
         empSelEl.innerHTML='<option value="">請選擇你的名字…</option>'+
           withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('');
@@ -1180,9 +1211,14 @@ async function silentRefreshEmployeesForLogin(){
     const empSelEl=document.getElementById('lEmpSelect');
     if(empSelEl&&empSelEl.style.display!=='none'){
       const allWithAccount=arr.filter(e=>e&&e.account&&!e.deleted);
+      const seenAcc=new Set();
+      const dedupedList=allWithAccount.filter(e=>{
+        if(seenAcc.has(e.account))return false;
+        seenAcc.add(e.account);return true;
+      });
       const withAccount=curRole==='punch'
-        ? allWithAccount
-        : allWithAccount.filter(e=>e.empType!=='punch');
+        ? dedupedList
+        : dedupedList.filter(e=>e.empType!=='punch');
       const curVal=empSelEl.value;
       empSelEl.innerHTML=withAccount.length
         ?'<option value="">請選擇你的名字…</option>'+withAccount.map(e=>'<option value="'+e.account+'">👤 '+e.name+'</option>').join('')
