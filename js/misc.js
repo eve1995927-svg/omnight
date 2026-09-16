@@ -792,7 +792,7 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
 document.getElementById('newClientName')?.addEventListener('keydown',e=>{
   if(e.key==='Enter') document.getElementById('confirmAddClient')?.click();
 });
-// ══ 社群訊息（LINE／FB／IG 統一收件匣）═══════════════════════
+// ══ 社群訊息（LINE／Facebook／Threads 統一收件匣）════════════════
 // 訊息本體是後端的 Netlify Functions（line-webhook / meta-webhook）收到後直接寫進
 // Firebase 的 omnichannel_messages 集合，前端這裡只負責讀出來排版、跟呼叫 send-reply 送出回覆。
 // 因為 core.js 的 Firebase 即時監聽本來就有訂閱這個集合，後端一寫進去，這裡幾乎是秒讀到。
@@ -800,6 +800,7 @@ document.getElementById('newClientName')?.addEventListener('keydown',e=>{
 const INBOX_PLATFORM_META={
   line:{label:'LINE',icon:'💬',color:'#06C755'},
   messenger:{label:'Messenger',icon:'📘',color:'#0084FF'},
+  threads:{label:'Threads',icon:'🧵',color:'#000000'},
   instagram:{label:'Instagram',icon:'📸',color:'#E1306C'},
 };
 
@@ -822,23 +823,37 @@ function updateInboxBadge(){
   });
 }
 
+function inboxThreadKey(m){
+  if(m.threadId)return m.threadId;
+  if(m.lineUserId)return 'line:'+m.lineUserId;
+  if(m.platform&&m.senderId)return m.platform+':'+m.senderId;
+  return '';
+}
+function inboxMsgTime(m){
+  const n=parseInt(m&&m._id,10);
+  return Number.isFinite(n)?n:0;
+}
+
 function getInboxThreads(){
   const msgs=DB.get('omnichannel_messages');
   const byThread={};
   msgs.forEach(m=>{
-    if(!m.threadId)return;
-    if(!byThread[m.threadId])byThread[m.threadId]={threadId:m.threadId,platform:m.platform,senderId:m.senderId,senderName:m.senderName,msgs:[]};
-    byThread[m.threadId].msgs.push(m);
+    const threadId=inboxThreadKey(m);
+    if(!threadId)return;
+    const senderId=m.senderId||m.lineUserId||'';
+    if(!byThread[threadId])byThread[threadId]={threadId,platform:m.platform,senderId,senderName:m.senderName,msgs:[]};
+    if(senderId)byThread[threadId].senderId=senderId;
+    byThread[threadId].msgs.push(m);
   });
   return Object.values(byThread).map(t=>{
-    t.msgs.sort((a,b)=>a._id-b._id);
+    t.msgs.sort((a,b)=>inboxMsgTime(a)-inboxMsgTime(b));
     t.last=t.msgs[t.msgs.length-1];
     t.unread=t.msgs.filter(m=>m.direction==='in'&&!m.read).length;
     // 顯示名稱、平台可能後來的訊息才拿得到（例如第一則抓不到 LINE 顯示名稱），用最新一筆有值的蓋過去
     const withName=[...t.msgs].reverse().find(m=>m.senderName);
     if(withName)t.senderName=withName.senderName;
     return t;
-  }).sort((a,b)=>b.last._id-a.last._id);
+  }).sort((a,b)=>inboxMsgTime(b.last)-inboxMsgTime(a.last));
 }
 
 function renderInboxPanel(){
@@ -847,7 +862,7 @@ function renderInboxPanel(){
   document.getElementById('inboxThreadCount').textContent=threads.length+' 個對話';
   list.innerHTML='';
   if(!threads.length){
-    list.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.8rem">尚無社群訊息<br><span style="font-size:.72rem">按右上角「連線設定」確認後端已接上 LINE／FB／IG</span></div>';
+    list.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.8rem">尚無社群訊息<br><span style="font-size:.72rem">按右上角「連線設定」把 LINE／Facebook／脆的金鑰貼進去</span></div>';
   }
   threads.forEach(t=>{
     const meta=INBOX_PLATFORM_META[t.platform]||{label:t.platform,icon:'💬',color:'var(--g400)'};
@@ -919,7 +934,7 @@ async function sendInboxReply(){
     const res=await fetch('/.netlify/functions/send-reply',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({platform,recipientId,text,secret}),
+      body:JSON.stringify({platform,recipientId,text,secret,threadId:curInboxThreadId}),
     });
     const data=await res.json().catch(()=>({}));
     if(!res.ok)throw new Error(data.error||'送出失敗');
@@ -939,12 +954,87 @@ document.getElementById('inboxSendBtn')?.addEventListener('click',sendInboxReply
 document.getElementById('inboxReplyInp')?.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendInboxReply();}
 });
-document.getElementById('inboxSettingsBtn')?.addEventListener('click',()=>{
-  const cur=localStorage.getItem('zeju_inbox_secret')||'';
-  const v=prompt('請輸入後端 API 的共用密碼（跟 Netlify 環境變數 APP_SHARED_SECRET 要一樣，用來避免別人亂打這支 API）：\n\n這組密碼只會存在這台瀏覽器裡，不會上傳。',cur);
-  if(v===null)return;
-  localStorage.setItem('zeju_inbox_secret',v.trim());
-  showToast('✅ 已儲存連線密碼');
+function inboxOrigin(){
+  try{return location.origin;}catch{return 'https://omnight.netlify.app';}
+}
+function inboxHas(v){return !!(v&&String(v).trim());}
+function inboxStatusLine(ok,label){
+  return ok?'<span style="color:#1a7f37">● '+label+' 已設定</span>':'<span style="color:var(--g400)">○ '+label+' 尚未設定</span>';
+}
+async function openInboxSettings(){
+  document.getElementById('inboxLineWebhookUrl').value=inboxOrigin()+'/.netlify/functions/line-webhook';
+  document.getElementById('inboxMetaWebhookUrl').value=inboxOrigin()+'/.netlify/functions/meta-webhook';
+  ['inboxLineSecret','inboxLineToken','inboxMetaPageToken','inboxMetaAppSecret','inboxThreadsToken'].forEach(id=>{
+    const el=document.getElementById(id);if(el){el.value='';el.placeholder='已設定的話留空＝不更改';}
+  });
+  let saved={};
+  try{
+    if(_fbDB&&_fbReady){
+      const snap=await _fbDB.ref('zeju_data/omnichannel_config').once('value');
+      saved=snap.val()||{};
+    }
+  }catch(e){console.warn('讀取連線設定失敗',e.message);}
+  document.getElementById('inboxLineStatus').innerHTML=inboxStatusLine(inboxHas(saved.lineChannelSecret)&&inboxHas(saved.lineChannelAccessToken),'LINE');
+  document.getElementById('inboxFbStatus').innerHTML=inboxStatusLine(inboxHas(saved.metaPageToken)&&inboxHas(saved.metaAppSecret),'Messenger');
+  document.getElementById('inboxThreadsStatus').innerHTML=inboxStatusLine(inboxHas(saved.threadsAccessToken),'Threads');
+  document.getElementById('inboxMetaVerifyToken').value=saved.metaVerifyToken||('zeju_verify_'+Math.random().toString(36).slice(2,10));
+  document.getElementById('inboxThreadsUserId').value=saved.threadsUserId||'';
+  const localSecret=localStorage.getItem('zeju_inbox_secret')||'';
+  document.getElementById('inboxAppSecret').value=localSecret||saved.appSharedSecret||('zeju_inbox_'+Math.random().toString(36).slice(2,10));
+  if(typeof openModal==='function')openModal('inboxSettingsModal');
+}
+async function saveInboxSettings(){
+  if(!_fbDB||!_fbReady){showToast('⚠️ 尚未連上雲端，請稍後再存');return;}
+  const btn=document.getElementById('inboxSaveConfigBtn');
+  btn.disabled=true;btn.textContent='儲存中…';
+  try{
+    const snap=await _fbDB.ref('zeju_data/omnichannel_config').once('value');
+    const prev=snap.val()||{};
+    const next={...prev,updatedAt:new Date().toLocaleString('zh-TW')};
+    const fields=[
+      ['lineChannelSecret','inboxLineSecret'],
+      ['lineChannelAccessToken','inboxLineToken'],
+      ['metaPageToken','inboxMetaPageToken'],
+      ['metaAppSecret','inboxMetaAppSecret'],
+      ['metaVerifyToken','inboxMetaVerifyToken'],
+      ['threadsAccessToken','inboxThreadsToken'],
+      ['threadsUserId','inboxThreadsUserId'],
+      ['appSharedSecret','inboxAppSecret'],
+    ];
+    fields.forEach(([key,id])=>{
+      const v=(document.getElementById(id)?.value||'').trim();
+      if(v)next[key]=v;
+    });
+    if(!next.appSharedSecret){
+      next.appSharedSecret='zeju_inbox_'+Math.random().toString(36).slice(2,10);
+      document.getElementById('inboxAppSecret').value=next.appSharedSecret;
+    }
+    if(!next.metaVerifyToken){
+      next.metaVerifyToken='zeju_verify_'+Math.random().toString(36).slice(2,10);
+      document.getElementById('inboxMetaVerifyToken').value=next.metaVerifyToken;
+    }
+    await _fbDB.ref('zeju_data/omnichannel_config').set(next);
+    localStorage.setItem('zeju_inbox_secret',next.appSharedSecret);
+    closeModal('inboxSettingsModal');
+    showToast('✅ 連線設定已儲存，記得把 Webhook 網址貼到 LINE／Meta 後台');
+  }catch(e){
+    showToast('⚠️ 儲存失敗：'+e.message);
+  }finally{
+    btn.disabled=false;btn.textContent='儲存連線設定';
+  }
+}
+document.getElementById('inboxSettingsBtn')?.addEventListener('click',openInboxSettings);
+document.getElementById('inboxSaveConfigBtn')?.addEventListener('click',saveInboxSettings);
+document.getElementById('inboxGenSecretBtn')?.addEventListener('click',()=>{
+  document.getElementById('inboxAppSecret').value='zeju_inbox_'+Math.random().toString(36).slice(2,10);
+});
+document.getElementById('inboxSettingsModal')?.addEventListener('click',e=>{
+  const btn=e.target.closest('[data-copy]');if(!btn)return;
+  const el=document.getElementById(btn.getAttribute('data-copy'));
+  if(!el||!el.value)return;
+  navigator.clipboard.writeText(el.value).then(()=>showToast('✅ 已複製')).catch(()=>{
+    el.select();document.execCommand('copy');showToast('✅ 已複製');
+  });
 });
 
 // ══ 全站搜尋 ═════════════════════════════════════════════════

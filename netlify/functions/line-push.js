@@ -70,10 +70,12 @@ exports.handler = async (event) => {
     try {
       const app = getAdminApp();
       const db = app.database();
-      const id = Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      const id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
       await db.ref('zeju_data/omnichannel_messages/' + id).set({
         _id: id,
         platform: 'line',
+        threadId: 'line:' + lineUserId,
+        senderId: lineUserId,
         lineUserId,
         direction: 'out',
         type: 'text',

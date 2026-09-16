@@ -209,7 +209,7 @@
 
 <div class="panel" id="p-inbox">
  <div class="ph">
-  <div><div class="ptit">📥 社群訊息</div><div class="psub">LINE／Facebook／Instagram 私訊統一在這裡看、這裡回</div></div>
+  <div><div class="ptit">📥 社群訊息</div><div class="psub">LINE 官方、Facebook 私訊、Threads（脆）統一在這裡看、這裡回</div></div>
   <button class="btn bo bsm" id="inboxSettingsBtn">連線設定</button>
  </div>
  <div style="display:flex;gap:0;height:calc(100vh - 190px);min-height:460px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
@@ -1727,6 +1727,69 @@
    </div>
   </div>
   <button class="btn bg bfull" id="saveEmpBtn" style="padding:14px">儲存員工資料</button>
+ </div>
+</div>
+
+<!-- ══ 社群訊息連線設定（金鑰用密碼欄，畫面上預設隱藏）══ -->
+<div class="mov" id="inboxSettingsModal">
+ <div class="modal" style="max-width:560px">
+  <div class="mtit">🔒 社群訊息連線設定 <button class="mcl" data-close="inboxSettingsModal">✕</button></div>
+  <div style="font-size:.82rem;color:var(--g500);margin-bottom:16px;line-height:1.65">
+   金鑰只存在雲端，不會上傳 GitHub。輸入框是密碼欄，旁邊人看不到你貼什麼。
+   已經存過的欄位會顯示「已設定」，要改再貼新的，留空＝不更改。
+  </div>
+
+  <div style="background:var(--g50);border:1px solid var(--g200);border-radius:var(--rs);padding:12px 14px;margin-bottom:16px">
+   <div style="font-size:.72rem;font-weight:900;color:var(--g500);letter-spacing:.08em;margin-bottom:8px">WEBHOOK 網址（貼到各平台後台）</div>
+   <label class="fl">LINE Webhook</label>
+   <div style="display:flex;gap:8px;margin-bottom:10px">
+    <input class="fi" id="inboxLineWebhookUrl" readonly style="font-size:.78rem">
+    <button type="button" class="btn bo bsm" data-copy="inboxLineWebhookUrl">複製</button>
+   </div>
+   <label class="fl">Facebook／Threads Webhook</label>
+   <div style="display:flex;gap:8px">
+    <input class="fi" id="inboxMetaWebhookUrl" readonly style="font-size:.78rem">
+    <button type="button" class="btn bo bsm" data-copy="inboxMetaWebhookUrl">複製</button>
+   </div>
+  </div>
+
+  <div style="font-size:.88rem;font-weight:900;color:var(--g800);margin-bottom:10px">💬 LINE 官方帳號</div>
+  <div id="inboxLineStatus" style="font-size:.72rem;color:var(--g400);margin:-4px 0 10px"></div>
+  <div class="field"><label class="fl">Channel Secret</label>
+   <input class="fi" id="inboxLineSecret" type="password" autocomplete="off" placeholder="LINE Developers → Basic settings"></div>
+  <div class="field"><label class="fl">Channel Access Token</label>
+   <input class="fi" id="inboxLineToken" type="password" autocomplete="off" placeholder="Messaging API → Channel access token"></div>
+
+  <div style="font-size:.88rem;font-weight:900;color:var(--g800);margin:6px 0 10px">📘 Facebook Messenger</div>
+  <div id="inboxFbStatus" style="font-size:.72rem;color:var(--g400);margin:-4px 0 10px"></div>
+  <div class="field"><label class="fl">Page Access Token</label>
+   <input class="fi" id="inboxMetaPageToken" type="password" autocomplete="off" placeholder="粉絲專頁的 Page Access Token"></div>
+  <div class="field"><label class="fl">App Secret</label>
+   <input class="fi" id="inboxMetaAppSecret" type="password" autocomplete="off" placeholder="Meta 應用程式 → 設定 → 基本資料"></div>
+  <div class="field"><label class="fl">Verify Token（自己定一組，Meta 後台要填同一組）</label>
+   <div style="display:flex;gap:8px">
+    <input class="fi" id="inboxMetaVerifyToken" autocomplete="off" placeholder="例如 zeju_verify_xxxx">
+    <button type="button" class="btn bo bsm" data-copy="inboxMetaVerifyToken">複製</button>
+   </div>
+  </div>
+
+  <div style="font-size:.88rem;font-weight:900;color:var(--g800);margin:6px 0 10px">🧵 Threads（脆）</div>
+  <div id="inboxThreadsStatus" style="font-size:.72rem;color:var(--g400);margin:-4px 0 10px"></div>
+  <div style="font-size:.78rem;color:var(--g400);margin-bottom:10px;line-height:1.55">官方目前沒有完整「私訊 API」。貼文留言／回覆會進這個收件匣；若 Meta 有開 DM，同一支也會收。</div>
+  <div class="field"><label class="fl">Threads Access Token</label>
+   <input class="fi" id="inboxThreadsToken" type="password" autocomplete="off" placeholder="Threads API 的長期權杖"></div>
+  <div class="field"><label class="fl">Threads User ID</label>
+   <input class="fi" id="inboxThreadsUserId" autocomplete="off" placeholder="你的 Threads 數字 ID"></div>
+
+  <div style="font-size:.88rem;font-weight:900;color:var(--g800);margin:6px 0 10px">🔑 回覆密碼</div>
+  <div class="field"><label class="fl">這組密碼給內部用來按「送出」，不要外流</label>
+   <div style="display:flex;gap:8px">
+    <input class="fi" id="inboxAppSecret" type="password" autocomplete="off" placeholder="自己定一組，例如 zeju_inbox_xxxx">
+    <button type="button" class="btn bo bsm" id="inboxGenSecretBtn">產生</button>
+   </div>
+  </div>
+
+  <button class="btn bg bfull" id="inboxSaveConfigBtn" style="padding:13px;font-size:.92rem;margin-top:4px">儲存連線設定</button>
  </div>
 </div>
 

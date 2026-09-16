@@ -788,7 +788,7 @@ function startCloudSync(){
       if(!anySynced){anySynced=true;}
       setSyncStatus&&setSyncStatus('ok');
 
-      // 社群訊息（LINE/FB/IG）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
+      // 社群訊息（LINE/FB/脆）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
       if(k==='omnichannel_messages'&&newLen!==oldLen){
         typeof updateInboxBadge==='function'&&updateInboxBadge();
         const ip=document.getElementById('p-inbox');
