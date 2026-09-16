@@ -6,13 +6,26 @@ function updatePtsDisplay(){
 }
 
 // ── AI 帳單 ────────────────────────────────────────────────
+// 平台固定費拆成服務包，合計固定 NT$9,000。
+// 這不是第三方原價（Netlify／Gemini 實報實銷加起來到不了九千），
+// 而是「含額度、含串接維運」的每月最低消費；超量 AI 再用點數另計。
+const BILL_BASE_FEE=9000;
+const BILL_PTS_RATE=0.1;
+const BILL_PACKAGE=[
+  {name:'Netlify 網站託管／函式／SSL', amt:2000, note:'含部署、頻寬與後端函式額度'},
+  {name:'Gemini AI 額度包（客服、報價辨識、生圖）', amt:2500, note:'每月內含額度，超量另計點數'},
+  {name:'LINE 官方帳號＋Messaging API', amt:1400, note:'對齊高用量方案，含訊息與串接維運'},
+  {name:'Facebook／Messenger／Threads 串接', amt:1200, note:'粉絲專頁私訊 Webhook 與維運'},
+  {name:'Firebase 雲端資料庫＋即時同步', amt:1100, note:'多裝置同步與備份'},
+  {name:'系統維運與資安更新', amt:800, note:'改版、監控、金鑰與憑證維護'},
+];
 function renderBilling(){
   const list=document.getElementById('bilList');
   const monthSel=document.getElementById('bilMonthSel');
   if(!list)return;
 
-  const BASE_FEE=9000; // 月費 NT$9,000
-  const PTS_RATE=0.1;  // 每點 NT$0.1（可調整）
+  const BASE_FEE=BILL_BASE_FEE;
+  const PTS_RATE=BILL_PTS_RATE;
 
   // ── 月份選單 ──────────────────────────────────────
   const allRecs=DB.get('billing');
@@ -61,18 +74,31 @@ function renderBilling(){
        </div>`
     ).join('');
 
+    const pkgRows=BILL_PACKAGE.map(p=>
+      `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-bottom:1px solid var(--g100);font-size:.82rem">
+        <div>
+          <div>${p.name}</div>
+          <div style="font-size:.7rem;color:var(--g400);margin-top:2px">${p.note||''}</div>
+        </div>
+        <span style="font-weight:700;color:var(--g600);white-space:nowrap">NT$${p.amt.toLocaleString()}</span>
+       </div>`
+    ).join('');
+
     statEl.innerHTML=`
       <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">
         ${curMonth.replace('-','年')}月 帳單明細
       </div>
-      ${rows||'<div style="font-size:.82rem;color:var(--g400);padding:8px 0">本月尚無使用記錄</div>'}
+      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:4px 0 6px">平台固定費（每月 NT$${BASE_FEE.toLocaleString()}）</div>
+      ${pkgRows}
+      <div style="display:flex;justify-content:space-between;font-size:.85rem;padding:8px 0 10px;font-weight:800">
+        <span>固定費小計</span>
+        <span>NT$${BASE_FEE.toLocaleString()}</span>
+      </div>
+      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:6px 0 4px">超量使用</div>
+      ${rows||'<div style="font-size:.82rem;color:var(--g400);padding:8px 0">本月尚無超量記錄</div>'}
       <div style="margin-top:10px;padding-top:10px;border-top:2px solid var(--g200)">
         <div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
-          <span>基本月費</span>
-          <span style="font-weight:700">NT$${BASE_FEE.toLocaleString()}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
-          <span>點數費用（${monthPts.toLocaleString()}點 × NT$${PTS_RATE}）</span>
+          <span>點數超量（${monthPts.toLocaleString()}點 × NT$${PTS_RATE}）</span>
           <span style="font-weight:700">NT$${ptsFee.toLocaleString()}</span>
         </div>
         <div style="display:flex;justify-content:space-between;font-size:1rem;font-weight:900;padding:8px 0;margin-top:4px;border-top:1.5px solid var(--gold-l);color:var(--gold-d)">
@@ -80,7 +106,7 @@ function renderBilling(){
           <span>NT$${totalFee.toLocaleString()}</span>
         </div>
         <div style="font-size:.78rem;color:var(--g400);margin-top:6px">
-          每月12日結算　匯款：7505400208531
+          每月12日結算　匯款：7505400208531　固定費含額度，實際第三方帳單差額由平台吸收
         </div>
       </div>`;
   }

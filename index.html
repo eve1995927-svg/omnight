@@ -1079,7 +1079,7 @@
    <div class="field"><label class="fl">每月繳費日</label><input class="fi" value="每月 12 日" readonly style="background:var(--g50)"></div>
   </div>
   <div class="field"><label class="fl">收款帳號（請填入後儲存）</label><input class="fi" id="bankAcct" placeholder="請輸入公司帳號…"></div>
-  <div class="field"><label class="fl">月費基本金額</label><input class="fi" value="NT$9,000" readonly style="background:var(--g50)"></div>
+  <div class="field"><label class="fl">月費基本金額</label><input class="fi" value="NT$9,000（平台固定費服務包）" readonly style="background:var(--g50)"></div>
   <button class="btn bg bsm" onclick="saveBankAcct()">儲存帳號</button>
  </div>
 
@@ -1105,7 +1105,7 @@
 
 <!-- ══ AI BILLING ══ -->
 <div class="panel" id="p-ac-billing">
- <div class="ph"><div><div class="ptit">🧮 AI 每月帳單</div><div class="psub">每月 12 日結算，基本費 NT$9,000，使用量另計</div></div></div>
+ <div class="ph"><div><div class="ptit">🧮 AI 每月帳單</div><div class="psub">每月 12 日結算。平台固定費 NT$9,000（託管＋AI＋社群串接），超量另計</div></div></div>
 
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="bilUsed">NT$0</div><div class="sl">本月AI使用成本</div></div>
@@ -1137,7 +1137,7 @@
   <div style="font-size:.9rem;line-height:2;color:var(--g700)">
    <div>收款公司：<strong>堅果創意有限公司</strong></div>
    <div>繳費日期：<strong>每月 12 日</strong>（下次：<span id="nextBilDate">—</span>）</div>
-   <div>基本月費：<strong>NT$9,000</strong></div>
+   <div>平台固定費：<strong>NT$9,000</strong>（Netlify、Gemini、LINE、Facebook、Firebase、維運）</div>
    <div>收款帳號：<strong id="bilBankAcct">7505400208531</strong></div>
   </div>
  </div>
