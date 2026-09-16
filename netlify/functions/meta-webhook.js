@@ -7,10 +7,16 @@
 const crypto = require('crypto');
 const { loadInboxConfig, saveOmnichannelMessage } = require('./lib/firebase');
 
-function verifyMetaSignature(rawBody, headerSig, appSecret) {
+function rawBodyBuffer(event) {
+  if (!event.body) return Buffer.from('', 'utf8');
+  if (event.isBase64Encoded) return Buffer.from(event.body, 'base64');
+  return Buffer.from(event.body, 'utf8');
+}
+
+function verifyMetaSignature(buf, headerSig, appSecret) {
   if (!appSecret) return true;
   if (!headerSig) return false;
-  const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(rawBody || '').digest('hex');
+  const expected = 'sha256=' + crypto.createHmac('sha256', appSecret).update(buf).digest('hex');
   try {
     const a = Buffer.from(expected);
     const b = Buffer.from(headerSig);
@@ -100,6 +106,9 @@ async function saveThreadsChange(change) {
 
 exports.handler = async (event) => {
   const qs = event.queryStringParameters || {};
+  const hubMode = qs['hub.mode'] || qs['hub.mode'.toLowerCase()];
+  const hubToken = qs['hub.verify_token'];
+  const hubChallenge = qs['hub.challenge'];
 
   let config;
   try {
@@ -110,8 +119,8 @@ exports.handler = async (event) => {
   }
 
   if (event.httpMethod === 'GET') {
-    if (qs['hub.mode'] === 'subscribe' && qs['hub.verify_token'] && qs['hub.verify_token'] === config.metaVerifyToken) {
-      return { statusCode: 200, body: qs['hub.challenge'] || '' };
+    if (hubMode === 'subscribe' && hubToken && hubToken === config.metaVerifyToken) {
+      return { statusCode: 200, body: hubChallenge || '' };
     }
     return { statusCode: 403, body: 'verify token mismatch' };
   }
@@ -120,15 +129,16 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
+  const buf = rawBodyBuffer(event);
   const sig = event.headers['x-hub-signature-256'] || event.headers['X-Hub-Signature-256'] || '';
-  if (!verifyMetaSignature(event.body || '', sig, config.metaAppSecret)) {
+  if (!verifyMetaSignature(buf, sig, config.metaAppSecret)) {
     console.warn('Meta webhook 簽章驗證失敗');
     return { statusCode: 401, body: 'invalid signature' };
   }
 
   let payload;
   try {
-    payload = JSON.parse(event.body || '{}');
+    payload = JSON.parse(buf.toString('utf8') || '{}');
   } catch (e) {
     return { statusCode: 400, body: 'bad json' };
   }
