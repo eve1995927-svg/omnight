@@ -1,26 +1,54 @@
-// 後端共用：Firebase Admin + 社群訊息設定／寫入
-const admin = require('firebase-admin');
+// 後端共用：用跟網站一樣的匿名登入 + REST 讀寫 Firebase。
+// 這樣不必再另外貼 FIREBASE_SERVICE_ACCOUNT，社群訊息設定窗存的金鑰，Webhook 才能讀到。
 
-function getAdminApp() {
-  if (admin.apps.length) return admin.app();
-  const svcJson = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (!svcJson) throw new Error('尚未設定 FIREBASE_SERVICE_ACCOUNT 環境變數');
-  const serviceAccount = typeof svcJson === 'string' ? JSON.parse(svcJson) : svcJson;
-  return admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://zeju-62388-default-rtdb.asia-southeast1.firebasedatabase.app',
+const DB_URL = 'https://zeju-62388-default-rtdb.asia-southeast1.firebasedatabase.app';
+const API_KEY = 'AIzaSyCOvRcTbj0z9cPMOYxicnqbzHLsUP-jOHg';
+
+let _idToken = '';
+let _tokenExp = 0;
+
+async function getIdToken() {
+  if (_idToken && Date.now() < _tokenExp - 30000) return _idToken;
+  const r = await fetch('https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + API_KEY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ returnSecureToken: true }),
   });
+  const data = await r.json();
+  if (!data.idToken) throw new Error('Firebase 匿名登入失敗');
+  _idToken = data.idToken;
+  _tokenExp = Date.now() + Number(data.expiresIn || 3600) * 1000;
+  return _idToken;
 }
 
-function getDb() {
-  return getAdminApp().database();
+function dbUrl(path) {
+  const clean = String(path || '').replace(/^\//, '').replace(/\.json$/, '');
+  return DB_URL + '/' + clean + '.json';
+}
+
+async function fbGet(path) {
+  const token = await getIdToken();
+  const r = await fetch(dbUrl(path) + '?auth=' + encodeURIComponent(token));
+  if (!r.ok) throw new Error('Firebase 讀取失敗 ' + r.status);
+  return r.json();
+}
+
+async function fbPut(path, value) {
+  const token = await getIdToken();
+  const r = await fetch(dbUrl(path) + '?auth=' + encodeURIComponent(token), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(value),
+  });
+  if (!r.ok) throw new Error('Firebase 寫入失敗 ' + r.status);
+  return r.json();
 }
 
 function newMsgId() {
   return Date.now() * 1000 + Math.floor(Math.random() * 1000);
 }
 
-async function loadInboxConfig(db) {
+async function loadInboxConfig() {
   const fromEnv = {
     lineChannelId: process.env.LINE_CHANNEL_ID || '',
     lineChannelSecret: process.env.LINE_CHANNEL_SECRET || '',
@@ -34,8 +62,7 @@ async function loadInboxConfig(db) {
     appSharedSecret: process.env.APP_SHARED_SECRET || '',
   };
   try {
-    const snap = await db.ref('zeju_data/omnichannel_config').once('value');
-    const saved = snap.val() || {};
+    const saved = (await fbGet('zeju_data/omnichannel_config')) || {};
     const merged = { ...fromEnv };
     Object.keys(fromEnv).forEach((k) => {
       if (saved[k]) merged[k] = saved[k];
@@ -47,21 +74,43 @@ async function loadInboxConfig(db) {
   }
 }
 
-async function saveOmnichannelMessage(db, record) {
+async function saveOmnichannelMessage(record) {
   const id = record._id || newMsgId();
   const row = {
     ...record,
     _id: id,
     _ts: record._ts || new Date().toLocaleString('zh-TW'),
   };
-  await db.ref('zeju_data/omnichannel_messages/' + id).set(row);
+  await fbPut('zeju_data/omnichannel_messages/' + id, row);
   return row;
 }
 
+async function getAllMessages() {
+  return (await fbGet('zeju_data/omnichannel_messages')) || {};
+}
+
+async function ensureLineClient(lineUserId, senderName) {
+  const clients = (await fbGet('zeju_data/clients')) || {};
+  const exists = Object.values(clients).some((c) => c && c.lineUserId === lineUserId);
+  if (exists) return;
+  const newClientId = Date.now();
+  await fbPut('zeju_data/clients/' + newClientId, {
+    _id: newClientId,
+    name: senderName || 'LINE 好友',
+    lineUserId,
+    phone: '',
+    addr: '',
+    _ts: new Date().toLocaleString('zh-TW'),
+  });
+}
+
 module.exports = {
-  getAdminApp,
-  getDb,
+  getIdToken,
+  fbGet,
+  fbPut,
   newMsgId,
   loadInboxConfig,
   saveOmnichannelMessage,
+  getAllMessages,
+  ensureLineClient,
 };

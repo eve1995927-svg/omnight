@@ -2,10 +2,9 @@
 // LINE 把客戶訊息打到這支，驗證簽章後寫進 omnichannel_messages，
 // 前端「業務 → 社群訊息」就會即時看到。
 //
-// 金鑰優先讀 Firebase 的 zeju_data/omnichannel_config（社群訊息隱藏設定窗），
-// 沒填才退回 Netlify 環境變數 LINE_CHANNEL_SECRET / LINE_CHANNEL_ACCESS_TOKEN。
+// 金鑰優先讀 Firebase 的 zeju_data/omnichannel_config（社群訊息隱藏設定窗）。
 
-const { getDb, loadInboxConfig, saveOmnichannelMessage } = require('./lib/firebase');
+const { loadInboxConfig, saveOmnichannelMessage, ensureLineClient } = require('./lib/firebase');
 const crypto = require('crypto');
 
 function verifySignature(body, signature, channelSecret) {
@@ -44,13 +43,11 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
 
-  let db;
   let config;
   try {
-    db = getDb();
-    config = await loadInboxConfig(db);
+    config = await loadInboxConfig();
   } catch (e) {
-    console.error('Firebase 初始化失敗：', e.message);
+    console.error('讀取連線設定失敗：', e.message);
     return { statusCode: 500, body: 'db init failed' };
   }
 
@@ -84,7 +81,7 @@ exports.handler = async (event) => {
       if (ev.type !== 'message' || !ev.message) continue;
 
       const senderName = await fetchLineName(lineUserId, config.lineChannelAccessToken);
-      await saveOmnichannelMessage(db, {
+      await saveOmnichannelMessage({
         platform: 'line',
         threadId: 'line:' + lineUserId,
         senderId: lineUserId,
@@ -95,19 +92,7 @@ exports.handler = async (event) => {
         text: lineText(ev.message),
         read: false,
       });
-
-      const clientsSnap = await db.ref('zeju_data/clients').orderByChild('lineUserId').equalTo(lineUserId).once('value');
-      if (!clientsSnap.exists()) {
-        const newClientId = Date.now();
-        await db.ref('zeju_data/clients/' + newClientId).set({
-          _id: newClientId,
-          name: senderName,
-          lineUserId,
-          phone: '',
-          addr: '',
-          _ts: new Date().toLocaleString('zh-TW'),
-        });
-      }
+      await ensureLineClient(lineUserId, senderName);
     } catch (e) {
       console.error('處理單一 LINE 事件失敗：', e.message);
     }

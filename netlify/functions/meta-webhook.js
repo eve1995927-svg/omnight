@@ -5,7 +5,7 @@
 // 金鑰優先讀 Firebase zeju_data/omnichannel_config（社群訊息隱藏設定窗）。
 
 const crypto = require('crypto');
-const { getDb, loadInboxConfig, saveOmnichannelMessage } = require('./lib/firebase');
+const { loadInboxConfig, saveOmnichannelMessage } = require('./lib/firebase');
 
 function verifyMetaSignature(rawBody, headerSig, appSecret) {
   if (!appSecret) return true;
@@ -52,7 +52,7 @@ async function fetchIgName(igid, token) {
   }
 }
 
-async function saveMessagingEvent(db, platform, event, token, nameFallback, fetchName) {
+async function saveMessagingEvent(platform, event, token, nameFallback, fetchName) {
   const msg = event.message;
   if (!msg) return;
   if (msg.is_echo) return;
@@ -60,7 +60,7 @@ async function saveMessagingEvent(db, platform, event, token, nameFallback, fetc
   if (!senderId) return;
   const text = msg.text || attachmentText(msg.attachments) || '[' + (msg.type || '訊息') + ']';
   const senderName = await fetchName(senderId, token);
-  await saveOmnichannelMessage(db, {
+  await saveOmnichannelMessage({
     platform,
     threadId: platform + ':' + senderId,
     senderId,
@@ -73,7 +73,7 @@ async function saveMessagingEvent(db, platform, event, token, nameFallback, fetc
   });
 }
 
-async function saveThreadsChange(db, change) {
+async function saveThreadsChange(change) {
   const field = change.field;
   const value = change.value || {};
   if (field !== 'replies' && field !== 'mentions') return;
@@ -83,7 +83,7 @@ async function saveThreadsChange(db, change) {
   const senderId = from.id || value.username || mediaId;
   const senderName = from.username || value.username || 'Threads 訪客';
   const rootId = (value.replied_to && value.replied_to.id) || mediaId;
-  await saveOmnichannelMessage(db, {
+  await saveOmnichannelMessage({
     platform: 'threads',
     threadId: 'threads:' + senderId,
     senderId: String(senderId),
@@ -101,13 +101,11 @@ async function saveThreadsChange(db, change) {
 exports.handler = async (event) => {
   const qs = event.queryStringParameters || {};
 
-  let db;
   let config;
   try {
-    db = getDb();
-    config = await loadInboxConfig(db);
+    config = await loadInboxConfig();
   } catch (e) {
-    console.error('Firebase 初始化失敗：', e.message);
+    console.error('讀取連線設定失敗：', e.message);
     return { statusCode: 500, body: 'db init failed' };
   }
 
@@ -143,11 +141,11 @@ exports.handler = async (event) => {
       if (objectType === 'threads' || (entry.changes && !entry.messaging)) {
         const changes = entry.changes || [];
         for (const change of changes) {
-          await saveThreadsChange(db, change);
+          await saveThreadsChange(change);
         }
         const messaging = entry.messaging || [];
         for (const ev of messaging) {
-          await saveMessagingEvent(db, 'threads', ev, config.threadsAccessToken, 'Threads 訪客', async (id) => id);
+          await saveMessagingEvent('threads', ev, config.threadsAccessToken, 'Threads 訪客', async (id) => id);
         }
         continue;
       }
@@ -155,13 +153,13 @@ exports.handler = async (event) => {
       if (objectType === 'instagram') {
         const token = config.instagramPageToken || config.metaPageToken;
         for (const ev of (entry.messaging || [])) {
-          await saveMessagingEvent(db, 'instagram', ev, token, 'Instagram 訪客', fetchIgName);
+          await saveMessagingEvent('instagram', ev, token, 'Instagram 訪客', fetchIgName);
         }
         continue;
       }
 
       for (const ev of (entry.messaging || [])) {
-        await saveMessagingEvent(db, 'messenger', ev, config.metaPageToken, 'Messenger 訪客', fetchMessengerName);
+        await saveMessagingEvent('messenger', ev, config.metaPageToken, 'Messenger 訪客', fetchMessengerName);
       }
     } catch (e) {
       console.error('處理 Meta 事件失敗：', e.message);

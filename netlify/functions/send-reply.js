@@ -4,7 +4,7 @@
 //
 // 前端要帶 secret，必須跟隱藏設定窗的「回覆密碼」一樣（APP_SHARED_SECRET）。
 
-const { getDb, loadInboxConfig, saveOmnichannelMessage } = require('./lib/firebase');
+const { loadInboxConfig, saveOmnichannelMessage, getAllMessages } = require('./lib/firebase');
 
 function cors(statusCode, body) {
   return {
@@ -83,9 +83,8 @@ async function sendThreadsDm(config, recipientId, text) {
   if (!r.ok) throw new Error((data.error && data.error.message) || 'Threads 私訊送出失敗');
 }
 
-async function latestThreadsMediaId(db, recipientId, threadId) {
-  const snap = await db.ref('zeju_data/omnichannel_messages').once('value');
-  const all = Object.values(snap.val() || {});
+async function latestThreadsMediaId(recipientId, threadId) {
+  const all = Object.values((await getAllMessages()) || {});
   const inbound = all
     .filter((m) => m.platform === 'threads' && m.direction === 'in' && m.mediaId && (m.senderId === recipientId || m.threadId === threadId))
     .sort((a, b) => Number(b._id) - Number(a._id));
@@ -108,11 +107,9 @@ exports.handler = async (event) => {
     return cors(400, { error: '缺少 platform、recipientId 或 text' });
   }
 
-  let db;
   let config;
   try {
-    db = getDb();
-    config = await loadInboxConfig(db);
+    config = await loadInboxConfig();
   } catch (e) {
     return cors(500, { error: '資料庫尚未設定' });
   }
@@ -130,7 +127,7 @@ exports.handler = async (event) => {
     } else if (platform === 'instagram') {
       await sendMetaMessage(config.instagramPageToken || config.metaPageToken, recipientId, text);
     } else if (platform === 'threads') {
-      const mediaId = await latestThreadsMediaId(db, recipientId, threadId);
+      const mediaId = await latestThreadsMediaId(recipientId, threadId);
       if (mediaId) await sendThreadsReply(config, mediaId, text);
       else await sendThreadsDm(config, recipientId, text);
     } else {
@@ -148,7 +145,7 @@ exports.handler = async (event) => {
       read: true,
     };
     if (platform === 'line') out.lineUserId = recipientId;
-    await saveOmnichannelMessage(db, out);
+    await saveOmnichannelMessage(out);
 
     return cors(200, { ok: true });
   } catch (e) {
