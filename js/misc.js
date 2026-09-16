@@ -975,6 +975,7 @@ async function openInboxSettings(){
     }
   }catch(e){console.warn('讀取連線設定失敗',e.message);}
   document.getElementById('inboxLineStatus').innerHTML=inboxStatusLine(inboxHas(saved.lineChannelSecret)&&inboxHas(saved.lineChannelAccessToken),'LINE');
+  document.getElementById('inboxLineChannelId').value=saved.lineChannelId||'';
   document.getElementById('inboxFbStatus').innerHTML=inboxStatusLine(inboxHas(saved.metaPageToken)&&inboxHas(saved.metaAppSecret),'Messenger');
   document.getElementById('inboxThreadsStatus').innerHTML=inboxStatusLine(inboxHas(saved.threadsAccessToken),'Threads');
   document.getElementById('inboxMetaVerifyToken').value=saved.metaVerifyToken||('zeju_verify_'+Math.random().toString(36).slice(2,10));
@@ -992,6 +993,7 @@ async function saveInboxSettings(){
     const prev=snap.val()||{};
     const next={...prev,updatedAt:new Date().toLocaleString('zh-TW')};
     const fields=[
+      ['lineChannelId','inboxLineChannelId'],
       ['lineChannelSecret','inboxLineSecret'],
       ['lineChannelAccessToken','inboxLineToken'],
       ['metaPageToken','inboxMetaPageToken'],

@@ -22,6 +22,7 @@ function newMsgId() {
 
 async function loadInboxConfig(db) {
   const fromEnv = {
+    lineChannelId: process.env.LINE_CHANNEL_ID || '',
     lineChannelSecret: process.env.LINE_CHANNEL_SECRET || '',
     lineChannelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || '',
     metaPageToken: process.env.META_PAGE_TOKEN || '',

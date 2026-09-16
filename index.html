@@ -1755,10 +1755,12 @@
 
   <div style="font-size:.88rem;font-weight:900;color:var(--g800);margin-bottom:10px">💬 LINE 官方帳號</div>
   <div id="inboxLineStatus" style="font-size:.72rem;color:var(--g400);margin:-4px 0 10px"></div>
-  <div class="field"><label class="fl">Channel Secret</label>
-   <input class="fi" id="inboxLineSecret" type="password" autocomplete="off" placeholder="LINE Developers → Basic settings"></div>
+  <div class="field"><label class="fl">Channel ID</label>
+   <input class="fi" id="inboxLineChannelId" autocomplete="off" placeholder="Basic settings 最上面那串數字"></div>
   <div class="field"><label class="fl">Channel Access Token</label>
-   <input class="fi" id="inboxLineToken" type="password" autocomplete="off" placeholder="Messaging API → Channel access token"></div>
+   <input class="fi" id="inboxLineToken" type="password" autocomplete="off" placeholder="Messaging API 分頁，很長的那串"></div>
+  <div class="field"><label class="fl">Channel Secret（跟 Channel ID 不是同一格）</label>
+   <input class="fi" id="inboxLineSecret" type="password" autocomplete="off" placeholder="Basic settings，Channel ID 下面那串"></div>
 
   <div style="font-size:.88rem;font-weight:900;color:var(--g800);margin:6px 0 10px">📘 Facebook Messenger</div>
   <div id="inboxFbStatus" style="font-size:.72rem;color:var(--g400);margin:-4px 0 10px"></div>
