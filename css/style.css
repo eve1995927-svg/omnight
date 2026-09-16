@@ -97,6 +97,14 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .rtab:hover{background:var(--g100);color:var(--g600)}
 .rtab.on{background:var(--gold-pale);color:var(--gold-d)}
 .tright{display:flex;align-items:center;gap:10px;padding-left:16px;border-left:1px solid var(--g200);flex-shrink:0;margin-left:auto}
+.inbox-bell{position:relative;width:36px;height:36px;border:1.5px solid var(--g200);border-radius:50%;background:var(--w);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0;font-size:1.05rem;font-family:inherit;flex-shrink:0;margin-right:2px;line-height:1}
+.inbox-bell:hover{border-color:var(--gold);background:var(--gold-pale)}
+.app-badge{position:absolute;top:-5px;right:-5px;min-width:18px;height:18px;padding:0 5px;background:var(--bad,#E04848);color:#fff;font-size:.62rem;font-weight:900;border-radius:10px;display:flex;align-items:center;justify-content:center;line-height:1;box-shadow:0 0 0 2px var(--w);pointer-events:none;z-index:2}
+.app-badge[hidden]{display:none!important}
+.ni{position:relative}
+.ni .app-badge{top:6px;right:8px}
+.bnav-item{position:relative}
+.bnav-item .app-badge{top:2px;left:50%;right:auto;margin-left:10px}
 .udot{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:var(--w);font-weight:900;display:flex;align-items:center;justify-content:center;font-size:.75rem}
 .uname{font-size:.85rem;font-weight:700;color:var(--g600)}
 .obtn{padding:8px 15px;border:1.5px solid var(--g200);border-radius:var(--rs);background:none;color:var(--g400);font-size:.78rem;cursor:pointer;font-family:inherit;font-weight:700;transition:all var(--ease)}
@@ -426,7 +434,7 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 
 /* ── MK IMAGE CANVAS ── */
 .mk-img-canvas{border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);aspect-ratio:1/1;background:#111}
-.mk-img-canvas svg{width:100%;height:100%;display:block}
+.mk-img-canvas svg,.mk-img-canvas img{width:100%;height:100%;display:block;object-fit:cover}
 .img-style-btn{padding:7px 14px;border:1.5px solid var(--g200);border-radius:20px;font-size:.78rem;font-weight:700;cursor:pointer;background:var(--w);color:var(--g500);transition:all var(--ease);font-family:inherit;display:inline-block;margin:2px 3px}
 .img-style-btn:hover,.img-style-btn.on{border-color:var(--gold);background:var(--gold-pale);color:var(--gold-d)}
 

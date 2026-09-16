@@ -67,6 +67,10 @@
             background:var(--w);color:var(--g500);font-family:inherit;transition:all var(--ease)">
     <span style="font-size:.9rem">🔍</span><span class="gsLabel">搜尋</span>
    </button>
+   <button type="button" class="inbox-bell" id="inboxTopBtn" title="尚未回覆的社群訊息" onclick="openInboxFromBadge()">
+    <span aria-hidden="true">💬</span>
+    <span class="app-badge" id="inboxTopBadge" hidden>0</span>
+   </button>
    <div id="syncDot" onclick="showFirebaseStatus()" title="點擊查看同步詳情"
      style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;
             font-size:.75rem;font-weight:700;cursor:pointer;margin-right:6px;
@@ -138,17 +142,15 @@
  </div>
  <div id="dashRecentProjects"></div>
 
- <!-- API 設定（隱藏在底部） -->
+ <!-- AI 設定（金鑰放 Netlify，不要貼在瀏覽器） -->
  <details style="margin-top:24px">
-  <summary style="font-size:.78rem;color:var(--g400);cursor:pointer;user-select:none">⚙️ 進階設定（AI金鑰）</summary>
+  <summary style="font-size:.78rem;color:var(--g400);cursor:pointer;user-select:none">⚙️ 進階設定（AI 連線）</summary>
   <div class="setup-card" id="apiCard" style="margin-top:12px">
-   <div class="sc-hd"><span class="sc-ic">🔑</span><div style="flex:1"><div class="sc-title">AI 金鑰設定</div><div class="sc-sub">輸入一次後永久記憶</div></div><div class="api-dot" id="apiDot">⚠️ 未設定</div></div>
+   <div class="sc-hd"><span class="sc-ic">🔑</span><div style="flex:1"><div class="sc-title">Google Gemini</div><div class="sc-sub">金鑰請填在 Netlify 的 GEMINI_API_KEY，不要貼到這裡</div></div><div class="api-dot" id="apiDot">點測試確認</div></div>
    <div class="sc-row">
-    <input type="password" class="sc-inp" id="apiInp" placeholder="sk-ant-api03-…" onkeydown="if(event.key==='Enter')apiSaveKey()">
-    <button class="btn bg bsm" onclick="apiSaveKey()">儲存</button>
-    <button class="btn bo bsm" onclick="apiTestConn(event)">測試</button>
-    <button class="btn bo bsm" style="color:var(--bad)" onclick="apiClearKey()">清除</button>
+    <button class="btn bg bsm" onclick="apiTestConn(event)">測試連線</button>
    </div>
+   <div id="apiTestResult"></div>
   </div>
  </details>
 </div>
@@ -371,7 +373,7 @@
 
 <!-- ══ MK POST ══ -->
 <div class="panel" id="p-mk-post">
- <div class="ph"><div><div class="ptit">✨ 社群貼文</div><div class="psub">生成貼文後可接著生成行銷圖片</div></div></div>
+ <div class="ph"><div><div class="ptit">✨ 社群貼文</div><div class="psub">按一次，文案跟圖片一起出</div></div></div>
  <div class="g2">
   <div>
    <div class="card">
@@ -386,10 +388,10 @@
     <div class="field"><label class="fl">補充說明</label><textarea class="ft" id="mkNt" placeholder="例：大安區30坪完工，木質調…" rows="2"></textarea></div>
     <div class="field"><label class="fl">語氣風格</label><select class="fs" id="mkTn"><option>溫暖親切</option><option>專業質感</option><option>活潑有趣</option><option>高端奢華</option></select></div>
     <div style="display:flex;gap:8px">
-     <button class="btn bg" style="flex:1;padding:13px" id="genPst">生成貼文</button>
+     <button class="btn bg" style="flex:1;padding:13px" id="genPst">生成貼文＋圖</button>
      <button class="btn bo" style="flex:1;padding:13px" id="rgnPst">重新生成</button>
     </div>
-    <div class="sp2" id="mkSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 撰寫中…</div>
+    <div class="sp2" id="mkSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 寫文並生圖中…</div>
    </div>
    <!-- 圖片生成區（貼文生成後顯示） -->
    <div class="card" id="imgGenCard" style="display:none;margin-top:0">
@@ -410,7 +412,7 @@
      <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('warm')">🌿 溫暖自然</div>
      <div class="ai-chip" style="font-size:.78rem" onclick="quickGenImg('modern')">🔷 現代幾何</div>
     </div>
-    <button class="btn bg bfull" id="genImgBtn" style="padding:13px">生成行銷圖片</button>
+    <button class="btn bg bfull" id="genImgBtn" style="padding:13px">只重出圖片</button>
     <div class="sp2" id="imgSp"><div class="sdot"></div><div class="sdot"></div><div class="sdot"></div> AI 設計中…</div>
    </div>
   </div>

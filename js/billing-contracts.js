@@ -999,12 +999,6 @@ function delContract(id){
 function initApiCard(){
   const inp=document.getElementById('apiInp');
   if(inp&&API_KEY)inp.value=API_KEY;
-  const dot=document.getElementById('apiDot');
-  if(dot){
-    dot.textContent=API_KEY?'✅ 已設定':'⚠️ 未設定';
-    dot.style.background=API_KEY?'var(--ok-bg)':'var(--warn-bg)';
-    dot.style.color=API_KEY?'var(--ok)':'var(--warn)';
-  }
 }
 function setApiDot(ok){
   const dot=document.getElementById('apiDot');if(!dot)return;

@@ -244,47 +244,46 @@ document.getElementById('qSave')?.addEventListener('click',()=>{
   }
 });
 // ══ 行銷圖片生成 ═════════════════════════════════════════
+function showMktImg(src){
+  const canvas=document.getElementById('mkImgCanvas');
+  const wrap=document.getElementById('imgPreviewWrap');
+  if(canvas)canvas.innerHTML='<img alt="行銷圖" src="'+src+'">';
+  if(wrap)wrap.style.display='block';
+}
 async function genMktImg(){
   const sp=document.getElementById('imgSp');if(sp)sp.classList.add('show');
-  document.getElementById('imgPreviewWrap').style.display='none';
   const postText=document.getElementById('pstBd')?.textContent||'';
   const caption=document.getElementById('imgCaption')?.value||'';
   const style=curImgStyle||'luxury';
-  // 先顯示 fallback
   const canvas=document.getElementById('mkImgCanvas');
-  if(canvas)canvas.innerHTML=genDefaultSvg(style,postText);
+  if(canvas&&!canvas.querySelector('img'))canvas.innerHTML=typeof genDefaultSvg==='function'?genDefaultSvg(style,postText):'';
   const wrap=document.getElementById('imgPreviewWrap');if(wrap)wrap.style.display='block';
-  // proxy 處理 API Key，無需前端檢查
   const styleDesc={
-    luxury:'高端輕奢，深色背景，金色線條，精緻幾何',
-    minimal:'日式極簡，米白淺灰，黑色細線，大量留白',
-    warm:'溫暖自然，深棕暖橘，木質感線條',
-    modern:'現代科技感，深夜藍，藍色發光線條，幾何切割',
-  }[style]||'高端質感';
-  const postClean=postText.replace(/#[^ ]*/g,'').trim();
-  const tagline=postClean.substring(0,postClean.indexOf('。')>0?postClean.indexOf('。'):20)||'打造理想居家空間';
-  const prompt=`你是SVG圖片生成器。請輸出一個完整的行銷SVG圖，不要任何說明文字。
-要求：viewBox="0 0 640 640"，風格：${styleDesc}，右上角「澤居」金色大字，副標ZEJU INTERIOR，中央精美室內設計幾何圖，底部標語「${tagline}」${caption?'，特別要求：'+caption:''}。
-直接輸出SVG，從<svg開始，以</svg>結束。`;
+    luxury:'luxury warm interior, brass accents, dark walnut, soft gold lighting, high-end apartment',
+    minimal:'Japanese minimal interior, beige plaster, light oak, lots of daylight, quiet empty room',
+    warm:'warm natural home, rattan, plants, terracotta, afternoon sun through curtains',
+    modern:'modern geometric interior, deep blue evening light, clean lines, concrete and glass',
+  }[style]||'warm Taiwan interior renovation';
+  const postClean=postText.replace(/#[^ \n]*/g,'').replace(/💫[\s\S]*$/,'').trim();
+  const tagline=postClean.split(/[。！\n]/)[0].slice(0,40)||'打造理想居家空間';
+  const prompt='Photorealistic square Instagram photo for a Taiwan interior renovation company. '+styleDesc+'. Finished lived-in home, no people, no watermark, no logo, no text overlay, no letters. Mood: '+tagline+(caption?'. Extra direction: '+caption:'')+'. Shot on 35mm, natural light, 1:1.';
   try{
-    const r=await fetch('/.netlify/functions/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:3000,messages:[{role:'user',content:prompt}]})
+    const r=await fetch('/.netlify/functions/ai-proxy',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({task:'image',prompt,aspectRatio:'1:1'}),
     });
-    if(!r.ok)throw new Error('api '+r.status);
-    const d=await r.json();
-    const rep=d.content?.map(c=>c.text||'').join('')||'';
-    const svgM=rep.match(/<svg[\s\S]*?<\/svg>/i);
-    if(svgM&&svgM[0].length>200&&canvas)canvas.innerHTML=svgM[0];
-    // 扣點
-    const tu=(d.usage?.input_tokens||0)+(d.usage?.output_tokens||0);
-    const pts=Math.min(500,Math.max(1,Math.round(tu/20)));
-    POINTS=Math.max(0,POINTS-pts);
-    localStorage.setItem('zeju_pts',POINTS);
-    if(typeof window.storage!=='undefined')window.storage.set('zeju_pts',String(POINTS)).catch(()=>{});
-    const pe=document.getElementById('ptsNum');if(pe)pe.textContent=POINTS.toLocaleString();
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(d.error?.message||'api_err_'+r.status);
+    const img=d.image||(d.content||[]).find(c=>c.type==='image'&&c.data);
+    if(!img||!img.data)throw new Error('這次沒有產出圖片');
+    showMktImg('data:'+(img.mime||'image/png')+';base64,'+img.data);
+    const pts=30;
+    if(typeof deductPoints==='function')await deductPoints(pts);
+    DB.push('billing',{summary:'AI 行銷生圖 -'+pts+'點',desc:'行銷生圖',role:'mk',points:pts,user:curRole||'unknown',ts:new Date().toLocaleString('zh-TW')});
   }catch(err){
     console.log('img gen err',err);
-    showToast(friendlyAIError(err)+'（已顯示預設圖片）');
+    showToast(friendlyAIError(err)+'（先顯示預設圖，可再按重新生成）');
   }
   if(sp)sp.classList.remove('show');
 }
@@ -348,16 +347,26 @@ function fillMkFromProject(){
 async function genPost(){
   const pl=document.getElementById('mkPl')?.value||'Instagram';
   const tp=document.getElementById('mkTp')?.value||'案例分享 — 日式風格';
+  const nt=(document.getElementById('mkNt')?.value||'').trim();
+  const tn=document.getElementById('mkTn')?.value||'溫暖親切';
   const sp=document.getElementById('mkSp');if(sp)sp.classList.add('show');
-  const p=SYS.mk+'\n\n請幫我寫一篇'+pl+'的'+tp+'行銷貼文，要有吸引力、使用繁體中文、加上適當的emoji和hashtag，大約200字。';
-  try{const rep=await callAI('mk',p,3000);showPost(pl,tp,rep);}
-  catch(err){
+  const p='請寫一篇'+pl+'的「'+tp+'」貼文。語氣：'+tn+'，生活化、像設計師在發限動，不要公文腔。'+(nt?'補充：'+nt+'。':'')+'繁體中文，120–200字，emoji少而精，3–5個hashtag。只回貼文本文。';
+  try{
+    const rep=await callAI('mk',p,1200,20,'行銷貼文');
+    showPost(pl,tp,rep);
+    const imgCard=document.getElementById('imgGenCard');
+    if(imgCard)imgCard.style.display='block';
+    if(sp){sp.classList.remove('show');}
+    showToast('文案好了，接著出圖…');
+    await genMktImg();
+  }catch(err){
     console.log('genPost err',err);
     showToast(friendlyAIError(err)+'（已套用預設文案，可手動修改）');
     showPost(pl,tp,'✨ 澤居帶你打造理想居家空間！\n\n我們專注台北、新北、桃園的室內裝修，從設計到施工全程陪伴 🏠\n\n#澤居室內裝修 #台北裝修 #室內設計 #統包裝修\n歡迎私訊詢問！');
   }
   if(sp)sp.classList.remove('show');
 }
+document.getElementById('genPst')?.addEventListener('click',()=>genPost());
 
 // ══ 打卡月曆 ══════════════════════════════════════════════
 let _punchCalYear=new Date().getFullYear();
@@ -846,6 +855,8 @@ const INBOX_STATUS_META={
 let curInboxThreadId=null;
 let inboxPlatformFilter='';
 let inboxStatusFilter='';
+let inboxUnrepliedOnly=false;
+const INBOX_PAGE_TITLE='澤居 AI 智能後台';
 
 function inboxChipStyle(on){
   return 'padding:5px 11px;border-radius:20px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit;'+
@@ -857,12 +868,16 @@ function renderInboxFilterBar(){
   const statuses=[{id:'',label:'全部進度'},...Object.keys(INBOX_STATUS_META).map(id=>({id,label:INBOX_STATUS_META[id].label}))];
   bar.innerHTML=
     '<div style="display:flex;flex-wrap:wrap;gap:6px">'+platforms.map(p=>'<button type="button" data-inbox-plat="'+p.id+'" style="'+inboxChipStyle(inboxPlatformFilter===p.id)+'">'+p.label+'</button>').join('')+'</div>'+
-    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+statuses.map(s=>'<button type="button" data-inbox-stat="'+s.id+'" style="'+inboxChipStyle(inboxStatusFilter===s.id)+'">'+s.label+'</button>').join('')+'</div>';
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+      '<button type="button" data-inbox-wait="1" style="'+inboxChipStyle(inboxUnrepliedOnly)+'">未回覆</button>'+
+      statuses.map(s=>'<button type="button" data-inbox-stat="'+s.id+'" style="'+inboxChipStyle(!inboxUnrepliedOnly&&inboxStatusFilter===s.id)+'">'+s.label+'</button>').join('')+
+    '</div>';
   bar.querySelectorAll('[data-inbox-plat]').forEach(btn=>{
     btn.addEventListener('click',()=>{inboxPlatformFilter=btn.getAttribute('data-inbox-plat')||'';renderInboxPanel();});
   });
+  bar.querySelector('[data-inbox-wait]')?.addEventListener('click',()=>{inboxUnrepliedOnly=!inboxUnrepliedOnly;if(inboxUnrepliedOnly)inboxStatusFilter='';renderInboxPanel();});
   bar.querySelectorAll('[data-inbox-stat]').forEach(btn=>{
-    btn.addEventListener('click',()=>{inboxStatusFilter=btn.getAttribute('data-inbox-stat')||'';renderInboxPanel();});
+    btn.addEventListener('click',()=>{inboxUnrepliedOnly=false;inboxStatusFilter=btn.getAttribute('data-inbox-stat')||'';renderInboxPanel();});
   });
 }
 
@@ -921,21 +936,46 @@ function convertInboxThreadToClient(threadId){
   setTimeout(()=>n?.focus(),200);
 }
 
+function inboxThreadNeedsReply(t){
+  if(!t||!t.last||t.last.direction!=='in')return false;
+  return inboxThreadStatus(t)!=='lost';
+}
+function countUnrepliedInbox(){
+  try{return getInboxThreads().filter(inboxThreadNeedsReply).length;}catch{return 0;}
+}
+function setAppBadge(el,count){
+  if(!el)return;
+  let badge=el.querySelector('.app-badge');
+  if(count<=0){
+    if(badge){
+      if(badge.id==='inboxTopBadge'){badge.hidden=true;badge.textContent='0';}
+      else badge.remove();
+    }
+    return;
+  }
+  if(!badge){
+    badge=document.createElement('span');
+    badge.className='app-badge';
+    el.appendChild(badge);
+  }
+  badge.hidden=false;
+  badge.textContent=count>99?'99+':String(count);
+}
 function updateInboxBadge(){
-  let count=0;
-  try{count=DB.get('omnichannel_messages').filter(m=>m.direction==='in'&&!m.read).length;}catch{}
-  ['nav-inbox','bn-inbox'].forEach(id=>{
-    const el=document.getElementById(id);if(!el)return;
-    let badge=el.querySelector?el.querySelector('.hr-badge'):null;
-    if(count>0){
-      if(!badge){
-        badge=document.createElement('span');badge.className='hr-badge';
-        badge.style.cssText='background:var(--bad,#E04848);color:#fff;font-size:.65rem;font-weight:800;border-radius:10px;padding:1px 6px;margin-left:6px;vertical-align:middle';
-        el.appendChild(badge);
-      }
-      badge.textContent=count;
-    } else if(badge){badge.remove();}
-  });
+  const count=countUnrepliedInbox();
+  const topBtn=document.getElementById('inboxTopBtn');
+  if(topBtn){
+    topBtn.style.display=(typeof curRole!=='undefined'&&curRole==='punch')?'none':'';
+    setAppBadge(topBtn,count);
+    topBtn.title=count?('有 '+count+' 則社群訊息還沒回'):'社群訊息';
+  }
+  ['nav-inbox','bn-inbox'].forEach(id=>setAppBadge(document.getElementById(id),count));
+  try{document.title=count?('('+(count>99?'99+':count)+') '+INBOX_PAGE_TITLE):INBOX_PAGE_TITLE;}catch{}
+}
+function openInboxFromBadge(){
+  inboxUnrepliedOnly=true;
+  inboxStatusFilter='';
+  showPanel('inbox');
 }
 
 function inboxThreadKey(m){
@@ -980,7 +1020,8 @@ function renderInboxPanel(){
   const all=getInboxThreads();
   const threads=all.filter(t=>{
     if(inboxPlatformFilter&&t.platform!==inboxPlatformFilter)return false;
-    if(inboxStatusFilter&&inboxThreadStatus(t)!==inboxStatusFilter)return false;
+    if(inboxUnrepliedOnly&&!inboxThreadNeedsReply(t))return false;
+    if(!inboxUnrepliedOnly&&inboxStatusFilter&&inboxThreadStatus(t)!==inboxStatusFilter)return false;
     return true;
   });
   document.getElementById('inboxThreadCount').textContent=threads.length+' 個對話'+(all.length!==threads.length?'／共 '+all.length+'':'');
@@ -998,7 +1039,7 @@ function renderInboxPanel(){
     row.innerHTML=
       '<div style="display:flex;justify-content:space-between;align-items:center;gap:6px">'+
         '<span style="font-size:.82rem;font-weight:800;color:var(--g700);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+meta.icon+' '+esc(t.senderName||'訪客')+'</span>'+
-        (t.unread?'<span style="background:var(--bad);color:#fff;font-size:.62rem;font-weight:800;border-radius:10px;padding:1px 6px;flex-shrink:0">'+t.unread+'</span>':'')+
+        (inboxThreadNeedsReply(t)?'<span style="background:var(--bad);color:#fff;font-size:.62rem;font-weight:800;border-radius:10px;padding:1px 6px;flex-shrink:0">未回</span>':(t.unread?'<span style="background:var(--bad);color:#fff;font-size:.62rem;font-weight:800;border-radius:10px;padding:1px 6px;flex-shrink:0">'+t.unread+'</span>':''))+
       '</div>'+
       '<div style="font-size:.72rem;color:var(--g400);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(t.last.direction==='out'?'你：':'')+esc(t.last.text||'')+'</div>'+
       '<div style="font-size:.64rem;margin-top:3px;display:flex;gap:6px;align-items:center;color:var(--g300)">'+

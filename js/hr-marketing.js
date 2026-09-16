@@ -1137,10 +1137,6 @@ function renderPostHistory(){
 setTimeout(()=>{
   const inp = document.getElementById('apiInp');
   if(inp && API_KEY) inp.value = API_KEY;
-  const dot = document.getElementById('apiDot');
-  if(dot && API_KEY){
-    dot.textContent='已設定'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)';
-  }
 }, 500);
 
 // ══ 遺失的按鈕監聽器（補全）══════════════════════════════
@@ -1267,7 +1263,13 @@ document.getElementById('qXls')?.addEventListener('click',()=>{
 });
 
 document.getElementById('dlImgBtn')?.addEventListener('click',()=>{
-  const svg=document.getElementById('mkImgCanvas')?.querySelector('svg');
+  const box=document.getElementById('mkImgCanvas');
+  const img=box?.querySelector('img');
+  if(img&&img.src){
+    const a=document.createElement('a');a.href=img.src;a.download='zeju_'+Date.now()+'.png';a.click();
+    showToast('✅ 圖片已下載！');return;
+  }
+  const svg=box?.querySelector('svg');
   if(!svg)return;
   const blob=new Blob([svg.outerHTML],{type:'image/svg+xml'});
   const url=URL.createObjectURL(blob);
@@ -1276,7 +1278,7 @@ document.getElementById('dlImgBtn')?.addEventListener('click',()=>{
 });
 
 document.getElementById('regenImgBtn')?.addEventListener('click',()=>genMktImg());
-document.getElementById('rgnPst')?.addEventListener('click',()=>chatQ('mk-chat','幫我重新生成一個不同角度的版本'));
+document.getElementById('rgnPst')?.addEventListener('click',()=>typeof genPost==='function'&&genPost());
 
 document.getElementById('outBtn')?.addEventListener('click',()=>{
   document.getElementById('app').style.display='none';

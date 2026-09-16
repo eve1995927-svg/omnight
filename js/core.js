@@ -294,8 +294,8 @@ function buildSysPrompts(){
   const p=getCompanyProfile();
   return {
     owner:`你是${p.name}的 AI 老闆助理。${p.shortName}是台灣在地統包裝修公司，服務${p.serviceAreas}。電話：${p.phone}，IG：${p.ig}，LINE：${p.line}。掌握全部資訊，以專業精準方式回應，繁體中文，主動提供建議。`,
-    cs:`你是${p.name}的 AI 客服助理「${p.aiAssistantName}」。統包裝修，${p.serviceAreas}。全室翻新每坪${p.priceFullReno}，廚房${p.priceKitchen}，浴室${p.priceBath}，老屋加${p.oldHouseSurcharge}。工期：全室${p.durationFull}，局部${p.durationPartial}。付款：${p.paymentTerms}。若有上傳照片請描述空間並給具體建議與初步報價。語氣溫暖親切，給具體數字，繁體中文。`,
-    mk:`你是${p.name}的 AI 行銷小編。IG ${p.ig}，LINE ${p.line}。生成貼文：吸引人開頭、描述空間氛圍、Emoji≤5個、3–5個Hashtag含#${p.shortName}、結尾CTA。120–200字，繁體中文，語氣溫暖質感。`,
+    cs:`你是${p.name}的設計師，在回客人訊息，不要說自己是AI。統包設計，${p.serviceAreas}。行情僅供參考：全室翻新每坪${p.priceFullReno}，廚房${p.priceKitchen}，浴室${p.priceBath}，老屋加${p.oldHouseSurcharge}。工期全室${p.durationFull}、局部${p.durationPartial}。付款：${p.paymentTerms}。流程用生活化短句：先聊需求 → 約看屋／丈量 → 平面跟估價 → 確定才簽約開工。報價只給區間，強調要現場看才準。一次回2–4句，先答再問坪數、屋齡、區域或全室／局部。有照片就具體講空間。繁體中文，像在回LINE。`,
+    mk:`你是${p.name}的行銷小編，不是機器人。IG ${p.ig}，LINE ${p.line}。貼文要生活化、像真人設計師在發限動：短句、有畫面、不要公文。Emoji少而精，3–5個Hashtag含#${p.shortName}，結尾自然邀私訊。120–200字，繁體中文。`,
     ad:`你是${p.name}的 AI 行政助理。電話：${p.phone}，信箱：${p.email}。可協助：工程進度查詢、起草合約、整理廠商報價、安排排程。付款：${p.paymentTerms}。繁體中文，專業嚴謹。`,
     ac:`你是${p.name}的 AI 會計助理。毛利=對外報價−廠商成本−管理費${p.managementFeeRate}。目標毛利率${p.targetMarginLow}–${p.targetMarginHigh}。協助：帳款整理、毛利計算、成本分析、催款通知。數字精準，繁體中文，語氣專業嚴謹。`,
   };
@@ -788,11 +788,13 @@ function startCloudSync(){
       if(!anySynced){anySynced=true;}
       setSyncStatus&&setSyncStatus('ok');
 
-      // 社群訊息（LINE/FB/脆）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
-      if((k==='omnichannel_messages'||k==='omnichannel_threads')&&newLen!==oldLen){
+      // 社群訊息（LINE/FB/脆）有新訊息進來：右上角未回數量立刻更新；正開著收件匣就重畫列表
+      if(k==='omnichannel_messages'||k==='omnichannel_threads'){
         typeof updateInboxBadge==='function'&&updateInboxBadge();
-        const ip=document.getElementById('p-inbox');
-        if(ip&&ip.classList.contains('on')&&typeof renderInboxPanel==='function')renderInboxPanel();
+        if(newLen!==oldLen){
+          const ip=document.getElementById('p-inbox');
+          if(ip&&ip.classList.contains('on')&&typeof renderInboxPanel==='function')renderInboxPanel();
+        }
       }
       // 老闆端打卡有更新
       if(k==='punch_recs'&&newLen!==oldLen&&curRole==='owner'){
@@ -854,38 +856,39 @@ async function apiTestConn(){
     res.innerHTML = html;
   };
 
-  const btn = event.target;
-  btn.textContent = '⏳ 測試中…'; btn.disabled = true;
-  setRes('#EBF3FF','#A0C4F0','#1A5490','🔄 正在連線，請稍候…');
+  const btn = event&&event.target;
+  if(btn){btn.textContent = '測試中…'; btn.disabled = true;}
+  setRes('#EBF3FF','#A0C4F0','#1A5490','正在連 Gemini，請稍候…');
 
   try{
     const r = await fetch('/.netlify/functions/ai-proxy', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 3000,
-        messages: [{ role:'user', content:'請用繁體中文回答：你好！' }]
+        max_tokens: 80,
+        messages: [{ role:'user', content:'請用繁體中文回一句：連線成功' }]
       })
     });
 
     const d = await r.json();
+    const msg = d.error?.message || '';
 
     if(!r.ok){
-      const msg = d.error?.message || '';
-      if(r.status === 401)
-        setRes('#FEF0F0','#F0A8A8','#B82828','❌ <strong>Key 錯誤或已失效</strong><br>請到 console.anthropic.com 取得新的 Key');
-      else if(msg.includes('quota') || msg.includes('credit'))
-        setRes('#FEF0F0','#F0A8A8','#B82828','❌ <strong>帳戶餘額不足</strong><br>請到 console.anthropic.com → Billing 儲值');
+      if(r.status === 401 || r.status === 403)
+        setRes('#FEF0F0','#F0A8A8','#B82828','❌ <strong>Gemini 金鑰錯誤</strong><br>請到 Netlify → Environment variables 檢查 GEMINI_API_KEY');
+      else if(msg.includes('quota') || msg.includes('RESOURCE_EXHAUSTED') || r.status===429)
+        setRes('#FEF0F0','#F0A8A8','#B82828','❌ <strong>額度用完或免費額度達到上限</strong><br>到 Google AI Studio 看用量，或開付費');
       else
         setRes('#FEF0F0','#F0A8A8','#B82828','❌ 連線失敗（'+r.status+'）：'+msg);
     } else {
       const reply = d.content?.[0]?.text || '連線成功';
-      setRes('#EDFAF4','#98DEC0','#1E7A58','✅ <strong>連線成功！AI 正常運作</strong><br>AI 回覆：' + reply);
+      setRes('#EDFAF4','#98DEC0','#1E7A58','✅ <strong>Gemini 連線成功</strong><br>AI 回覆：' + reply);
+      const dot = document.getElementById('apiDot');
+      if(dot){ dot.textContent='已連線'; dot.style.background='var(--ok-bg)'; dot.style.color='var(--ok)'; }
     }
   } catch(err){
-    setRes('#FEF0F0','#F0A8A8','#B82828','❌ <strong>網路錯誤</strong><br>請確認網路連線是否正常<br><small>'+err.message+'</small>');
+    setRes('#FEF0F0','#F0A8A8','#B82828','❌ <strong>網路錯誤</strong><br>請確認網站已部署、網路正常<br><small>'+err.message+'</small>');
   }
 
-  btn.textContent = '🔌 測試連線'; btn.disabled = false;
+  if(btn){btn.textContent = '測試連線'; btn.disabled = false;}
 }
 
 
@@ -1652,7 +1655,7 @@ async function callAI(role,content,maxTok=1200,fixedPts=null,taskLabel=null){
     r=await fetch('/.netlify/functions/ai-proxy',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:maxTok,system:SYS[role],messages:hist})
+      body:JSON.stringify({max_tokens:maxTok,system:SYS[role],messages:hist})
     });
   }catch(netErr){
     throw new Error('network_err');
@@ -1743,7 +1746,7 @@ function initAllChats(){
   const p=getCompanyProfile();
   initChat('owner-chat','owner',240,'老闆好！我掌握公司全部資訊 👑\n可協助分析經營狀況、追蹤帳款、了解各部門進度。',['本月整體營運分析','哪個案子最需要關注？','本月毛利比較']);
   initChat('cs-chat','cs',280,'您好！我是'+p.shortName+'的 AI 客服'+p.aiAssistantName+' 🏠\n可協助您了解裝修費用、風格規劃及施工流程。也歡迎上傳現場照片！',['28坪全室翻新日式簡約預算80萬','廚房浴室改裝費用？','老屋30年要注意什麼？']);
-  initChat('mk-chat','mk',200,'我是你的 AI 行銷小編 ✨\n生成貼文後可接著生成行銷圖片！',['改成更活潑的語氣','加入限時優惠資訊','幫我想更吸睛的開頭']);
+  initChat('mk-chat','mk',200,'我是行銷小編。按「生成貼文＋圖」會一次出文案跟圖片，這裡可以再改語氣。',['改成更口語','開頭再吸睛一點','加限時優惠']);
   initChat('ad-chat','ad',460,'您好！我是行政 AI 助理 📋\n可協助查詢工程進度、起草合約、整理廠商資訊。',['本週工程進度摘要','幫我草擬合約','哪些工程快到付款節點？']);
   initChat('ac-chat','ac',460,'您好！我是會計 AI 助理 📊\n可協助：查詢收支、計算毛利率、起草催款通知。',['計算景平路案毛利','起草陳小姐催款通知','本月整體收支？']);
 }
