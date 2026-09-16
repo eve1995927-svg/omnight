@@ -6,9 +6,9 @@ const CORS = {
   'Access-Control-Allow-Methods': 'POST,OPTIONS',
 };
 
-const TEXT_MODEL = 'gemini-2.5-flash-lite';
-const VISION_MODEL = 'gemini-2.5-flash';
-const IMAGE_MODELS = ['gemini-2.5-flash-image', 'gemini-2.0-flash-preview-image-generation'];
+const TEXT_MODEL = 'gemini-3.5-flash-lite';
+const VISION_MODEL = 'gemini-3.5-flash';
+const IMAGE_MODELS = ['gemini-3.1-flash-lite-image', 'gemini-3.1-flash-image', 'gemini-2.5-flash-image'];
 
 function json(status, body) {
   return {
@@ -170,15 +170,20 @@ exports.handler = async (event) => {
       generationConfig: { maxOutputTokens: body.max_tokens || 2048 },
     };
     if (body.system) payload.systemInstruction = { parts: [{ text: body.system }] };
-    const model = body.model && String(body.model).startsWith('gemini-')
+    const preferred = body.model && String(body.model).startsWith('gemini-')
       ? body.model
       : (hasImageParts(messages) ? VISION_MODEL : TEXT_MODEL);
-    const { resp, data } = await generateContent(model, payload, key);
-    if (!resp.ok) return geminiError(data, resp.status);
-    const text = extractText(data);
+    const tryModels = [preferred, TEXT_MODEL, VISION_MODEL, 'gemini-3.5-flash-lite'].filter((m, i, arr) => m && arr.indexOf(m) === i);
+    let last = { resp: { status: 500 }, data: { error: { message: 'Gemini 連線失敗' } } };
+    for (const model of tryModels) {
+      last = await generateContent(model, payload, key);
+      if (last.resp.ok) break;
+    }
+    if (!last.resp.ok) return geminiError(last.data, last.resp.status);
+    const text = extractText(last.data);
     return json(200, {
       content: [{ type: 'text', text }],
-      usage: usageFromGemini(data),
+      usage: usageFromGemini(last.data),
     });
   } catch (e) {
     return json(500, { error: { message: e.message || 'proxy error' } });

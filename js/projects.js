@@ -137,6 +137,17 @@ function getTodayTodos(){
     }
   }
 
+  if(typeof getUnpaidMonthlyBills==='function'){
+    const dueBills=getUnpaidMonthlyBills();
+    if(dueBills.length){
+      const amt=dueBills.reduce((s,b)=>s+(b.total||0),0);
+      todos.push({type:'platform-bill',level:'bad',icon:'🧾',
+        title:dueBills.length+' 張平台月費尚未繳　共 NT$'+amt.toLocaleString(),
+        desc:dueBills.map(b=>b.month+' NT$'+(b.total||0).toLocaleString()).join('、'),
+        action:()=>showPanel('ac-billing')});
+    }
+  }
+
   // 8. 廠商成本已經超過對客戶的報價（做下去就是虧錢，要最優先處理）
   if(typeof getVendorTrueCost==='function'){
     const overrun=projects.filter(p=>{

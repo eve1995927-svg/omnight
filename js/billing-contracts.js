@@ -19,10 +19,127 @@ const BILL_PACKAGE=[
   {name:'Firebase 雲端資料庫＋即時同步', amt:1100, note:'多裝置同步與備份'},
   {name:'系統維運與資安更新', amt:800, note:'改版、監控、金鑰與憑證維護'},
 ];
+function billMonthKey(d){
+  const x=d instanceof Date?d:new Date(d);
+  return x.getFullYear()+'-'+(x.getMonth()+1).toString().padStart(2,'0');
+}
+function nextPlatformBillDate(from){
+  const now=from||new Date();
+  const y=now.getFullYear(), m=now.getMonth(), day=now.getDate();
+  const due=day<12?new Date(y,m,12):new Date(y,m+1,12);
+  return due;
+}
+function monthUsageFee(month){
+  const recs=DB.get('billing').filter(r=>!r.month||r.month===month);
+  const points=recs.reduce((s,r)=>s+(r.points||0),0);
+  const ptsFee=Math.round(points*BILL_PTS_RATE);
+  return {points, ptsFee, total:BILL_BASE_FEE+ptsFee, recs};
+}
+function getMonthlyBill(month){
+  return DB.get('monthly_bills').find(b=>b.month===month)||null;
+}
+function getUnpaidMonthlyBills(){
+  return DB.get('monthly_bills').filter(b=>b.status!=='paid').sort((a,b)=>(a.month||'').localeCompare(b.month||''));
+}
+function issueMonthlyBill(month,force){
+  if(!month)return null;
+  const usage=monthUsageFee(month);
+  const existing=getMonthlyBill(month);
+  if(existing&&existing.status==='paid'&&!force)return existing;
+  const rec={
+    month,
+    summary:month.replace('-','年')+'月 平台帳單 NT$'+usage.total.toLocaleString(),
+    issuedAt:new Date().toLocaleString('zh-TW'),
+    dueDate:month+'-12',
+    package:BILL_PACKAGE.map(p=>({...p})),
+    baseFee:BILL_BASE_FEE,
+    points:usage.points,
+    ptsFee:usage.ptsFee,
+    total:usage.total,
+    status:(existing&&existing.status)||'unpaid',
+  };
+  if(existing){
+    DB.upd('monthly_bills',existing._id,{
+      ...rec,
+      status:existing.status==='paid'?'paid':rec.status,
+    });
+    return getMonthlyBill(month);
+  }
+  DB.push('monthly_bills',rec);
+  return getMonthlyBill(month);
+}
+function generateDueMonthlyBills(){
+  const now=new Date();
+  const y=now.getFullYear(), m=now.getMonth(), day=now.getDate();
+  const months=[];
+  const prev=new Date(y,m-1,1);
+  months.push(billMonthKey(prev));
+  if(day>=12) months.push(billMonthKey(now));
+  months.forEach(mo=>issueMonthlyBill(mo,false));
+  ensurePlatformBillCalendar();
+  updNextBilDate();
+}
+function issueCurrentMonthBill(){
+  const month=billMonthKey(new Date());
+  const bill=issueMonthlyBill(month,true);
+  renderBilling();
+  showToast(bill?'✅ 已產出 '+month.replace('-','年')+'月帳單 NT$'+(bill.total||0).toLocaleString():'⚠️ 產出失敗');
+}
+function markMonthlyBillPaid(id){
+  const bill=DB.get('monthly_bills').find(b=>String(b._id)===String(id));
+  if(!bill)return;
+  confirmAction('標記「'+bill.month+'」帳單已繳 NT$'+(bill.total||0).toLocaleString()+'？',()=>{
+    DB.upd('monthly_bills',bill._id,{status:'paid',paidAt:new Date().toLocaleString('zh-TW')});
+    renderBilling();
+    if(typeof renderDashboard==='function')renderDashboard();
+    showToast('✅ 已標記繳費');
+  },false);
+}
+function ensurePlatformBillCalendar(){
+  if(typeof DB==='undefined'||!DB.get||!DB.push)return;
+  const due=nextPlatformBillDate();
+  const ymd=due.getFullYear()+'-'+(due.getMonth()+1).toString().padStart(2,'0')+'-12';
+  const events=DB.get('calendar_events')||[];
+  const exists=events.some(e=>e.billCycle&&e.date===ymd);
+  if(exists)return;
+  DB.push('calendar_events',{
+    title:'澤居平台月費結算',
+    date:ymd,
+    time:'10:00',
+    note:'平台固定費 NT$9,000＋本月超量。匯堅果創意 7505400208531',
+    billCycle:true,
+  });
+}
+function updNextBilDate(){
+  const el=document.getElementById('nextBilDate');if(!el)return;
+  const d=nextPlatformBillDate();
+  const today=new Date();
+  const same=d.getFullYear()===today.getFullYear()&&d.getMonth()===today.getMonth()&&today.getDate()===12;
+  el.textContent=same?'今天':d.getFullYear()+'/'+(d.getMonth()+1)+'/12';
+}
+function renderMonthlyBillList(){
+  const box=document.getElementById('monthlyBillList');if(!box)return;
+  const bills=DB.get('monthly_bills').slice().sort((a,b)=>(b.month||'').localeCompare(a.month||''));
+  if(!bills.length){
+    box.innerHTML='<div style="font-size:.82rem;color:var(--g400);padding:8px 0">尚未產出月帳單，每月 12 日會自動產生</div>';
+    return;
+  }
+  box.innerHTML=bills.map(b=>{
+    const paid=b.status==='paid';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">'+
+      '<div><div style="font-weight:800;color:var(--g700)">'+(b.month||'').replace('-','年')+'月　NT$'+(b.total||0).toLocaleString()+'</div>'+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">固定費 NT$'+(b.baseFee||0).toLocaleString()+' ＋超量 NT$'+(b.ptsFee||0).toLocaleString()+(b.issuedAt?'　產出 '+b.issuedAt:'')+'</div></div>'+
+      (paid
+        ?'<span style="font-size:.72rem;font-weight:800;color:var(--ok);white-space:nowrap">已繳</span>'
+        :'<button type="button" class="btn bg bxs" onclick="markMonthlyBillPaid(\''+b._id+'\')">標記已繳</button>')+
+      '</div>';
+  }).join('');
+}
 function renderBilling(){
   const list=document.getElementById('bilList');
   const monthSel=document.getElementById('bilMonthSel');
   if(!list)return;
+  generateDueMonthlyBills();
 
   const BASE_FEE=BILL_BASE_FEE;
   const PTS_RATE=BILL_PTS_RATE;
@@ -118,6 +235,7 @@ function renderBilling(){
   _bilRecsCache=recs; // 存起來給「顯示更多」用，不用每次都重新算一次
   _bilShownCount=15;
   renderBilListPage();
+  renderMonthlyBillList();
 }
 let _bilRecsCache=[];
 let _bilShownCount=15;

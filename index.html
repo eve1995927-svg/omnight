@@ -1113,6 +1113,16 @@
   <div class="stat"><div class="sn" id="bilPts" style="color:var(--gold-d)">76,500</div><div class="sl">剩餘點數（內部）</div></div>
  </div>
 
+ <!-- 已產出月帳單 -->
+ <div class="card">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+   <div class="ct" style="margin:0">已產出月帳單</div>
+   <button type="button" class="btn bg bsm" onclick="issueCurrentMonthBill()">產出／更新本月</button>
+  </div>
+  <p style="font-size:.78rem;color:var(--g400);margin:0 0 8px">每月 12 日自動產出；登入系統也會補產漏掉的月份。繳完再按「標記已繳」。未繳的會出現在今日總覽。</p>
+  <div id="monthlyBillList"></div>
+ </div>
+
  <!-- 帳單明細 -->
  <div class="card">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
