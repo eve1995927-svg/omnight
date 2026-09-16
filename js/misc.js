@@ -764,7 +764,9 @@ document.getElementById('saveZejuQuoteBtn')?.addEventListener('click',()=>{
 });
 
 // ══ 新增客戶 Modal ═════════════════════════════════════
+let _inboxConvertThreadId=null;
 function openAddClientModal(){
+  _inboxConvertThreadId=null;
   const n=document.getElementById('newClientName');
   const p=document.getElementById('newClientPhone');
   const a=document.getElementById('newClientAddr');
@@ -778,13 +780,43 @@ document.getElementById('confirmAddClient')?.addEventListener('click',()=>{
   if(!name){showToast('⚠️ 請填入客戶姓名');return;}
   const phone=(document.getElementById('newClientPhone')?.value||'').trim();
   const addr=(document.getElementById('newClientAddr')?.value||'').trim();
-  // 修正重點：這裡原本是「整包客戶清單抓出來、手動加一筆、整包寫回去」，
-  // 這種整包覆蓋的寫法，如果剛好另一台裝置同時也在新增客戶，會互相蓋掉對方剛新增的資料。
-  // 改成用 DB.push 只新增這一筆，不會動到其他人剛好在異動的資料，id 也會由系統保證不重複。
-  const [client]=DB.push('clients',{name,phone,addr});
+  const rec={name,phone,addr};
+  const convertId=_inboxConvertThreadId;
+  if(convertId){
+    const t=getInboxThreads().find(x=>x.threadId===convertId);
+    if(t){
+      rec.inboxThreadId=t.threadId;
+      if(t.platform==='line')rec.lineUserId=t.senderId;
+      if(t.platform==='messenger')rec.messengerId=t.senderId;
+      if(t.platform==='threads')rec.threadsId=t.senderId;
+      if(t.platform==='instagram')rec.instagramId=t.senderId;
+    }
+  }
+  DB.push('clients',rec);
+  const client=DB.get('clients').slice().sort((a,b)=>(b._id||0)-(a._id||0))[0];
   closeModal('addClientModal');
+  _inboxConvertThreadId=null;
+  if(convertId&&client){
+    const t=getInboxThreads().find(x=>x.threadId===convertId);
+    const st=(t&&inboxThreadStatus(t)!=='new')?inboxThreadStatus(t):'inquiry';
+    upsertInboxThreadMeta(convertId,{
+      clientId:client._id,
+      status:st,
+      platform:t&&t.platform,
+      senderId:t&&t.senderId,
+      senderName:name
+    });
+    renderClientList();
+    showPanel('cs-chat');
+    setTimeout(()=>{
+      if(typeof renderClientList==='function')renderClientList();
+      if(typeof switchClient==='function')switchClient(client._id);
+    },80);
+    showToast('✅ 已建成客戶，並打開客戶諮詢');
+    return;
+  }
   renderClientList();
-  if(typeof switchClient==='function') switchClient(client._id);
+  if(typeof switchClient==='function'&&client) switchClient(client._id);
   showToast('✅ 客戶「'+name+'」已建立！');
 });
 
@@ -803,8 +835,91 @@ const INBOX_PLATFORM_META={
   threads:{label:'Threads',icon:'🧵',color:'#000000'},
   instagram:{label:'Instagram',icon:'📸',color:'#E1306C'},
 };
+const INBOX_STATUS_META={
+  new:{label:'新訊息',color:'#706860'},
+  inquiry:{label:'詢問',color:'#144A82'},
+  talking:{label:'洽談中',color:'#9A7830'},
+  contract:{label:'簽合約',color:'#12805A'},
+  lost:{label:'不成交',color:'#B32020'},
+};
 
 let curInboxThreadId=null;
+let inboxPlatformFilter='';
+let inboxStatusFilter='';
+
+function inboxChipStyle(on){
+  return 'padding:5px 11px;border-radius:20px;font-size:.72rem;font-weight:800;cursor:pointer;font-family:inherit;'+
+    (on?'border:1.5px solid var(--gold);background:var(--gold-pale);color:var(--gold-d)':'border:1.5px solid var(--g200);background:var(--w);color:var(--g500)');
+}
+function renderInboxFilterBar(){
+  const bar=document.getElementById('inboxFilterBar');if(!bar)return;
+  const platforms=[{id:'',label:'全部社群'},{id:'line',label:'LINE'},{id:'messenger',label:'Messenger'},{id:'threads',label:'Threads'}];
+  const statuses=[{id:'',label:'全部進度'},...Object.keys(INBOX_STATUS_META).map(id=>({id,label:INBOX_STATUS_META[id].label}))];
+  bar.innerHTML=
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+platforms.map(p=>'<button type="button" data-inbox-plat="'+p.id+'" style="'+inboxChipStyle(inboxPlatformFilter===p.id)+'">'+p.label+'</button>').join('')+'</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+statuses.map(s=>'<button type="button" data-inbox-stat="'+s.id+'" style="'+inboxChipStyle(inboxStatusFilter===s.id)+'">'+s.label+'</button>').join('')+'</div>';
+  bar.querySelectorAll('[data-inbox-plat]').forEach(btn=>{
+    btn.addEventListener('click',()=>{inboxPlatformFilter=btn.getAttribute('data-inbox-plat')||'';renderInboxPanel();});
+  });
+  bar.querySelectorAll('[data-inbox-stat]').forEach(btn=>{
+    btn.addEventListener('click',()=>{inboxStatusFilter=btn.getAttribute('data-inbox-stat')||'';renderInboxPanel();});
+  });
+}
+
+function getInboxThreadMeta(threadId){
+  return DB.get('omnichannel_threads').find(x=>x.threadId===threadId)||null;
+}
+function upsertInboxThreadMeta(threadId,patch){
+  if(!threadId)return;
+  const cur=getInboxThreadMeta(threadId);
+  if(cur){DB.upd('omnichannel_threads',cur._id,patch);return cur;}
+  DB.push('omnichannel_threads',{threadId,status:'new',...patch});
+  return getInboxThreadMeta(threadId);
+}
+function inboxThreadStatus(t){
+  const m=t&&getInboxThreadMeta(t.threadId);
+  return (m&&m.status)||'new';
+}
+function inboxLinkedClient(t){
+  if(!t)return null;
+  const clients=DB.get('clients');
+  const meta=getInboxThreadMeta(t.threadId);
+  if(meta&&meta.clientId){
+    const c=clients.find(x=>String(x._id)===String(meta.clientId));
+    if(c)return c;
+  }
+  if(t.senderId){
+    if(t.platform==='line') return clients.find(c=>c.lineUserId===t.senderId)||null;
+    if(t.platform==='messenger') return clients.find(c=>c.messengerId===t.senderId)||null;
+    if(t.platform==='threads') return clients.find(c=>c.threadsId===t.senderId)||null;
+    if(t.platform==='instagram') return clients.find(c=>c.instagramId===t.senderId)||null;
+  }
+  return clients.find(c=>c.inboxThreadId===t.threadId)||null;
+}
+
+function convertInboxThreadToClient(threadId){
+  const t=getInboxThreads().find(x=>x.threadId===threadId);
+  if(!t){showToast('⚠️ 找不到這個對話');return;}
+  const linked=inboxLinkedClient(t);
+  if(linked){
+    showPanel('cs-chat');
+    setTimeout(()=>{
+      if(typeof renderClientList==='function')renderClientList();
+      if(typeof switchClient==='function')switchClient(linked._id);
+    },80);
+    showToast('✅ 已打開客戶諮詢');
+    return;
+  }
+  _inboxConvertThreadId=threadId;
+  const n=document.getElementById('newClientName');
+  const p=document.getElementById('newClientPhone');
+  const a=document.getElementById('newClientAddr');
+  if(n)n.value=t.senderName||'';
+  if(p)p.value='';
+  if(a)a.value='';
+  openModal('addClientModal');
+  setTimeout(()=>n?.focus(),200);
+}
 
 function updateInboxBadge(){
   let count=0;
@@ -852,20 +967,30 @@ function getInboxThreads(){
     // 顯示名稱、平台可能後來的訊息才拿得到（例如第一則抓不到 LINE 顯示名稱），用最新一筆有值的蓋過去
     const withName=[...t.msgs].reverse().find(m=>m.senderName);
     if(withName)t.senderName=withName.senderName;
+    const saved=getInboxThreadMeta(t.threadId);
+    t.status=(saved&&saved.status)||'new';
+    t.clientId=saved&&saved.clientId;
     return t;
   }).sort((a,b)=>inboxMsgTime(b.last)-inboxMsgTime(a.last));
 }
 
 function renderInboxPanel(){
   const list=document.getElementById('inboxThreadList');if(!list)return;
-  const threads=getInboxThreads();
-  document.getElementById('inboxThreadCount').textContent=threads.length+' 個對話';
+  renderInboxFilterBar();
+  const all=getInboxThreads();
+  const threads=all.filter(t=>{
+    if(inboxPlatformFilter&&t.platform!==inboxPlatformFilter)return false;
+    if(inboxStatusFilter&&inboxThreadStatus(t)!==inboxStatusFilter)return false;
+    return true;
+  });
+  document.getElementById('inboxThreadCount').textContent=threads.length+' 個對話'+(all.length!==threads.length?'／共 '+all.length+'':'');
   list.innerHTML='';
   if(!threads.length){
-    list.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.8rem">尚無社群訊息<br><span style="font-size:.72rem">按右上角「連線設定」把 LINE／Facebook／脆的金鑰貼進去</span></div>';
+    list.innerHTML='<div style="padding:20px 16px;text-align:center;color:var(--g400);font-size:.8rem">'+(all.length?'這個分類目前沒有對話':'尚無社群訊息')+'<br><span style="font-size:.72rem">'+(all.length?'換一個社群或進度再看':'按右上角「連線設定」把 LINE／Facebook／脆的金鑰貼進去')+'</span></div>';
   }
   threads.forEach(t=>{
     const meta=INBOX_PLATFORM_META[t.platform]||{label:t.platform,icon:'💬',color:'var(--g400)'};
+    const st=INBOX_STATUS_META[inboxThreadStatus(t)]||INBOX_STATUS_META.new;
     const row=document.createElement('div');
     row.style.cssText='padding:12px 14px;border-bottom:1px solid var(--g200);cursor:pointer;transition:background var(--ease)'+(t.threadId===curInboxThreadId?';background:var(--gold-pale)':'');
     row.addEventListener('mouseenter',()=>{if(t.threadId!==curInboxThreadId)row.style.background='var(--g100)';});
@@ -876,7 +1001,11 @@ function renderInboxPanel(){
         (t.unread?'<span style="background:var(--bad);color:#fff;font-size:.62rem;font-weight:800;border-radius:10px;padding:1px 6px;flex-shrink:0">'+t.unread+'</span>':'')+
       '</div>'+
       '<div style="font-size:.72rem;color:var(--g400);margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+(t.last.direction==='out'?'你：':'')+esc(t.last.text||'')+'</div>'+
-      '<div style="font-size:.64rem;color:var(--g300);margin-top:2px">'+esc(meta.label)+' ・ '+esc((t.last._ts||'').split(' ').slice(0,2).join(' '))+'</div>';
+      '<div style="font-size:.64rem;margin-top:3px;display:flex;gap:6px;align-items:center;color:var(--g300)">'+
+        '<span>'+esc(meta.label)+'</span>'+
+        '<span style="color:'+st.color+';font-weight:800">'+esc(st.label)+'</span>'+
+        '<span>'+esc((t.last._ts||'').split(' ').slice(0,2).join(' '))+'</span>'+
+      '</div>';
     row.addEventListener('click',()=>openInboxThread(t.threadId));
     list.appendChild(row);
   });
@@ -893,10 +1022,27 @@ function openInboxThread(threadId){
   if(!t){header.style.display='none';msgList.innerHTML='';replyBar.style.display='none';return;}
 
   const meta=INBOX_PLATFORM_META[t.platform]||{label:t.platform,icon:'💬',color:'var(--g400)'};
+  const st=inboxThreadStatus(t);
+  const linked=inboxLinkedClient(t);
   header.style.display='flex';
+  header.style.flexWrap='wrap';
   header.innerHTML=
     '<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--gold-d),var(--gold));color:#fff;font-weight:900;display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0">'+meta.icon+'</div>'+
-    '<div><div style="font-size:.92rem;font-weight:900;color:var(--g800)">'+esc(t.senderName||'訪客')+'</div><div style="font-size:.72rem;color:var(--g400);margin-top:1px">'+esc(meta.label)+'</div></div>';
+    '<div style="min-width:0;flex:1">'+
+      '<div style="font-size:.92rem;font-weight:900;color:var(--g800)">'+esc(t.senderName||'訪客')+'</div>'+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:1px">'+esc(meta.label)+(linked?' ・ 客戶：'+esc(linked.name):'')+'</div>'+
+    '</div>'+
+    '<select id="inboxStatusSel" style="padding:7px 10px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.78rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">'+
+      Object.keys(INBOX_STATUS_META).map(k=>'<option value="'+k+'"'+(st===k?' selected':'')+'>'+INBOX_STATUS_META[k].label+'</option>').join('')+
+    '</select>'+
+    '<button type="button" class="btn '+(linked?'bo':'bg')+' bsm" id="inboxToClientBtn">'+(linked?'開啟諮詢':'建成客戶')+'</button>';
+
+  document.getElementById('inboxStatusSel')?.addEventListener('change',e=>{
+    upsertInboxThreadMeta(t.threadId,{status:e.target.value,platform:t.platform,senderId:t.senderId,senderName:t.senderName});
+    renderInboxPanel();
+    showToast('✅ 已改成「'+(INBOX_STATUS_META[e.target.value]||{}).label+'」');
+  });
+  document.getElementById('inboxToClientBtn')?.addEventListener('click',()=>convertInboxThreadToClient(t.threadId));
 
   msgList.innerHTML='';
   t.msgs.forEach(m=>{

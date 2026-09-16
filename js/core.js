@@ -386,7 +386,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','memos','recurring_expenses','calendar_events'];
+               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','omnichannel_threads','memos','recurring_expenses','calendar_events'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -789,7 +789,7 @@ function startCloudSync(){
       setSyncStatus&&setSyncStatus('ok');
 
       // 社群訊息（LINE/FB/脆）有新訊息進來：畫面上如果正開著社群訊息分頁，即時刷新，不用手動重整
-      if(k==='omnichannel_messages'&&newLen!==oldLen){
+      if((k==='omnichannel_messages'||k==='omnichannel_threads')&&newLen!==oldLen){
         typeof updateInboxBadge==='function'&&updateInboxBadge();
         const ip=document.getElementById('p-inbox');
         if(ip&&ip.classList.contains('on')&&typeof renderInboxPanel==='function')renderInboxPanel();

@@ -209,10 +209,11 @@
 
 <div class="panel" id="p-inbox">
  <div class="ph">
-  <div><div class="ptit">📥 社群訊息</div><div class="psub">LINE 官方、Facebook 私訊、Threads（脆）統一在這裡看、這裡回</div></div>
+  <div><div class="ptit">📥 社群訊息</div><div class="psub">一次看全部，再用社群跟進度分類；談得成再建成客戶</div></div>
   <button type="button" class="btn bo bsm" id="inboxSettingsBtn" onclick="openInboxSettings()">連線設定</button>
  </div>
- <div style="display:flex;gap:0;height:calc(100vh - 190px);min-height:460px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
+ <div id="inboxFilterBar" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+ <div style="display:flex;gap:0;height:calc(100vh - 250px);min-height:420px;background:var(--w);border-radius:var(--r);overflow:hidden;box-shadow:var(--sh3);border:1px solid var(--g200)">
 
   <!-- 左側：對話串列表 -->
   <div style="width:230px;flex-shrink:0;border-right:1px solid var(--g200);display:flex;flex-direction:column;background:var(--g50)">
