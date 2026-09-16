@@ -7,8 +7,14 @@
 const { loadInboxConfig, saveOmnichannelMessage, ensureLineClient } = require('./lib/firebase');
 const crypto = require('crypto');
 
-function verifySignature(body, signature, channelSecret) {
-  const hash = crypto.createHmac('SHA256', channelSecret).update(body).digest('base64');
+function rawBodyBuffer(event) {
+  if (!event.body) return Buffer.from('', 'utf8');
+  if (event.isBase64Encoded) return Buffer.from(event.body, 'base64');
+  return Buffer.from(event.body, 'utf8');
+}
+
+function verifySignature(buf, signature, channelSecret) {
+  const hash = crypto.createHmac('SHA256', channelSecret).update(buf).digest('base64');
   return hash === signature;
 }
 
@@ -56,15 +62,19 @@ exports.handler = async (event) => {
     return { statusCode: 500, body: 'server not configured' };
   }
 
+  const buf = rawBodyBuffer(event);
   const signature = event.headers['x-line-signature'] || event.headers['X-Line-Signature'];
-  if (!signature || !verifySignature(event.body || '', signature, config.lineChannelSecret)) {
-    console.warn('LINE webhook 簽章驗證失敗');
+  if (!signature || !verifySignature(buf, signature, config.lineChannelSecret)) {
+    console.warn('LINE webhook 簽章驗證失敗', {
+      isBase64Encoded: !!event.isBase64Encoded,
+      bodyLen: (event.body || '').length,
+    });
     return { statusCode: 401, body: 'invalid signature' };
   }
 
   let payload;
   try {
-    payload = JSON.parse(event.body || '{}');
+    payload = JSON.parse(buf.toString('utf8') || '{}');
   } catch (e) {
     return { statusCode: 400, body: 'bad json' };
   }
@@ -78,6 +88,24 @@ exports.handler = async (event) => {
     try {
       const lineUserId = ev.source && ev.source.userId;
       if (!lineUserId) continue;
+
+      if (ev.type === 'follow') {
+        const senderName = await fetchLineName(lineUserId, config.lineChannelAccessToken);
+        await saveOmnichannelMessage({
+          platform: 'line',
+          threadId: 'line:' + lineUserId,
+          senderId: lineUserId,
+          senderName,
+          lineUserId,
+          direction: 'in',
+          type: 'follow',
+          text: '已加入官方帳號好友',
+          read: false,
+        });
+        await ensureLineClient(lineUserId, senderName);
+        continue;
+      }
+
       if (ev.type !== 'message' || !ev.message) continue;
 
       const senderName = await fetchLineName(lineUserId, config.lineChannelAccessToken);
