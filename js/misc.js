@@ -962,27 +962,34 @@ function inboxStatusLine(ok,label){
   return ok?'<span style="color:#1a7f37">● '+label+' 已設定</span>':'<span style="color:var(--g400)">○ '+label+' 尚未設定</span>';
 }
 async function openInboxSettings(){
-  document.getElementById('inboxLineWebhookUrl').value=inboxOrigin()+'/.netlify/functions/line-webhook';
-  document.getElementById('inboxMetaWebhookUrl').value=inboxOrigin()+'/.netlify/functions/meta-webhook';
+  if(typeof openModal==='function')openModal('inboxSettingsModal');
+  const setVal=(id,val)=>{const el=document.getElementById(id);if(el)el.value=val||'';};
+  setVal('inboxLineWebhookUrl',inboxOrigin()+'/.netlify/functions/line-webhook');
+  setVal('inboxMetaWebhookUrl',inboxOrigin()+'/.netlify/functions/meta-webhook');
   ['inboxLineSecret','inboxLineToken','inboxMetaPageToken','inboxMetaAppSecret','inboxThreadsToken'].forEach(id=>{
     const el=document.getElementById(id);if(el){el.value='';el.placeholder='已設定的話留空＝不更改';}
   });
   let saved={};
   try{
     if(_fbDB&&_fbReady){
-      const snap=await _fbDB.ref('zeju_data/omnichannel_config').once('value');
-      saved=snap.val()||{};
+      const snap=await Promise.race([
+        _fbDB.ref('zeju_data/omnichannel_config').once('value'),
+        new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),4000)),
+      ]);
+      saved=(snap&&snap.val())||{};
     }
   }catch(e){console.warn('讀取連線設定失敗',e.message);}
-  document.getElementById('inboxLineStatus').innerHTML=inboxStatusLine(inboxHas(saved.lineChannelSecret)&&inboxHas(saved.lineChannelAccessToken),'LINE');
-  document.getElementById('inboxLineChannelId').value=saved.lineChannelId||'';
-  document.getElementById('inboxFbStatus').innerHTML=inboxStatusLine(inboxHas(saved.metaPageToken)&&inboxHas(saved.metaAppSecret),'Messenger');
-  document.getElementById('inboxThreadsStatus').innerHTML=inboxStatusLine(inboxHas(saved.threadsAccessToken),'Threads');
-  document.getElementById('inboxMetaVerifyToken').value=saved.metaVerifyToken||('zeju_verify_'+Math.random().toString(36).slice(2,10));
-  document.getElementById('inboxThreadsUserId').value=saved.threadsUserId||'';
+  const lineOk=document.getElementById('inboxLineStatus');
+  const fbOk=document.getElementById('inboxFbStatus');
+  const thOk=document.getElementById('inboxThreadsStatus');
+  if(lineOk)lineOk.innerHTML=inboxStatusLine(inboxHas(saved.lineChannelSecret)&&inboxHas(saved.lineChannelAccessToken),'LINE');
+  if(fbOk)fbOk.innerHTML=inboxStatusLine(inboxHas(saved.metaPageToken)&&inboxHas(saved.metaAppSecret),'Messenger');
+  if(thOk)thOk.innerHTML=inboxStatusLine(inboxHas(saved.threadsAccessToken),'Threads');
+  setVal('inboxLineChannelId',saved.lineChannelId||'');
+  setVal('inboxMetaVerifyToken',saved.metaVerifyToken||('zeju_verify_'+Math.random().toString(36).slice(2,10)));
+  setVal('inboxThreadsUserId',saved.threadsUserId||'');
   const localSecret=localStorage.getItem('zeju_inbox_secret')||'';
-  document.getElementById('inboxAppSecret').value=localSecret||saved.appSharedSecret||('zeju_inbox_'+Math.random().toString(36).slice(2,10));
-  if(typeof openModal==='function')openModal('inboxSettingsModal');
+  setVal('inboxAppSecret',localSecret||saved.appSharedSecret||('zeju_inbox_'+Math.random().toString(36).slice(2,10)));
 }
 async function saveInboxSettings(){
   if(!_fbDB||!_fbReady){showToast('⚠️ 尚未連上雲端，請稍後再存');return;}

@@ -435,9 +435,9 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .ocrp.show{display:flex;animation:slideUp .25s ease}
 
 /* ── MODAL ── */
-.mov{position:fixed;inset:0;background:rgba(0,0,0,.52);z-index:500;display:none;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.mov{position:fixed;inset:0;background:rgba(0,0,0,.52);z-index:8000;display:none;align-items:center;justify-content:center;padding:20px}
 .mov.show{display:flex;animation:fadeIn .2s ease}
-.modal{background:var(--w);border-radius:var(--rxl);padding:28px 30px;max-width:580px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:var(--sh4);animation:slideUp .3s cubic-bezier(.34,1.56,.64,1)}
+.modal{position:relative;z-index:1;pointer-events:auto;background:var(--w);border-radius:var(--rxl);padding:28px 30px;max-width:580px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:var(--sh4);animation:slideUp .3s cubic-bezier(.34,1.56,.64,1)}
 .mtit{font-size:1.1rem;font-weight:900;color:var(--g800);margin-bottom:18px;padding-bottom:14px;border-bottom:2px solid var(--g100);display:flex;justify-content:space-between;align-items:center}
 .mcl{background:none;border:none;font-size:1.2rem;cursor:pointer;color:var(--g400);width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--rxs);transition:all var(--ease)}
 .mcl:hover{background:var(--g100);color:var(--bad)}
@@ -518,7 +518,7 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
   /* ── Modal ── */
   .mov{align-items:flex-end;padding:0}
   .modal{border-radius:20px 20px 0 0;max-height:90vh;overflow-y:auto;padding:20px 16px;
-    padding-bottom:calc(20px + env(safe-area-inset-bottom,0px))}
+    padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
   .mtit{font-size:1rem}
 
   /* ── 報價單（手機版）── */
