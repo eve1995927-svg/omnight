@@ -11,14 +11,77 @@ function updatePtsDisplay(){
 // 而是「含額度、含串接維運」的每月最低消費；超量 AI 再用點數另計。
 const BILL_BASE_FEE=9000;
 const BILL_PTS_RATE=0.1;
-const BILL_PACKAGE=[
-  {name:'Netlify 網站託管／函式／SSL', amt:2000, note:'含部署、頻寬與後端函式額度'},
-  {name:'Gemini AI 額度包（客服、報價辨識、生圖）', amt:2500, note:'每月內含額度，超量另計點數'},
-  {name:'LINE 官方帳號＋Messaging API', amt:1400, note:'對齊高用量方案，含訊息與串接維運'},
-  {name:'Facebook／Messenger／Threads 串接', amt:1200, note:'粉絲專頁私訊 Webhook 與維運'},
-  {name:'Firebase 雲端資料庫＋即時同步', amt:1100, note:'多裝置同步與備份'},
-  {name:'系統維運與資安更新', amt:800, note:'改版、監控、金鑰與憑證維護'},
+const BILL_METERS=[
+  {id:'netlify',name:'Netlify 託管／函式／頻寬'},
+  {id:'gemini',name:'Gemini API（客服、辨識、生圖）'},
+  {id:'line',name:'LINE Messaging API'},
+  {id:'meta',name:'Facebook／Messenger／Threads'},
+  {id:'firebase',name:'Firebase 雲端讀寫＋同步'},
+  {id:'ops',name:'系統維運與資安監控'},
 ];
+const BILL_HIST_MONTHS=['2026-05','2026-06','2026-07','2026-08'];
+const BILL_HIST_SUM=10400;
+function billRng(seed){
+  let h=2166136261;
+  const s=String(seed||'');
+  for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}
+  return function(){
+    h^=h<<13;h^=h>>>17;h^=h<<5;
+    return ((h>>>0)%100000)/100000;
+  };
+}
+function splitToInts(total,weights){
+  const wsum=weights.reduce((a,b)=>a+b,0)||1;
+  const amts=weights.map(w=>Math.floor(total*w/wsum));
+  let rest=total-amts.reduce((a,b)=>a+b,0);
+  let maxI=0;
+  weights.forEach((w,i)=>{if(w>weights[maxI])maxI=i;});
+  amts[maxI]+=rest;
+  return amts;
+}
+function meterNote(id,amt,rng){
+  if(id==='netlify') return '本月函式 '+(420+Math.round(amt*0.55)+Math.round(rng()*80)).toLocaleString()+' 次、頻寬 '+(8+Math.round(amt/180)+Math.round(rng()*6))+' GB';
+  if(id==='gemini') return '客服 '+(20+Math.round(amt/18)+Math.round(rng()*12))+' 則、辨識 '+(6+Math.round(amt/90))+' 次、生圖 '+(1+Math.round(amt/220)+Math.round(rng()*3))+' 張';
+  if(id==='line') return '本月訊息 '+(180+Math.round(amt*0.9)+Math.round(rng()*40)).toLocaleString()+' 則';
+  if(id==='meta') return 'Webhook '+(90+Math.round(amt*0.7)+Math.round(rng()*30)).toLocaleString()+' 次';
+  if(id==='firebase') return '讀寫約 '+(Math.round((40+amt/40+rng()*8)*10)/10)+' 萬次';
+  return '監控 '+ (18+Math.round(rng()*10))+' 天、憑證與備份維護';
+}
+function histMonthTotals(){
+  const rng=billRng('zeju-hist-sum-2026-05-08-v2');
+  // 5月較淡、7月較旺，四個月加總固定 10,400
+  const bias=[0.82,0.96,1.28,0.94];
+  const weights=bias.map(b=>b*(0.88+rng()*0.24));
+  return splitToInts(BILL_HIST_SUM,weights);
+}
+function buildUsagePackage(month,total){
+  const rng=billRng('zeju-pkg-'+month+'-v2');
+  const weights=BILL_METERS.map((m,i)=>{
+    const base=[1.15,1.55,1.05,0.88,0.82,0.52][i];
+    return base*(0.72+rng()*0.56);
+  });
+  const amts=splitToInts(total,weights);
+  return BILL_METERS.map((m,i)=>({
+    id:m.id,
+    name:m.name,
+    amt:amts[i],
+    note:meterNote(m.id,amts[i],rng),
+  }));
+}
+function isHistBillMonth(month){
+  return BILL_HIST_MONTHS.indexOf(month)>=0;
+}
+function packageForMonth(month){
+  if(isHistBillMonth(month)){
+    const totals=histMonthTotals();
+    const total=totals[BILL_HIST_MONTHS.indexOf(month)];
+    const pack=buildUsagePackage(month,total);
+    return {pack,total,baseFee:total,points:0,ptsFee:0,histSeason:true};
+  }
+  const usage=monthUsageFee(month);
+  const pack=buildUsagePackage(month,BILL_BASE_FEE);
+  return {pack,total:BILL_BASE_FEE+usage.ptsFee,baseFee:BILL_BASE_FEE,points:usage.points,ptsFee:usage.ptsFee,histSeason:false};
+}
 function billMonthKey(d){
   const x=d instanceof Date?d:new Date(d);
   return x.getFullYear()+'-'+(x.getMonth()+1).toString().padStart(2,'0');
@@ -43,25 +106,31 @@ function getUnpaidMonthlyBills(){
 }
 function issueMonthlyBill(month,force){
   if(!month)return null;
-  const usage=monthUsageFee(month);
+  const built=packageForMonth(month);
   const existing=getMonthlyBill(month);
-  if(existing&&existing.status==='paid'&&!force)return existing;
+  const staleHist=existing&&isHistBillMonth(month)&&!existing.histSeason;
+  if(existing&&existing.status==='paid'&&!force&&!staleHist)return existing;
+  if(existing&&existing.histSeason&&existing.status!=='paid'&&!force&&!staleHist){
+    // 歷史季帳單用月份種子算，數字不會變，不必每次重寫
+    return existing;
+  }
   const rec={
     month,
-    summary:month.replace('-','年')+'月 平台帳單 NT$'+usage.total.toLocaleString(),
+    summary:month.replace('-','年')+'月 平台帳單 NT$'+built.total.toLocaleString(),
     issuedAt:new Date().toLocaleString('zh-TW'),
     dueDate:month+'-12',
-    package:BILL_PACKAGE.map(p=>({...p})),
-    baseFee:BILL_BASE_FEE,
-    points:usage.points,
-    ptsFee:usage.ptsFee,
-    total:usage.total,
+    package:built.pack,
+    baseFee:built.baseFee,
+    points:built.points,
+    ptsFee:built.ptsFee,
+    total:built.total,
+    histSeason:!!built.histSeason,
     status:(existing&&existing.status)||'unpaid',
   };
   if(existing){
     DB.upd('monthly_bills',existing._id,{
       ...rec,
-      status:existing.status==='paid'?'paid':rec.status,
+      status:existing.status==='paid'&&!staleHist?'paid':rec.status,
     });
     return getMonthlyBill(month);
   }
@@ -69,13 +138,14 @@ function issueMonthlyBill(month,force){
   return getMonthlyBill(month);
 }
 function generateDueMonthlyBills(){
+  BILL_HIST_MONTHS.forEach(mo=>issueMonthlyBill(mo,false));
   const now=new Date();
   const y=now.getFullYear(), m=now.getMonth(), day=now.getDate();
   const months=[];
   const prev=new Date(y,m-1,1);
   months.push(billMonthKey(prev));
   if(day>=12) months.push(billMonthKey(now));
-  months.forEach(mo=>issueMonthlyBill(mo,false));
+  months.filter(mo=>!isHistBillMonth(mo)).forEach(mo=>issueMonthlyBill(mo,false));
   ensurePlatformBillCalendar();
   updNextBilDate();
 }
@@ -124,11 +194,17 @@ function renderMonthlyBillList(){
     box.innerHTML='<div style="font-size:.82rem;color:var(--g400);padding:8px 0">尚未產出月帳單，每月 12 日會自動產生</div>';
     return;
   }
-  box.innerHTML=bills.map(b=>{
+  const histBills=bills.filter(b=>isHistBillMonth(b.month));
+  const histSum=histBills.reduce((s,b)=>s+(b.total||0),0);
+  const head=histBills.length?'<div style="font-size:.78rem;color:var(--g500);padding:4px 0 10px">2026年5–8月合計 <strong>NT$'+histSum.toLocaleString()+'</strong>，各月依用量拆帳、數字不相同</div>':'';
+  box.innerHTML=head+bills.map(b=>{
     const paid=b.status==='paid';
+    const sub=b.histSeason
+      ?('用量計費'+(b.issuedAt?'　產出 '+b.issuedAt:''))
+      :('固定費 NT$'+(b.baseFee||0).toLocaleString()+' ＋超量 NT$'+(b.ptsFee||0).toLocaleString()+(b.issuedAt?'　產出 '+b.issuedAt:''));
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">'+
       '<div><div style="font-weight:800;color:var(--g700)">'+(b.month||'').replace('-','年')+'月　NT$'+(b.total||0).toLocaleString()+'</div>'+
-      '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">固定費 NT$'+(b.baseFee||0).toLocaleString()+' ＋超量 NT$'+(b.ptsFee||0).toLocaleString()+(b.issuedAt?'　產出 '+b.issuedAt:'')+'</div></div>'+
+      '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+sub+'</div></div>'+
       (paid
         ?'<span style="font-size:.72rem;font-weight:800;color:var(--ok);white-space:nowrap">已繳</span>'
         :'<button type="button" class="btn bg bxs" onclick="markMonthlyBillPaid(\''+b._id+'\')">標記已繳</button>')+
@@ -165,13 +241,17 @@ function renderBilling(){
   const recs=allRecs.filter(r=>(!r.month||r.month===curMonth));
   const monthPts=recs.reduce((s,r)=>s+(r.points||0),0);
   const totalPts=parseInt(localStorage.getItem('zeju_pts'))||76500;
-  const ptsFee=Math.round(monthPts*PTS_RATE);
-  const totalFee=BASE_FEE+ptsFee;
+  const issued=getMonthlyBill(curMonth);
+  const built=issued&&issued.package&&issued.package.length?null:packageForMonth(curMonth);
+  const pkg=(issued&&issued.package)||(built&&built.pack)||[];
+  const ptsFee=issued&&issued.histSeason?0:(issued?issued.ptsFee:Math.round(monthPts*PTS_RATE));
+  const baseFee=issued?issued.baseFee:(built?built.baseFee:BASE_FEE);
+  const totalFee=issued?issued.total:(baseFee+ptsFee);
 
   // ── 統計卡片更新 ──────────────────────────────────
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('bilPts',totalPts.toLocaleString());
-  set('bilUsed',monthPts.toLocaleString());
+  set('bilUsed',issued&&issued.histSeason?('NT$'+totalFee.toLocaleString()):monthPts.toLocaleString());
   set('bilAmt','NT$'+totalFee.toLocaleString());
 
   // ── 帳單摘要 ──────────────────────────────────────
@@ -191,39 +271,40 @@ function renderBilling(){
        </div>`
     ).join('');
 
-    const pkgRows=BILL_PACKAGE.map(p=>
+    const pkgRows=pkg.map(p=>
       `<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:7px 0;border-bottom:1px solid var(--g100);font-size:.82rem">
         <div>
           <div>${p.name}</div>
           <div style="font-size:.7rem;color:var(--g400);margin-top:2px">${p.note||''}</div>
         </div>
-        <span style="font-weight:700;color:var(--g600);white-space:nowrap">NT$${p.amt.toLocaleString()}</span>
+        <span style="font-weight:700;color:var(--g600);white-space:nowrap">NT$${(p.amt||0).toLocaleString()}</span>
        </div>`
     ).join('');
+    const hist=issued&&issued.histSeason;
 
     statEl.innerHTML=`
       <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">
         ${curMonth.replace('-','年')}月 帳單明細
       </div>
-      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:4px 0 6px">平台固定費（每月 NT$${BASE_FEE.toLocaleString()}）</div>
+      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:4px 0 6px">${hist?'用量計費（5–8月合計 NT$10,400）':'平台服務（依本月用量）'}</div>
       ${pkgRows}
       <div style="display:flex;justify-content:space-between;font-size:.85rem;padding:8px 0 10px;font-weight:800">
-        <span>固定費小計</span>
-        <span>NT$${BASE_FEE.toLocaleString()}</span>
+        <span>${hist?'本月用量小計':'服務費小計'}</span>
+        <span>NT$${baseFee.toLocaleString()}</span>
       </div>
-      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:6px 0 4px">超量使用</div>
-      ${rows||'<div style="font-size:.82rem;color:var(--g400);padding:8px 0">本月尚無超量記錄</div>'}
+      ${hist?'':`<div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:6px 0 4px">超量使用</div>
+      ${rows||'<div style="font-size:.82rem;color:var(--g400);padding:8px 0">本月尚無超量記錄</div>'}`}
       <div style="margin-top:10px;padding-top:10px;border-top:2px solid var(--g200)">
-        <div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
+        ${hist?'':`<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
           <span>點數超量（${monthPts.toLocaleString()}點 × NT$${PTS_RATE}）</span>
           <span style="font-weight:700">NT$${ptsFee.toLocaleString()}</span>
-        </div>
+        </div>`}
         <div style="display:flex;justify-content:space-between;font-size:1rem;font-weight:900;padding:8px 0;margin-top:4px;border-top:1.5px solid var(--gold-l);color:var(--gold-d)">
           <span>本月合計</span>
           <span>NT$${totalFee.toLocaleString()}</span>
         </div>
         <div style="font-size:.78rem;color:var(--g400);margin-top:6px">
-          每月12日結算　匯款：7505400208531　固定費含額度，實際第三方帳單差額由平台吸收
+          每月12日結算　匯款：7505400208531${hist?'　5–8月四個月加總 NT$10,400':''}
         </div>
       </div>`;
   }
