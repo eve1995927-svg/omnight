@@ -485,7 +485,7 @@ function renderQTable(){
   }).join('');
 
   list.querySelectorAll('[data-qid]').forEach(btn=>{btn.addEventListener('click',()=>{
-    const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qid));if(!q)return;
+    const q=findQuote(btn.dataset.qid);if(!q)return;
     qEditId=q._id;
     adSections=q.sections?JSON.parse(JSON.stringify(q.sections)):JSON.parse(JSON.stringify(DEF_SECTIONS));
     document.getElementById('adN').value=q.name||'';
@@ -498,7 +498,7 @@ function renderQTable(){
     showPanel('ad-newquote');
   });});
   list.querySelectorAll('[data-qcopy]').forEach(btn=>{btn.addEventListener('click',()=>{
-    const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qcopy));if(!q)return;
+    const q=findQuote(btn.dataset.qcopy);if(!q)return;
     // 複製：把內容整份帶進編輯畫面，但 qEditId 故意留空（不是原本那筆的 id），
     // 這樣按下「儲存」的時候是「新增一筆」，不會蓋掉原本那份報價單，
     // 案場名稱、業主姓名保留原本的，方便同一個業主要出第二份報價時直接改一改就好，不用重打
@@ -514,21 +514,27 @@ function renderQTable(){
     showPanel('ad-newquote');
     showToast('📋 已複製報價內容，改完記得存檔（會存成新的一份，原本那份不會被動到）');
   });});
-  list.querySelectorAll('[data-qct]').forEach(btn=>{btn.addEventListener('click',()=>{if(typeof convertQuoteToContract==='function')convertQuoteToContract(parseInt(btn.dataset.qct));});});
-  list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=DB.get('quotes').find(r=>r._id===parseInt(btn.dataset.qxls));if(q)dlXls(q.name,q.type,q.sections||[]);});});
+  list.querySelectorAll('[data-qct]').forEach(btn=>{btn.addEventListener('click',()=>{if(typeof convertQuoteToContract==='function')convertQuoteToContract(btn.dataset.qct);});});
+  list.querySelectorAll('[data-qxls]').forEach(btn=>{btn.addEventListener('click',()=>{const q=findQuote(btn.dataset.qxls);if(q)dlXls(q.name,q.type,q.sections||[]);});});
   list.querySelectorAll('[data-qarch]').forEach(btn=>{btn.addEventListener('click',()=>{
-    const id=parseInt(btn.dataset.qarch);
-    const q=DB.get('quotes').find(r=>r._id===id);if(!q)return;
-    DB.upd('quotes',id,{archived:!q.archived});
+    const q=findQuote(btn.dataset.qarch);if(!q)return;
+    DB.upd('quotes',q._id,{archived:!q.archived});
     renderQTable();
     showToast(q.archived?'✅ 已從封存取出':'✅ 已封存，可勾選「顯示已封存」找回');
   });});
-  list.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',parseInt(btn.dataset.qdel));updStats();renderQTable();showToast('✅ 已刪除。');});});});
+  list.querySelectorAll('[data-qdel]').forEach(btn=>{btn.addEventListener('click',()=>{
+    const q=findQuote(btn.dataset.qdel);if(!q)return;
+    confirmAction('確定刪除此報價記錄？',()=>{DB.del('quotes',q._id);updStats();renderQTable();showToast('✅ 已刪除。');});
+  });});
 }
 document.getElementById('qShowArchived')?.addEventListener('change',renderQTable);
 
+function findQuote(id){
+  return DB.get('quotes').find(r=>sameRecId(r._id,id));
+}
+
 function convertQuoteToContract(quoteId){
-  const q=DB.get('quotes').find(r=>r._id===quoteId);if(!q)return;
+  const q=findQuote(quoteId);if(!q)return;
   curProjectId=q.projectId||curProjectId;
   ctEditId=null;ctImgUrl=[];
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};

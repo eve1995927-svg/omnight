@@ -81,7 +81,7 @@ function getTodayTodos(){
   // 3. 施工中但超過7天沒更新進度
   const stale=projects.filter(p=>{
     if(p.status!=='progress') return false;
-    const prog=DB.get('progress').filter(r=>r.projectId===p._id);
+    const prog=DB.get('progress').filter(r=>sameRecId(r.projectId,p._id));
     if(!prog.length) return true;
     const latest=Math.max(...prog.map(r=>r._id));
     return (now-latest)/86400000>7;
@@ -177,7 +177,7 @@ function getTodayTodos(){
       const quotes=quotesForProject(p._id).filter(q=>q.status!=='rejected');
       const quoteTotal=quotes.reduce((s,q)=>s+(q.total||0),0);
       if(quoteTotal<=0)return false;
-      const vendorCost=DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted)
+      const vendorCost=DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted)
         .reduce((s,v)=>s+getVendorTrueCost(v),0);
       return vendorCost>quoteTotal;
     });
@@ -338,8 +338,8 @@ function renderProjects(filter){
   c.innerHTML='';
   projects.forEach(p=>{
     const st=PROJECT_STATUS[p.status||'inquiry']||PROJECT_STATUS.inquiry;
-    const vCount=DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted).length;
-    const income=DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+    const vCount=DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted).length;
+    const income=DB.get('ledger').filter(l=>sameRecId(l.projectId,p._id)&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
 
     const card=document.createElement('div');
     card.className='card';
@@ -414,7 +414,7 @@ function renderProjectsKanban(){
       body.innerHTML='<div class="kb-empty">沒有案場</div>';
     } else {
       items.forEach(p=>{
-        const income=DB.get('ledger').filter(l=>l.projectId===p._id&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
+        const income=DB.get('ledger').filter(l=>sameRecId(l.projectId,p._id)&&l.book==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
         const card=document.createElement('div');
         card.className='kb-card';
         card.draggable=true;
@@ -686,7 +686,7 @@ function openCalEventModal(dateStr,existingEvent){
       '<div class="field" style="margin:0"><label class="fl">日期</label><input class="fi" type="date" id="calEvDate" value="'+(ev?ev.date:dateStr)+'"></div>'+
       '<div class="field" style="margin:0"><label class="fl">時間（選填）</label><input class="fi" type="time" id="calEvTime" value="'+(ev&&ev.time?ev.time:'')+'"></div>'+
     '</div>'+
-    '<div class="field" style="margin-bottom:12px"><label class="fl">關聯案場（選填）</label><select class="fi" id="calEvProject"><option value="">不指定案場</option>'+DB.get('projects').map(p=>'<option value="'+p._id+'"'+(ev&&ev.projectId===p._id?' selected':'')+'>'+esc(p.name||'未命名案場')+'</option>').join('')+'</select></div>'+
+    '<div class="field" style="margin-bottom:12px"><label class="fl">關聯案場（選填）</label><select class="fi" id="calEvProject"><option value="">不指定案場</option>'+DB.get('projects').map(p=>'<option value="'+p._id+'"'+(ev&&sameRecId(ev.projectId,p._id)?' selected':'')+'>'+esc(p.name||'未命名案場')+'</option>').join('')+'</select></div>'+
     '<div class="field" style="margin-bottom:16px"><label class="fl">備注</label><input class="fi" id="calEvNote" placeholder="選填" value="'+(ev?esc(ev.note||''):'')+'"></div>'+
     '<div style="display:flex;gap:8px">'+
       '<button class="btn bg" id="calEvSaveBtn" style="flex:1">儲存</button>'+
@@ -738,7 +738,7 @@ function openMergeProjectsModal(){
     list.innerHTML='<div class="empty-state"><div class="es-ic">🔀</div><div class="es-t">案場數量不足</div><div class="es-s">至少要有 2 筆案場才能合併</div></div>';
   }else{
     list.innerHTML=projects.map(p=>{
-      const vCount=DB.get('vendors').filter(v=>v.projectId===p._id).length;
+      const vCount=DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)).length;
       const qCount=quotesForProject(p._id).length;
       return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);margin-bottom:8px;cursor:pointer" data-mergerow>'+
         '<input type="checkbox" value="'+p._id+'" style="width:17px;height:17px;margin-top:2px;cursor:pointer;accent-color:var(--gold)">'+
@@ -1060,12 +1060,17 @@ function renderProjectDetail(id, activeTab='overview'){
       </div>`;
   }
 
-  // Tab 切換
-  const tabs=['overview','survey','quote','vendor','contract','ledger','progress','design','memo'];
+  // Tab：主路五個 + 更多（廠商／合約／設計圖／備忘）
+  const primaryTabs=['overview','survey','quote','progress','ledger'];
+  const moreTabs=['vendor','contract','design','memo'];
   const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
-    tabBar.innerHTML=tabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" onclick="renderProjectDetail(${id},'${t}')">${tabLabels[t]}</div>`).join('');
+    const moreOn=moreTabs.includes(activeTab);
+    tabBar.innerHTML=primaryTabs.map(t=>`<div class="ltab${t===activeTab?' on':''}" data-ptab="${t}">${tabLabels[t]}</div>`).join('')+
+      `<div class="ltab${moreOn?' on':''}" data-ptab-more="1">${moreOn?(tabLabels[activeTab]||'⋯ 更多'):'⋯ 更多'}</div>`;
+    tabBar.querySelectorAll('[data-ptab]').forEach(el=>el.addEventListener('click',()=>renderProjectDetail(id,el.dataset.ptab)));
+    tabBar.querySelector('[data-ptab-more]')?.addEventListener('click',()=>openProjectTabMore(id,activeTab));
   }
 
   // Tab 內容
@@ -1091,9 +1096,9 @@ function renderProjectDetail(id, activeTab='overview'){
 // ── 案場總覽 Tab ──────────────────────────────────────────
 function renderProjOverview(id,p,c){
   const quotes=quotesForProject(id);
-  const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
-  const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
-  const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
+  const vendors=DB.get('vendors').filter(v=>sameRecId(v.projectId,id)&&!v.deleted);
+  const contracts=DB.get('contracts').filter(ct=>sameRecId(ct.projectId,id)&&!ct.deleted);
+  const ledgerItems=DB.get('ledger').filter(l=>sameRecId(l.projectId,id));
   // 毛利改用全站唯一的計算函式（core.js 的 calcProjectProfit），
   // 避免各頁面各自寫一套公式、算出來的數字兜不起來
   const {income,cost,vendorCost,profit}=calcProjectProfit(id);
@@ -1186,12 +1191,137 @@ function openQuoteFileUpload(projectId){
   const fc=document.getElementById('qfFileCard');if(fc)fc.style.display='none';
   const grid=document.getElementById('qfPhotoGrid');if(grid)grid.innerHTML='';
   const fi=document.getElementById('qfFile');if(fi)fi.value='';
+  initQuoteFileListeners();
   openModal('qFileModal');
+}
+
+function renderQfPhotos(){
+  const files=Array.isArray(qfImgUrl)?qfImgUrl:[];
+  const fc=document.getElementById('qfFileCard');
+  const grid=document.getElementById('qfPhotoGrid');
+  const cnt=document.getElementById('qfFileCount');
+  if(!files.length){if(fc)fc.style.display='none';if(grid)grid.innerHTML='';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已選 '+files.length+' 個檔案';
+  if(!grid)return;
+  grid.innerHTML='';
+  files.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);border:1.5px solid var(--g200)';
+    const url=p.url||p;
+    const isPdf=(p.type||'').includes('pdf')||String(url).startsWith('data:application/pdf');
+    if(isPdf){
+      const box=document.createElement('div');
+      box.style.cssText='width:100%;height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:.72rem;font-weight:800;color:var(--g600);padding:8px;text-align:center';
+      box.textContent='📄 PDF';
+      wrap.appendChild(box);
+    }else{
+      const img=document.createElement('img');
+      img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover;cursor:pointer';
+      img.onclick=()=>openLB(url);
+      wrap.appendChild(img);
+    }
+    const del=document.createElement('button');
+    del.type='button';
+    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem';
+    del.textContent='✕';
+    del.onclick=e=>{e.stopPropagation();qfImgUrl.splice(i,1);renderQfPhotos();};
+    wrap.appendChild(del);grid.appendChild(wrap);
+  });
+}
+
+async function addQuoteFiles(fileList){
+  const files=Array.from(fileList||[]).filter(f=>f.type.startsWith('image/')||f.type==='application/pdf'||/\.pdf$/i.test(f.name||''));
+  if(!files.length){showToast('⚠️ 請選照片或 PDF');return;}
+  if(!Array.isArray(qfImgUrl))qfImgUrl=[];
+  showToast('檔案處理中…',1800);
+  for(const f of files){
+    if(f.type.startsWith('image/')){
+      const compressed=await compressImage(f,1600,0.75);
+      const url=compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+      qfImgUrl.push({name:f.name,type:'image/jpeg',url});
+    }else{
+      const url=await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+      qfImgUrl.push({name:f.name,type:'application/pdf',url});
+    }
+  }
+  renderQfPhotos();
+  showToast('✅ 已加入 '+files.length+' 個檔案');
+}
+
+function initQuoteFileListeners(){
+  const zone=document.getElementById('qfZone');
+  const file=document.getElementById('qfFile');
+  const save=document.getElementById('qfSaveBtn');
+  const del=document.getElementById('qfDelFile');
+  if(file&&!file._qfBound){
+    file._qfBound=true;
+    file.addEventListener('change',async e=>{
+      const list=e.target.files;if(!list||!list.length)return;
+      await addQuoteFiles(list);
+      e.target.value='';
+    });
+  }
+  if(zone&&!zone._qfDrag){
+    zone._qfDrag=true;
+    zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag');});
+    zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
+    zone.addEventListener('drop',async e=>{
+      e.preventDefault();zone.classList.remove('drag');
+      await addQuoteFiles(e.dataTransfer.files);
+    });
+  }
+  if(save&&!save._qfBound){
+    save._qfBound=true;
+    save.addEventListener('click',saveQuoteFileUpload);
+  }
+  if(del&&!del._qfBound){
+    del._qfBound=true;
+    del.addEventListener('click',()=>{qfImgUrl=[];renderQfPhotos();const fi=document.getElementById('qfFile');if(fi)fi.value='';});
+  }
+}
+
+function saveQuoteFileUpload(){
+  if(!curProjectId){showToast('⚠️ 找不到案場');return;}
+  const files=Array.isArray(qfImgUrl)?qfImgUrl.slice():[];
+  if(!files.length){showToast('⚠️ 請先上傳報價單照片或 PDF');return;}
+  const p=getProject(curProjectId);
+  const name=(document.getElementById('qfName')?.value||'').trim()||((p?.name||'案場')+' 報價單');
+  DB.push('quotes',{
+    name,
+    caseN:p?.name||'',
+    projectId:p?._id||curProjectId,
+    fileUrls:files,
+    sections:[],
+    total:0,
+    summary:'報價檔 '+name
+  });
+  closeModal('qFileModal');
+  qfImgUrl=[];
+  showToast('✅ 報價單檔案已存到這個案場');
+  renderProjectDetail(curProjectId,'quote');
+  if(typeof renderQTable==='function')renderQTable();
+}
+
+function openProjectTabMore(id,activeTab){
+  const old=document.getElementById('_projTabMore');if(old){old.remove();return;}
+  const moreTabs=['vendor','contract','design','memo'];
+  const tabLabels={vendor:'🏗️ 廠商報價',contract:'📝 合約',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
+  const overlay=document.createElement('div');
+  overlay.id='_projTabMore';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:7000;display:flex;align-items:flex-end';
+  overlay.innerHTML='<div style="background:var(--w);width:100%;border-radius:20px 20px 0 0;padding:18px 16px calc(72px + env(safe-area-inset-bottom,0px));max-height:60vh;overflow:auto" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:1rem;margin-bottom:12px;color:var(--g800)">更多</div>'+
+    moreTabs.map(t=>'<button type="button" class="_ptm" data-tab="'+t+'" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 8px;border:none;background:'+(t===activeTab?'var(--g50)':'none')+';border-bottom:1px solid var(--g100);font-family:inherit;font-size:.9rem;font-weight:700;color:var(--g700);cursor:pointer;text-align:left">'+(tabLabels[t]||t)+'</button>').join('')+
+    '</div>';
+  overlay.addEventListener('click',()=>overlay.remove());
+  overlay.querySelectorAll('._ptm').forEach(b=>b.addEventListener('click',()=>{overlay.remove();renderProjectDetail(id,b.dataset.tab);}));
+  document.body.appendChild(overlay);
 }
 
 // ── 案場丈量 Tab（現場量尺寸，一個房間一筆，之後報價可以直接參考）───────
 function renderProjSurvey(id,p,c){
-  const items=DB.get('measurements').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  const items=DB.get('measurements').filter(m=>sameRecId(m.projectId,id)&&!m.deleted).sort((a,b)=>b._id-a._id);
   const totalArea=items.reduce((s,m)=>s+(m.area||0),0);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
@@ -1437,7 +1567,7 @@ const projVendorCatFilter={};
 
 // ── 案場廠商報價 Tab ──────────────────────────────────────
 function renderProjVendors(id,p,c){
-  const allVendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
+  const allVendors=DB.get('vendors').filter(v=>sameRecId(v.projectId,id)&&!v.deleted);
   const curCat=projVendorCatFilter[id]||'all';
   const vendors=curCat==='all'?allVendors:allVendors.filter(v=>(v.cat||'其他')===curCat);
   const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
@@ -1484,7 +1614,7 @@ function renderProjVendors(id,p,c){
 
 // ── 案場設計圖 Tab（上傳平面圖、設計圖、渲染圖，跟業主或廠商共享用）────────
 function renderProjDesign(id,p,c){
-  const items=DB.get('design_files').filter(d=>d.projectId===id&&!d.deleted).sort((a,b)=>b._id-a._id);
+  const items=DB.get('design_files').filter(d=>sameRecId(d.projectId,id)&&!d.deleted).sort((a,b)=>b._id-a._id);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">設計圖（${items.length} 張）</div>
@@ -1537,7 +1667,7 @@ function openProjDesignUpload(projectId){
 
 // ── 案場備忘錄 Tab（跟這個案場有關的任何筆記，例如業主特殊要求、廠商溝通紀錄）────
 function renderProjMemo(id,p,c){
-  const memos=DB.get('memos').filter(m=>m.projectId===id&&!m.deleted).sort((a,b)=>b._id-a._id);
+  const memos=DB.get('memos').filter(m=>sameRecId(m.projectId,id)&&!m.deleted).sort((a,b)=>b._id-a._id);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">備忘錄（${memos.length} 則）</div>
@@ -1641,7 +1771,7 @@ function getProjCatProfitRows(projectId,includeHidden){
   const p=DB.get('projects').find(x=>x._id===projectId)||{};
   const overrides=p.catProfitOverride||{};
   const hidden=p.catProfitHidden||[];
-  const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
+  const vendorList=DB.get('vendors').filter(v=>sameRecId(v.projectId,projectId)&&!v.deleted);
   const adoptedByCat={};
   vendorList.filter(v=>v.adopted).forEach(v=>{
     const k=v.cat||'其他';
@@ -1888,10 +2018,10 @@ function toggleProjCatProfit(id){
 }
 
 function showProjProfitDetail(projectId){
-  const items=DB.get('ledger').filter(l=>l.projectId===projectId);
+  const items=DB.get('ledger').filter(l=>sameRecId(l.projectId,projectId));
   const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
   const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
-  const vendorList=DB.get('vendors').filter(v=>v.projectId===projectId&&!v.deleted);
+  const vendorList=DB.get('vendors').filter(v=>sameRecId(v.projectId,projectId)&&!v.deleted);
   // 毛利用全站唯一的計算函式，明細清單仍在上面各自取（要逐筆列出來給人看）
   const {income,cost,vendorCost,profit,margin}=calcProjectProfit(projectId);
 
@@ -1972,7 +2102,7 @@ function openVendorForProject(projectId){
 
 // ── 案場合約 Tab ──────────────────────────────────────────
 function renderProjContract(id,p,c){
-  const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
+  const contracts=DB.get('contracts').filter(ct=>sameRecId(ct.projectId,id)&&!ct.deleted);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">合約（${contracts.length} 份）</div>
@@ -2029,7 +2159,7 @@ const projLedgerDirFilter={};
 function renderProjLedger(id,p,c){
   // 改成用「交易日期」排序而不是建立順序：付款日期現在可以自己選（例如補登之前的付款），
   // 用建立順序排會讓補登的舊款項跑到最上面，跟月份分組對不起來
-  const allItems=DB.get('ledger').filter(l=>l.projectId===id).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
+  const allItems=DB.get('ledger').filter(l=>sameRecId(l.projectId,id)).sort((a,b)=>(b.date||'').localeCompare(a.date||'')||b._id-a._id);
   // 上方統計卡片的數字用全站唯一的計算函式，跟案場總覽、毛利明細完全一致
   const {income,cost,vendorCost,profit}=calcProjectProfit(id);
 
@@ -2126,7 +2256,7 @@ function openProjLedgerModal(projectId, dir){
 
 // ── 案場進度 Tab ──────────────────────────────────────────
 function renderProjProgress(id,p,c){
-  const items=DB.get('progress').filter(r=>r.projectId===id).sort((a,b)=>a._id-b._id);
+  const items=DB.get('progress').filter(r=>sameRecId(r.projectId,id)).sort((a,b)=>a._id-b._id);
   const nextItem=items.find(x=>!x.done);
 
   c.innerHTML=`

@@ -39,15 +39,15 @@ const GROUPS={
   owner:[
     {l:'儀表板',   items:[{id:'owner-dash',l:'今日總覽',ic:'📊'}]},
     {l:'案場',     items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'業務',     items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
-    {l:'工程',     items:[{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
+    {l:'業務',     items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'試算報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'全部報價',ic:'📋'},{id:'contract',l:'全部合約',ic:'📝'}]},
+    {l:'工程',     items:[{id:'ad-progress',l:'全部進度',ic:'🔧'}]},
     {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
     {l:'管理',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'},{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   staff:[
     {l:'案場',   _perm:'projects',   items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
-    {l:'業務',   _perm:'business',   items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'快速報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'跨案場報價',ic:'📋'},{id:'contract',l:'跨案場合約',ic:'📝'}]},
-    {l:'工程',   _perm:'vendor',     items:[{id:'ad-progress',l:'跨案場進度',ic:'🔧'}]},
+    {l:'業務',   _perm:'business',   items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'試算報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'全部報價',ic:'📋'},{id:'contract',l:'全部合約',ic:'📝'}]},
+    {l:'工程',   _perm:'vendor',     items:[{id:'ad-progress',l:'全部進度',ic:'🔧'}]},
     {l:'會計',   _perm:'accounting', items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
     {l:'管理',   _perm:'settings',   items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
@@ -59,7 +59,11 @@ const GROUPS={
 // 手機版簡化選單：現場常用的功能才留在手機上，複雜的（合約、會計細項、人資薪資、系統設定...）
 // 只在電腦版顯示。帳款總覽有留，是因為「標記廠商付款」這個現場常用的小動作剛好放在那一頁裡。
 const MOBILE_ALLOWED_IDS=['owner-dash','projects','cs-chat','inbox','cs-quote','ad-quote','ad-progress','ac-overview'];
+const MOBILE_PRIMARY=[{id:'projects',l:'案場',ic:'🏗️'},{id:'inbox',l:'訊息',ic:'📥'},{id:'ad-quote',l:'報價',ic:'📋'},{id:'ac-overview',l:'帳款',ic:'💰'}];
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
+function sameRecId(a,b){
+  return a!=null&&a!==''&&b!=null&&b!==''&&String(a)===String(b);
+}
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
 const DEFAULT_STAFF_PERMISSIONS={projects:true,business:true,vendor:true,accounting:false,settings:false};
@@ -924,7 +928,6 @@ function confirmAction(msg,onConfirm,danger=true){
   const close=()=>box.remove();
   box.querySelector('._cfmNo').addEventListener('click',close);
   box.querySelector('._cfmYes').addEventListener('click',()=>{close();onConfirm();});
-  setTimeout(close,6000);
 }
 
 // ── 純資訊顯示（不需要確認/取消，用來取代 alert() 的多行狀態訊息）──
@@ -1480,26 +1483,12 @@ function setupApp(role){
 }
 const IMAP={owner:'👑',cs:'💬',mk:'✨',ad:'📋',ac:'📊'};
 function buildTabs(role){
-  const tabs=document.getElementById('rTabs');tabs.innerHTML='';
+  const tabs=document.getElementById('rTabs');if(!tabs)return;tabs.innerHTML='';
   if(role==='punch')return;
   const grps=groupsFor(role);
 
   if(isMobileView()){
-    // 手機版：不用「分組頁籤 → 側欄」兩層結構（側欄在手機上是隱藏的，等於點了分組也看不到裡面的項目），
-    // 改成把允許的功能攤平成一排，點哪個直接開哪個
-    const items=grps.flatMap(g=>g.items).filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
-    items.forEach(item=>{
-      const b=document.createElement('button');
-      b.className='rtab';b.dataset.panel=item.id;
-      b.textContent=item.ic+' '+item.l;
-      b.addEventListener('click',()=>{
-        showPanel(item.id);
-        document.querySelectorAll('.rtab').forEach(t=>t.classList.remove('on'));
-        b.classList.add('on');
-      });
-      tabs.appendChild(b);
-    });
-    if(tabs.firstChild)tabs.firstChild.classList.add('on');
+    // 手機改走底部五格＋更多，頂部不再塞一排捷徑
     return;
   }
 
@@ -1562,27 +1551,56 @@ function buildSidebar(role, activeGrp){
   updateHRBadge();
   typeof updateInboxBadge==='function'&&updateInboxBadge();
 }
+function mobileMoreItems(role){
+  const primary=new Set(MOBILE_PRIMARY.map(x=>x.id).concat(['project-detail','ad-newquote','punch-clock']));
+  return groupsFor(role).flatMap(g=>g.items).filter(i=>!primary.has(i.id));
+}
+function openMobileMore(role){
+  const old=document.getElementById('_mobileMore');if(old){old.remove();return;}
+  const overlay=document.createElement('div');
+  overlay.id='_mobileMore';
+  overlay.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:7000;display:flex;align-items:flex-end';
+  const items=mobileMoreItems(role);
+  overlay.innerHTML='<div style="background:var(--w);width:100%;border-radius:20px 20px 0 0;padding:18px 16px calc(72px + env(safe-area-inset-bottom,0px));max-height:72vh;overflow:auto" onclick="event.stopPropagation()">'+
+    '<div style="font-weight:900;font-size:1rem;margin-bottom:12px;color:var(--g800)">更多功能</div>'+
+    (items.length?items.map(i=>'<button type="button" class="_mmItem" data-pid="'+i.id+'" style="display:flex;align-items:center;gap:10px;width:100%;padding:13px 8px;border:none;background:none;border-bottom:1px solid var(--g100);font-family:inherit;font-size:.9rem;font-weight:700;color:var(--g700);cursor:pointer;text-align:left"><span style="width:28px">'+i.ic+'</span>'+i.l+'</button>').join(''):'<div style="font-size:.85rem;color:var(--g400);padding:12px 0">沒有其他功能</div>')+
+    '</div>';
+  overlay.addEventListener('click',()=>overlay.remove());
+  overlay.querySelectorAll('._mmItem').forEach(b=>b.addEventListener('click',()=>{overlay.remove();showPanel(b.dataset.pid);}));
+  document.body.appendChild(overlay);
+}
 function buildBN(role){
-  const bn=document.getElementById('bn');bn.innerHTML='';bn.className='bnav';
-  // 案場詳情頁：顯示返回按鈕
+  const bn=document.getElementById('bn');if(!bn)return;
+  bn.innerHTML='';bn.className='bnav';
   const isInProject=document.getElementById('p-project-detail')?.classList.contains('on');
+  if(role==='punch'){
+    groupsFor(role).flatMap(g=>g.items).forEach(item=>{
+      const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
+      b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l+'</span>';
+      b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
+    });
+    return;
+  }
   if(isInProject){
     const backBtn=document.createElement('button');
     backBtn.className='bnav-item';
-    backBtn.innerHTML='<span class="bni">←</span><span>返回</span>';
+    backBtn.style.flex='1';
+    backBtn.innerHTML='<span class="bni">←</span><span>返回列表</span>';
     backBtn.addEventListener('click',()=>showPanel('projects'));
     bn.appendChild(backBtn);
+    return;
   }
-  // 底部快速列：只從「手機版允許」的清單挑，不會出現複雜功能（跟頂部頁籤用同一份白名單，行為一致）
-  // 修正重點：這裡原本用 slice(0,6) 硬砍到剩 6 個，允許清單有 7 項的話，最後一項（帳款總覽）就會被砍掉、
-  // 完全不會出現在手機版——不是排版問題，是根本沒被畫出來。現在改成全部顯示，排不下就靠下面 CSS 讓這排可以左右滑動。
-  const allItems=groupsFor(role).flatMap(g=>g.items);
-  const items=role==='punch' ? allItems : allItems.filter(i=>MOBILE_ALLOWED_IDS.includes(i.id));
-  items.forEach(item=>{
+  const allowedIds=new Set(groupsFor(role).flatMap(g=>g.items.map(i=>i.id)));
+  MOBILE_PRIMARY.filter(item=>allowedIds.has(item.id)).forEach(item=>{
     const b=document.createElement('button');b.className='bnav-item';b.id='bn-'+item.id;
-    b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l.slice(0,4)+'</span>';
+    b.innerHTML='<span class="bni">'+item.ic+'</span><span>'+item.l+'</span>';
     b.addEventListener('click',()=>showPanel(item.id));bn.appendChild(b);
   });
+  const more=document.createElement('button');
+  more.className='bnav-item';more.id='bn-more';
+  more.innerHTML='<span class="bni">⋯</span><span>更多</span>';
+  more.addEventListener('click',()=>openMobileMore(role));
+  bn.appendChild(more);
   updateHRBadge();
   typeof updateInboxBadge==='function'&&updateInboxBadge();
 }
@@ -1607,15 +1625,25 @@ function updateHRBadge(){
 }
 function switchRole(role){curRole=role;const a=ACCTS[role];document.getElementById('uDot').textContent=a.abbr;document.getElementById('uName').textContent=a.name;document.getElementById('aName').textContent=a.name;document.getElementById('aRole').textContent=a.role;buildTabs(role);buildSidebar(role,groupsFor(role)?.[0]?.l);buildBN(role);showPanel(groupsFor(role)?.[0]?.items[0]?.id||'owner-dash');}
 function showPanel(id){
+  if(!id)return;
+  if(String(id).startsWith('p-')&&!document.getElementById('p-'+id)&&document.getElementById(id)) id=id.slice(2);
+  if(curRole==='punch'&&id!=='punch-clock'){id='punch-clock';}
+  if(curRole==='staff'){
+    const allowed=new Set(groupsFor('staff').flatMap(g=>g.items.map(i=>i.id)).concat(['project-detail','ad-newquote']));
+    if(!allowed.has(id)){showToast('此功能尚未開放給你，請洽老闆開通權限');return;}
+  }
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
   if(id==='inbox') setTimeout(()=>renderInboxPanel(),50);
   if(id==='settings') setTimeout(()=>{if(typeof updateLastBackupInfo==='function')updateLastBackupInfo();},50);
-  // 切換到新建報價時重設按鈕綁定
-  if(id==='ad-settings'){
-    const btn=document.getElementById('adSave');
-    if(btn)btn._bound=false;
-    setTimeout(()=>initAdQuote(),50);
-  }document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));document.querySelectorAll('.ni,.bnav-item').forEach(n=>n.classList.remove('on'));document.getElementById('p-'+id)?.classList.add('on');document.getElementById('nav-'+id)?.classList.add('on');document.getElementById('bn-'+id)?.classList.add('on');document.querySelector('.ws')?.scrollTo(0,0);syncTabActive(id);}
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.ni,.bnav-item').forEach(n=>n.classList.remove('on'));
+  document.getElementById('p-'+id)?.classList.add('on');
+  document.getElementById('nav-'+id)?.classList.add('on');
+  document.getElementById('bn-'+id)?.classList.add('on');
+  document.querySelector('.ws')?.scrollTo(0,0);
+  syncTabActive(id);
+  if(typeof buildBN==='function')buildBN(curRole);
+}
 
 // ══ HISTORY ══════════════════════════════════════════════
 function renderHistory(){

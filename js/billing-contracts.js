@@ -1300,14 +1300,14 @@ function initAdQuote(){
   if(adSaveBtn&&!adSaveBtn._bound){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
+      ensureProjectSelected(document.getElementById('adCase'),(projectIdVal)=>{
       const sub=calcAll(adSections);
-      const caseSelVal=document.getElementById('adCase')?.value||'';
-      const selectedProject=caseSelVal?DB.get('projects').find(p=>String(p._id)===String(caseSelVal)):null;
+      const selectedProject=DB.get('projects').find(p=>sameRecId(p._id,projectIdVal));
       const caseNv=selectedProject?.name||'';
       const payload={summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
-        projectId:selectedProject?._id||null,
+        projectId:selectedProject?._id||projectIdVal,
         sections:JSON.parse(JSON.stringify(adSections)),total:sub,
         updatedAt:new Date().toLocaleString('zh-TW')};
       if(qEditId){
@@ -1326,6 +1326,7 @@ function initAdQuote(){
           {label:'稍後再說',action:()=>{}},
         ]);
       }
+      });
     });
   }
 

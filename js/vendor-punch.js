@@ -692,7 +692,7 @@ function buildVendorCard(v){
       // 同一個案場、同一個工程類別下，一次只能有一家是「已採用」的報價（工種毛利要抓實際採用的那筆成本，
       // 不能同一個工種被好幾家廠商的成本重複算進去），所以標記這家的同時，把同類別的其他家自動取消採用
       if(nowAdopted&&v.projectId&&v.cat){
-        DB.get('vendors').filter(o=>o._id!==v._id&&o.projectId===v.projectId&&o.cat===v.cat&&!o.deleted&&o.adopted)
+        DB.get('vendors').filter(o=>o._id!==v._id&&sameRecId(o.projectId,v.projectId)&&o.cat===v.cat&&!o.deleted&&o.adopted)
           .forEach(o=>DB.upd('vendors',o._id,{adopted:false}));
       }
       refreshVendorViews();
@@ -847,7 +847,7 @@ function requestPunchLocation(){
 }
 
 function punchLocHelpMessage(state){
-  if(state==='insecure')return '定位只能在安全網站使用。請用 Safari 打開 https://omnight.netlify.app ，不要用 LINE 裡面的瀏覽器。';
+  if(state==='insecure')return '定位只能在安全網站使用。請用 Safari 打開 '+location.origin+' ，不要用 LINE 裡面的瀏覽器。';
   if(state==='unsupported')return '這台裝置或這個瀏覽器不支援定位。請用手機 Safari 或 Chrome 打開。';
   if(state==='denied')return '手機沒有跳出允許、或之前按過拒絕。\n\n請先點「開啟定位」，在跳出的視窗選「允許」。\n\n如果完全沒跳出：\n• iPhone：設定 → 隱私權與安全性 → 定位服務 → 打開，再進 Safari（或主畫面的案場通）允許這個網站\n• 不要從 LINE 內建瀏覽器打開，改用 Safari\n• Android：設定 → 位置資訊 → 開啟，並允許瀏覽器定位';
   return '定位逾時或 GPS 沒開。請確認手機定位已開啟，到訊號比較好的地方，再點一次「開啟定位」。';

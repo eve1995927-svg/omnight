@@ -10,6 +10,7 @@
   --w:#FFF;--g50:#FAFAF8;--g100:#F4F3EF;--g200:#E8E6DF;
   --g300:#D0CEC5;--g400:#A0998E;--g500:#706860;
   --g600:#4A4540;--g800:#28241C;
+  --gray-400:var(--g400);--gray-500:var(--g500);
   --ok:#12805A;--ok-bg:#E9F8F1;--ok-bd:#7FCFAA;
   --warn:#B05F00;--warn-bg:#FFF1DB;--warn-bd:#E8AD52;
   --bad:#B32020;--bad-bg:#FCECEA;--bad-bd:#E88A80;
@@ -488,7 +489,7 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
   #app{height:100dvh;overflow:hidden}
   .tb{height:52px;padding:0 12px}
   .tlogo{font-size:1rem;padding-right:8px}
-  .rtabs{padding:0 2px;gap:1px}
+  .rtabs{display:none}
   .rtab{padding:5px 8px;font-size:.7rem}
   .ml{grid-template-columns:1fr;height:calc(100dvh - 52px - 56px)}
   .sb{display:none}
@@ -510,6 +511,8 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
   }
   .bnav-item.on{color:var(--gold-d)}
   .bnav-item .bni{font-size:1.3rem;line-height:1;display:block}
+
+  #toast{bottom:calc(64px + env(safe-area-inset-bottom,0px))}
 
   /* ── 報表/卡片 ── */
   .g2,.g3,.g4{grid-template-columns:1fr 1fr}
@@ -554,6 +557,8 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
   /* ── HR 薪資 Tab ── */
   .ledger-tab{flex-wrap:wrap;gap:4px}
   .ltab{padding:7px 10px;font-size:.75rem}
+  #projDetailTabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  #projDetailTabs .ltab{flex:0 0 auto;white-space:nowrap}
 
   /* ── 客服聊天 ── */
   #p-cs-chat .panel-body{flex-direction:column;height:auto}

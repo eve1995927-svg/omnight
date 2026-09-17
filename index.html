@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>澤居 AI 智能後台</title>
+<title>案場通 · 澤居</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0F2237">
 <link rel="icon" href="icons/icon-192.png">
@@ -27,7 +27,7 @@
   <div class="llogo">
    <span class="lbrand">澤居</span>
    <div class="ldivider"></div>
-   <span class="ltag">AI 智能後台 · 裝修管理平台</span>
+   <span class="ltag">案場通 · 裝修管理平台</span>
   </div>
 
   <div id="lApiWarn" style="background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--rxs);padding:11px 15px;margin-bottom:16px;font-size:.78rem;color:var(--warn);font-weight:700;display:none">
@@ -138,7 +138,7 @@
  <!-- 近期案場 -->
  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
   <div style="font-size:.78rem;font-weight:900;color:var(--g400);letter-spacing:.1em">近期案場</div>
-  <button onclick="showPanel('p-projects')" style="background:none;border:none;color:var(--gold-d);font-size:.8rem;cursor:pointer;font-weight:700">查看全部 →</button>
+  <button onclick="showPanel('projects')" style="background:none;border:none;color:var(--gold-d);font-size:.8rem;cursor:pointer;font-weight:700">查看全部 →</button>
  </div>
  <div id="dashRecentProjects"></div>
 
@@ -310,7 +310,7 @@
 
 <!-- ══ CS QUOTE (快速報價，可展開細項) ══ -->
 <div class="panel" id="p-cs-quote">
- <div class="ph"><div><div class="ptit">📐 快速報價</div><div class="psub">每個大工項下可展開填細項，參考知名統包格式</div></div></div>
+ <div class="ph"><div><div class="ptit">📐 試算報價</div><div class="psub">快速估價與細項試算，正式報價請到案場或「全部報價」</div></div></div>
  <div class="g2">
   <div>
    <div class="card">
@@ -451,7 +451,7 @@
 
 <!-- ══ AD QUOTE LIST ══ -->
 <div class="panel" id="p-ad-quote">
- <div class="ph"><div><div class="ptit">📋 報價管理</div><div class="psub">所有報價記錄，可查詢、編輯與下載</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
+ <div class="ph"><div><div class="ptit">📋 全部報價</div><div class="psub">所有案場的報價記錄，可查詢、編輯與下載。新建時請先選案場</div></div><button class="btn bg bsm" id="goNewQ">＋ 新建報價單</button></div>
  <div class="g3" style="margin-bottom:16px">
   <div class="stat"><div class="sn" id="qCnt">0</div><div class="sl">本月報價件數</div></div>
   <div class="stat"><div class="sn" id="qSum">—</div><div class="sl">本月報價總額</div></div>
@@ -474,7 +474,7 @@
     <div class="ct">👤 業主資料</div>
     <div class="g2">
      <div class="field"><label class="fl">業主姓名</label><input class="fi" id="adN" placeholder="王先生"></div>
-     <div class="field"><label class="fl">案場名稱</label><select class="fi" id="adCase"></select></div>
+     <div class="field"><label class="fl">關聯案場（必選）</label><select class="fi" id="adCase"></select></div>
     </div>
     <div class="field"><label class="fl">施工地址</label><input class="fi" id="adAd" placeholder="台北市大安區某路"></div>
     <div class="g2">
@@ -1537,12 +1537,12 @@
  <div class="modal" style="max-width:560px">
   <div class="mtit">上傳報價單檔案 <button class="mcl" data-close="qFileModal">✕</button></div>
 
-  <div class="upz" id="qfZone" style="border-style:solid;border-width:2px">
+  <div class="upz" id="qfZone" style="border-style:solid;border-width:2px;overflow:hidden">
+   <input type="file" id="qfFile" accept="image/*,.pdf" multiple style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;z-index:2;font-size:20px">
    <span class="upz-ic">📋</span>
    <div class="upz-title">上傳報價單照片或檔案（可多張）</div>
    <div class="upz-sub">📷 已經做好的報價單，直接拍照或上傳 PDF 存檔<br>可一次選多張，每頁拍一張</div>
   </div>
-  <input type="file" id="qfFile" accept="image/*,.pdf" multiple style="display:none">
 
   <div id="qfFileCard" style="display:none;margin:12px 0">
    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">

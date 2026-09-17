@@ -1142,7 +1142,7 @@ document.getElementById('inboxReplyInp')?.addEventListener('keydown',e=>{
   if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendInboxReply();}
 });
 function inboxOrigin(){
-  try{return location.origin;}catch{return 'https://omnight.netlify.app';}
+  try{return location.origin;}catch{return '';}
 }
 function inboxHas(v){return !!(v&&String(v).trim());}
 function inboxStatusLine(ok,label){
