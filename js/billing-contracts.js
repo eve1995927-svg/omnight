@@ -11,6 +11,7 @@ function updatePtsDisplay(){
 // 而是「含額度、含串接維運」的每月最低消費；超量 AI 再用點數另計。
 const BILL_BASE_FEE=9000;
 const BILL_PTS_RATE=0.1;
+const BILL_TAX_RATE=0.05;
 const BILL_METERS=[
   {id:'netlify',name:'Netlify 託管／函式／頻寬'},
   {id:'gemini',name:'Gemini API（客服、辨識、生圖）'},
@@ -20,7 +21,9 @@ const BILL_METERS=[
   {id:'ops',name:'系統維運與資安監控'},
 ];
 const BILL_HIST_MONTHS=['2026-05','2026-06','2026-07','2026-08'];
-const BILL_HIST_SUM=10400;
+const BILL_HIST_SUM=10400; // 5–8 月未稅合計
+const BILL_HIST_TAX=Math.round(BILL_HIST_SUM*BILL_TAX_RATE); // 520
+const BILL_HIST_GRAND=BILL_HIST_SUM+BILL_HIST_TAX; // 10,920
 function billRng(seed){
   let h=2166136261;
   const s=String(seed||'');
@@ -49,10 +52,13 @@ function meterNote(id,amt,rng){
 }
 function histMonthTotals(){
   const rng=billRng('zeju-hist-sum-2026-05-08-v2');
-  // 5月較淡、7月較旺，四個月加總固定 10,400
+  // 5月較淡、7月較旺，四個月未稅加總固定 10,400
   const bias=[0.82,0.96,1.28,0.94];
   const weights=bias.map(b=>b*(0.88+rng()*0.24));
   return splitToInts(BILL_HIST_SUM,weights);
+}
+function histMonthTaxes(pretax){
+  return splitToInts(BILL_HIST_TAX,pretax);
 }
 function buildUsagePackage(month,total){
   const rng=billRng('zeju-pkg-'+month+'-v2');
@@ -74,13 +80,16 @@ function isHistBillMonth(month){
 function packageForMonth(month){
   if(isHistBillMonth(month)){
     const totals=histMonthTotals();
-    const total=totals[BILL_HIST_MONTHS.indexOf(month)];
-    const pack=buildUsagePackage(month,total);
-    return {pack,total,baseFee:total,points:0,ptsFee:0,histSeason:true};
+    const taxes=histMonthTaxes(totals);
+    const idx=BILL_HIST_MONTHS.indexOf(month);
+    const sub=totals[idx];
+    const tax=taxes[idx];
+    const pack=buildUsagePackage(month,sub);
+    return {pack,total:sub+tax,baseFee:sub,tax,taxRate:BILL_TAX_RATE,points:0,ptsFee:0,histSeason:true};
   }
   const usage=monthUsageFee(month);
   const pack=buildUsagePackage(month,BILL_BASE_FEE);
-  return {pack,total:BILL_BASE_FEE+usage.ptsFee,baseFee:BILL_BASE_FEE,points:usage.points,ptsFee:usage.ptsFee,histSeason:false};
+  return {pack,total:BILL_BASE_FEE+usage.ptsFee,baseFee:BILL_BASE_FEE,tax:0,taxRate:0,points:usage.points,ptsFee:usage.ptsFee,histSeason:false};
 }
 function billMonthKey(d){
   const x=d instanceof Date?d:new Date(d);
@@ -108,12 +117,10 @@ function issueMonthlyBill(month,force){
   if(!month)return null;
   const built=packageForMonth(month);
   const existing=getMonthlyBill(month);
-  const staleHist=existing&&isHistBillMonth(month)&&!existing.histSeason;
-  if(existing&&existing.status==='paid'&&!force&&!staleHist)return existing;
-  if(existing&&existing.histSeason&&existing.status!=='paid'&&!force&&!staleHist){
-    // 歷史季帳單用月份種子算，數字不會變，不必每次重寫
-    return existing;
-  }
+  const staleHist=existing&&isHistBillMonth(month)&&(
+    !existing.histSeason||Number(existing.taxRate)!==BILL_TAX_RATE||existing.total!==built.total
+  );
+  if(existing&&!force&&!staleHist)return existing;
   const rec={
     month,
     summary:month.replace('-','年')+'月 平台帳單 NT$'+built.total.toLocaleString(),
@@ -121,6 +128,8 @@ function issueMonthlyBill(month,force){
     dueDate:month+'-12',
     package:built.pack,
     baseFee:built.baseFee,
+    tax:built.tax||0,
+    taxRate:built.taxRate||0,
     points:built.points,
     ptsFee:built.ptsFee,
     total:built.total,
@@ -140,12 +149,15 @@ function issueMonthlyBill(month,force){
 function generateDueMonthlyBills(){
   BILL_HIST_MONTHS.forEach(mo=>issueMonthlyBill(mo,false));
   const now=new Date();
-  const y=now.getFullYear(), m=now.getMonth(), day=now.getDate();
-  const months=[];
-  const prev=new Date(y,m-1,1);
-  months.push(billMonthKey(prev));
-  if(day>=12) months.push(billMonthKey(now));
-  months.filter(mo=>!isHistBillMonth(mo)).forEach(mo=>issueMonthlyBill(mo,false));
+  const y=now.getFullYear(), m=now.getMonth();
+  // 當月還沒走完不出帳單，只產出「上個月」（5–8 月歷史季另外處理）
+  const prev=billMonthKey(new Date(y,m-1,1));
+  if(!isHistBillMonth(prev)) issueMonthlyBill(prev,false);
+  const cur=billMonthKey(now);
+  const premature=getMonthlyBill(cur);
+  if(premature&&premature.status!=='paid'&&!isHistBillMonth(cur)){
+    DB.del('monthly_bills',premature._id);
+  }
   ensurePlatformBillCalendar();
   updNextBilDate();
 }
@@ -196,11 +208,13 @@ function renderMonthlyBillList(){
   }
   const histBills=bills.filter(b=>isHistBillMonth(b.month));
   const histSum=histBills.reduce((s,b)=>s+(b.total||0),0);
-  const head=histBills.length?'<div style="font-size:.78rem;color:var(--g500);padding:4px 0 10px">2026年5–8月合計 <strong>NT$'+histSum.toLocaleString()+'</strong>，各月依用量拆帳、數字不相同</div>':'';
+  const histTax=histBills.reduce((s,b)=>s+(b.tax||0),0);
+  const histSub=histSum-histTax;
+  const head=histBills.length?'<div style="font-size:.78rem;color:var(--g500);padding:4px 0 10px">2026年5–8月未稅 <strong>NT$'+(histSub||BILL_HIST_SUM).toLocaleString()+'</strong> ＋營業稅5% <strong>NT$'+(histTax||BILL_HIST_TAX).toLocaleString()+'</strong> ＝ <strong>NT$'+histSum.toLocaleString()+'</strong>。9月尚未結束，不會先出帳單。</div>':'';
   box.innerHTML=head+bills.map(b=>{
     const paid=b.status==='paid';
     const sub=b.histSeason
-      ?('用量計費'+(b.issuedAt?'　產出 '+b.issuedAt:''))
+      ?('未稅 NT$'+(b.baseFee||0).toLocaleString()+' ＋稅 NT$'+(b.tax||0).toLocaleString()+(b.issuedAt?'　產出 '+b.issuedAt:''))
       :('固定費 NT$'+(b.baseFee||0).toLocaleString()+' ＋超量 NT$'+(b.ptsFee||0).toLocaleString()+(b.issuedAt?'　產出 '+b.issuedAt:''));
     return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--g100)">'+
       '<div><div style="font-weight:800;color:var(--g700)">'+(b.month||'').replace('-','年')+'月　NT$'+(b.total||0).toLocaleString()+'</div>'+
@@ -242,17 +256,19 @@ function renderBilling(){
   const monthPts=recs.reduce((s,r)=>s+(r.points||0),0);
   const totalPts=parseInt(localStorage.getItem('zeju_pts'))||76500;
   const issued=getMonthlyBill(curMonth);
+  const inProgress=curMonth===billMonthKey(new Date())&&!isHistBillMonth(curMonth)&&!issued;
   const built=issued&&issued.package&&issued.package.length?null:packageForMonth(curMonth);
   const pkg=(issued&&issued.package)||(built&&built.pack)||[];
   const ptsFee=issued&&issued.histSeason?0:(issued?issued.ptsFee:Math.round(monthPts*PTS_RATE));
   const baseFee=issued?issued.baseFee:(built?built.baseFee:BASE_FEE);
-  const totalFee=issued?issued.total:(baseFee+ptsFee);
+  const taxAmt=issued?(issued.tax||0):(built&&built.tax)||0;
+  const totalFee=issued?issued.total:(inProgress?0:(baseFee+ptsFee+(taxAmt||0)));
 
   // ── 統計卡片更新 ──────────────────────────────────
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('bilPts',totalPts.toLocaleString());
-  set('bilUsed',issued&&issued.histSeason?('NT$'+totalFee.toLocaleString()):monthPts.toLocaleString());
-  set('bilAmt','NT$'+totalFee.toLocaleString());
+  set('bilUsed',issued&&issued.histSeason?('NT$'+baseFee.toLocaleString()):(inProgress?'尚未結算':monthPts.toLocaleString()));
+  set('bilAmt',inProgress?'尚未結算':'NT$'+totalFee.toLocaleString());
 
   // ── 帳單摘要 ──────────────────────────────────────
   const statEl=document.getElementById('bilStat');
@@ -282,20 +298,30 @@ function renderBilling(){
     ).join('');
     const hist=issued&&issued.histSeason;
 
+    if(inProgress){
+      statEl.innerHTML=`
+        <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">
+          ${curMonth.replace('-','年')}月 尚未結束
+        </div>
+        <div style="font-size:.85rem;color:var(--g500);line-height:1.7">本月還在進行中，不會先出帳單。走完這個月之後才會依用量結算。<br>5–8 月請用上面月份選單查看（未稅合計 NT$10,400 ＋營業稅 5%）。</div>`;
+    } else {
     statEl.innerHTML=`
       <div style="font-size:.85rem;font-weight:900;color:var(--g700);margin-bottom:10px">
         ${curMonth.replace('-','年')}月 帳單明細
       </div>
-      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:4px 0 6px">${hist?'用量計費（5–8月合計 NT$10,400）':'平台服務（依本月用量）'}</div>
+      <div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:4px 0 6px">${hist?'用量計費（5–8月未稅合計 NT$10,400）':'平台服務（依本月用量）'}</div>
       ${pkgRows}
       <div style="display:flex;justify-content:space-between;font-size:.85rem;padding:8px 0 10px;font-weight:800">
-        <span>${hist?'本月用量小計':'服務費小計'}</span>
+        <span>${hist?'本月用量小計（未稅）':'服務費小計'}</span>
         <span>NT$${baseFee.toLocaleString()}</span>
       </div>
       ${hist?'':`<div style="font-size:.72rem;font-weight:800;color:var(--g400);letter-spacing:.08em;margin:6px 0 4px">超量使用</div>
       ${rows||'<div style="font-size:.82rem;color:var(--g400);padding:8px 0">本月尚無超量記錄</div>'}`}
       <div style="margin-top:10px;padding-top:10px;border-top:2px solid var(--g200)">
-        ${hist?'':`<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
+        ${hist?`<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
+          <span>營業稅 5%</span>
+          <span style="font-weight:700">NT$${taxAmt.toLocaleString()}</span>
+        </div>`:`<div style="display:flex;justify-content:space-between;font-size:.85rem;padding:4px 0">
           <span>點數超量（${monthPts.toLocaleString()}點 × NT$${PTS_RATE}）</span>
           <span style="font-weight:700">NT$${ptsFee.toLocaleString()}</span>
         </div>`}
@@ -304,9 +330,10 @@ function renderBilling(){
           <span>NT$${totalFee.toLocaleString()}</span>
         </div>
         <div style="font-size:.78rem;color:var(--g400);margin-top:6px">
-          每月12日結算　匯款：7505400208531${hist?'　5–8月四個月加總 NT$10,400':''}
+          每月走完才結算　匯款：7505400208531${hist?'　5–8月未稅 10,400 ＋稅 520 ＝ NT$10,920':''}
         </div>
       </div>`;
+    }
   }
 
   // ── 明細列表 ──────────────────────────────────────

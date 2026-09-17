@@ -1189,25 +1189,138 @@ function renderProjSurvey(id,p,c){
             </div>
             ${m.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(m.note)}</div>`:''}
           </div>
-          <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
+          <div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn bo bxs" onclick="openSurveyModal(${id},${m._id})">＋照片</button>
+            <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
+          </div>
         </div>
         ${(m.fileUrls||[]).length?`
           <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(70px,1fr));gap:6px;margin-top:10px">
-            ${m.fileUrls.map(f=>`<img src="${esc(f.url||f)}" onclick="openLB('${esc(f.url||f)}')" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}
+            ${m.fileUrls.map(f=>`<img src="${esc(f.url||f)}" onclick="openLB(this.src)" style="width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--g200)">`).join('')}
           </div>`:''}
       </div>`).join(''):'<div class="empty-state"><div class="es-ic">📐</div><div class="es-t">尚無丈量記錄</div><div class="es-s">點右上方「＋新增丈量」，一個房間量一次，之後報價可以直接參考</div></div>'}`;
 }
 
-function openSurveyModal(projectId){
+let svEditId=null;
+
+function updSurveyArea(){
+  const len=parseFloat(document.getElementById('svLen')?.value)||0;
+  const wid=parseFloat(document.getElementById('svWid')?.value)||0;
+  const el=document.getElementById('svArea');
+  if(!el)return;
+  const ping=(len&&wid)?(len*wid/3.3058):0;
+  el.textContent=ping?ping.toFixed(2)+' 坪':'0 坪';
+}
+
+function renderSvPhotos(){
+  const photos=Array.isArray(svImgUrl)?svImgUrl:[];
+  const fc=document.getElementById('svFileCard');
+  const grid=document.getElementById('svPhotoGrid');
+  const cnt=document.getElementById('svFileCount');
+  if(!photos.length){if(fc)fc.style.display='none';if(grid)grid.innerHTML='';return;}
+  if(fc)fc.style.display='block';
+  if(cnt)cnt.textContent='已選 '+photos.length+' 張';
+  if(!grid)return;
+  grid.innerHTML='';
+  photos.forEach((p,i)=>{
+    const wrap=document.createElement('div');
+    wrap.style.cssText='position:relative;aspect-ratio:1/1;border-radius:var(--rxs);overflow:hidden;background:var(--g100);cursor:pointer;border:1.5px solid var(--g200)';
+    const url=p.url||p;
+    const img=document.createElement('img');
+    img.src=url;img.style.cssText='width:100%;height:100%;object-fit:cover';
+    img.onclick=()=>openLB(url);
+    const del=document.createElement('button');
+    del.type='button';
+    del.style.cssText='position:absolute;top:4px;right:4px;width:22px;height:22px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;cursor:pointer;font-size:.7rem';
+    del.textContent='✕';
+    del.onclick=e=>{e.stopPropagation();svImgUrl.splice(i,1);renderSvPhotos();};
+    wrap.appendChild(img);wrap.appendChild(del);grid.appendChild(wrap);
+  });
+  const addMore=document.createElement('div');
+  addMore.style.cssText='aspect-ratio:1/1;border:2px dashed var(--g300);border-radius:var(--rxs);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;color:var(--g400);font-size:.75rem;font-weight:700';
+  addMore.innerHTML='<div style="font-size:1.4rem">＋</div><div>新增</div>';
+  addMore.onclick=()=>document.getElementById('svFile')?.click();
+  grid.appendChild(addMore);
+}
+
+async function addSurveyPhotos(fileList){
+  const files=Array.from(fileList||[]).filter(f=>f.type.startsWith('image/'));
+  if(!files.length){showToast('⚠️ 請選照片');return;}
+  if(!Array.isArray(svImgUrl))svImgUrl=[];
+  showToast('照片處理中…',1800);
+  for(const f of files){
+    const compressed=await compressImage(f,1600,0.75);
+    const url=compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
+    svImgUrl.push({name:f.name,type:'image/jpeg',url});
+  }
+  renderSvPhotos();
+  showToast('✅ 已加入 '+files.length+' 張照片');
+}
+
+function initSurveyListeners(){
+  const zone=document.getElementById('svZone');
+  const file=document.getElementById('svFile');
+  const save=document.getElementById('svSaveBtn');
+  if(file&&!file._svBound){
+    file._svBound=true;
+    file.addEventListener('change',async e=>{
+      const list=e.target.files;if(!list||!list.length)return;
+      await addSurveyPhotos(list);
+      e.target.value='';
+    });
+  }
+  if(zone&&!zone._svDrag){
+    zone._svDrag=true;
+    zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag');});
+    zone.addEventListener('dragleave',()=>zone.classList.remove('drag'));
+    zone.addEventListener('drop',async e=>{
+      e.preventDefault();zone.classList.remove('drag');
+      await addSurveyPhotos(e.dataTransfer.files);
+    });
+  }
+  if(save&&!save._svBound){
+    save._svBound=true;
+    save.addEventListener('click',saveSurvey);
+  }
+}
+
+function openSurveyModal(projectId,measureId){
   curProjectId=projectId;
-  svImgUrl=[];
+  svEditId=measureId||null;
+  const m=measureId?DB.get('measurements').find(x=>String(x._id)===String(measureId)):null;
+  svImgUrl=(m&&Array.isArray(m.fileUrls))?m.fileUrls.map(f=>(typeof f==='string'?{name:'照片',type:'image/jpeg',url:f}:{name:f.name||'照片',type:f.type||'image/jpeg',url:f.url||f})):[] ;
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
-  set('svRoom','');set('svLen','');set('svWid','');set('svNote','');
-  if(typeof updSurveyArea==='function')updSurveyArea();
-  const fc=document.getElementById('svFileCard');if(fc)fc.style.display='none';
-  const grid=document.getElementById('svPhotoGrid');if(grid)grid.innerHTML='';
+  set('svRoom',m?.room||'');set('svLen',m?.length||'');set('svWid',m?.width||'');set('svNote',m?.note||'');
+  updSurveyArea();
   const fi=document.getElementById('svFile');if(fi)fi.value='';
+  const title=document.querySelector('#surveyModal .mtit');
+  if(title)title.innerHTML=(m?'📐 編輯丈量記錄':'📐 新增丈量記錄')+' <button class="mcl" data-close="surveyModal">✕</button>';
+  const btn=document.getElementById('svSaveBtn');if(btn)btn.textContent=m?'儲存變更':'儲存丈量記錄';
+  renderSvPhotos();
+  initSurveyListeners();
   openModal('surveyModal');
+}
+
+function saveSurvey(){
+  const room=(document.getElementById('svRoom')?.value||'').trim();
+  if(!room){showToast('⚠️ 請填房間／區域名稱');return;}
+  if(!curProjectId){showToast('⚠️ 找不到案場');return;}
+  const length=parseFloat(document.getElementById('svLen')?.value)||0;
+  const width=parseFloat(document.getElementById('svWid')?.value)||0;
+  const area=(length&&width)?+(length*width/3.3058).toFixed(2):0;
+  const note=(document.getElementById('svNote')?.value||'').trim();
+  const fileUrls=Array.isArray(svImgUrl)?svImgUrl.slice():[];
+  const data={projectId:curProjectId,room,length,width,area,note,fileUrls,summary:'丈量 '+room};
+  if(svEditId){
+    DB.upd('measurements',svEditId,data);
+    showToast('✅ 丈量已更新'+(fileUrls.length?'（'+fileUrls.length+' 張照片）':''));
+  }else{
+    DB.push('measurements',data);
+    showToast('✅ 已儲存丈量記錄'+(fileUrls.length?'（'+fileUrls.length+' 張照片）':''));
+  }
+  svEditId=null;
+  closeModal('surveyModal');
+  renderProjectDetail(curProjectId,'survey');
 }
 
 function deleteSurvey(measureId,projectId){
