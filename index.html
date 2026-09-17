@@ -825,6 +825,18 @@
   </select>
  </div>
 
+ <!-- 手機定位授權：iPhone 一定要使用者點下去才會跳出「允許」，進頁面默默要定位常常直接失敗、記錄就沒座標 -->
+ <div id="punchLocCard" style="margin:0 4px 16px;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;padding:14px 16px">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+   <div style="min-width:0">
+    <div style="font-size:.72rem;font-weight:800;color:var(--g400);margin-bottom:4px">手機定位</div>
+    <div id="punchLocStatus" style="font-size:.88rem;font-weight:800;color:var(--g700)">打卡需要座標，請先授權定位</div>
+    <div id="punchLocHint" style="font-size:.72rem;color:var(--g400);margin-top:4px;line-height:1.5">點「開啟定位」後，手機會跳出允許視窗，請選允許</div>
+   </div>
+   <button type="button" id="punchLocBtn" class="btn bg bsm" style="flex-shrink:0;white-space:nowrap">開啟定位</button>
+  </div>
+ </div>
+
  <!-- 距離工地中心 / 圍籬狀態 -->
  <div id="punchGeoCard" style="display:none;margin:0 4px 16px;background:var(--w);border:1.5px solid var(--g200);border-radius:14px;padding:14px 16px">
   <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">

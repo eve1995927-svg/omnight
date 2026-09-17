@@ -799,6 +799,142 @@ function haversineDist(lat1,lng1,lat2,lng2){
 
 let punchPhotoData=null; // 打卡拍照佐證（base64），選填
 let punchCurPos=null; // 目前定位座標，算距離用
+let punchLocState='idle'; // idle | locating | ok | denied | error | unsupported | insecure
+let _punchLocPromise=null;
+
+function punchGeoOpts(){
+  return {enableHighAccuracy:true,timeout:20000,maximumAge:8000};
+}
+
+function applyPunchPos(coords){
+  punchCurPos={lat:coords.latitude,lng:coords.longitude,acc:coords.accuracy};
+  punchLocState='ok';
+  updatePunchLocCard();
+  updatePunchGeoCard();
+  return punchCurPos;
+}
+
+function requestPunchLocation(){
+  if(_punchLocPromise)return _punchLocPromise;
+  if(!window.isSecureContext){
+    punchLocState='insecure';
+    updatePunchLocCard();
+    return Promise.reject({code:0,message:'insecure'});
+  }
+  if(!navigator.geolocation){
+    punchLocState='unsupported';
+    updatePunchLocCard();
+    return Promise.reject({code:0,message:'unsupported'});
+  }
+  punchLocState='locating';
+  updatePunchLocCard();
+  _punchLocPromise=new Promise((resolve,reject)=>{
+    navigator.geolocation.getCurrentPosition(
+      pos=>{
+        _punchLocPromise=null;
+        resolve(applyPunchPos(pos.coords));
+      },
+      err=>{
+        _punchLocPromise=null;
+        punchLocState=(err&&err.code===1)?'denied':'error';
+        updatePunchLocCard();
+        reject(err||{code:2,message:'geo-error'});
+      },
+      punchGeoOpts()
+    );
+  });
+  return _punchLocPromise;
+}
+
+function punchLocHelpMessage(state){
+  if(state==='insecure')return '定位只能在安全網站使用。請用 Safari 打開 https://omnight.netlify.app ，不要用 LINE 裡面的瀏覽器。';
+  if(state==='unsupported')return '這台裝置或這個瀏覽器不支援定位。請用手機 Safari 或 Chrome 打開。';
+  if(state==='denied')return '手機沒有跳出允許、或之前按過拒絕。\n\n請先點「開啟定位」，在跳出的視窗選「允許」。\n\n如果完全沒跳出：\n• iPhone：設定 → 隱私權與安全性 → 定位服務 → 打開，再進 Safari（或主畫面的案場通）允許這個網站\n• 不要從 LINE 內建瀏覽器打開，改用 Safari\n• Android：設定 → 位置資訊 → 開啟，並允許瀏覽器定位';
+  return '定位逾時或 GPS 沒開。請確認手機定位已開啟，到訊號比較好的地方，再點一次「開啟定位」。';
+}
+
+function showPunchLocHelp(state){
+  const title=state==='denied'?'請授權手機定位':'還沒抓到座標';
+  if(typeof showInfoBox==='function')showInfoBox(title,punchLocHelpMessage(state||punchLocState));
+  else showToast('⚠️ '+title);
+}
+
+function updatePunchLocCard(){
+  const card=document.getElementById('punchLocCard');
+  const status=document.getElementById('punchLocStatus');
+  const hint=document.getElementById('punchLocHint');
+  const btn=document.getElementById('punchLocBtn');
+  if(!card||!status||!hint||!btn)return;
+  const setCard=(border,bg)=>{card.style.borderColor=border;card.style.background=bg;};
+  if(punchLocState==='ok'&&punchCurPos){
+    setCard('var(--ok-bd)','var(--ok-bg)');
+    status.style.color='var(--ok)';
+    status.textContent='已取得定位';
+    hint.textContent=(punchCurPos.acc?('精度 ±'+Math.round(punchCurPos.acc)+'m · '):'')+punchCurPos.lat.toFixed(5)+', '+punchCurPos.lng.toFixed(5);
+    btn.textContent='重新定位';
+    btn.disabled=false;
+    return;
+  }
+  if(punchLocState==='locating'){
+    setCard('var(--info-bd)','var(--info-bg)');
+    status.style.color='var(--info)';
+    status.textContent='正在取得定位…';
+    hint.textContent='請在手機跳出的視窗選「允許」';
+    btn.textContent='定位中';
+    btn.disabled=true;
+    return;
+  }
+  const bad=punchLocState==='denied'||punchLocState==='error'||punchLocState==='unsupported'||punchLocState==='insecure';
+  setCard(bad?'var(--warn-bd)':'var(--g200)',bad?'var(--warn-bg)':'var(--w)');
+  status.style.color=bad?'var(--warn,#B86820)':'var(--g700)';
+  status.textContent=punchLocState==='denied'?'尚未授權定位'
+    :punchLocState==='error'?'抓不到座標'
+    :punchLocState==='unsupported'?'這台裝置不支援定位'
+    :punchLocState==='insecure'?'請用 Safari 打開網站'
+    :'打卡需要座標，請先授權定位';
+  hint.textContent=punchLocState==='denied'?'點開啟定位；若沒跳出視窗，請到手機設定允許這個網站'
+    :punchLocState==='error'?'請開 GPS 後再試一次'
+    :punchLocState==='insecure'?'不要用 LINE 內建瀏覽器'
+    :'點「開啟定位」後，手機會跳出允許視窗，請選允許';
+  btn.textContent='開啟定位';
+  btn.disabled=false;
+}
+
+function initPunchLocBtn(){
+  const btn=document.getElementById('punchLocBtn');
+  if(!btn||btn._bound)return;
+  btn._bound=true;
+  btn.addEventListener('click',async()=>{
+    try{
+      await requestPunchLocation();
+      showToast('✅ 已取得定位');
+    }catch(err){
+      showPunchLocHelp(punchLocState);
+    }
+  });
+}
+
+async function syncPunchLocPermission(){
+  if(!window.isSecureContext){punchLocState='insecure';updatePunchLocCard();return;}
+  if(!navigator.geolocation){punchLocState='unsupported';updatePunchLocCard();return;}
+  try{
+    if(navigator.permissions&&navigator.permissions.query){
+      const p=await navigator.permissions.query({name:'geolocation'});
+      if(p.state==='granted'){
+        // 已經允許過，這時不用等再點一次，直接抓座標
+        try{await requestPunchLocation();}catch(e){}
+      }else if(p.state==='denied'){
+        punchLocState='denied';
+        updatePunchLocCard();
+      }else{
+        punchLocState='idle';
+        updatePunchLocCard();
+      }
+      return;
+    }
+  }catch(e){}
+  updatePunchLocCard();
+}
 
 function initPunchClock(){
   const el=document.getElementById('punchTime');const de=document.getElementById('punchDate');
@@ -833,16 +969,10 @@ function initPunchClock(){
     }
   }
 
-  // 先取得一次定位，用來算距離；拿不到定位就跳過，不影響打卡本身
-  if(navigator.geolocation&&!punchCurPos){
-    navigator.geolocation.getCurrentPosition(
-      pos=>{punchCurPos={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy};updatePunchGeoCard();},
-      ()=>{},
-      {timeout:6000}
-    );
-  } else {
-    updatePunchGeoCard();
-  }
+  // 不要進頁面就默默要定位：iPhone 沒有使用者點擊時通常不會跳出授權，還可能直接記成拒絕。
+  initPunchLocBtn();
+  syncPunchLocPermission();
+  updatePunchGeoCard();
 
   initPunchPhotoCapture();
   initPunchMapBtn();
@@ -866,7 +996,7 @@ function updatePunchGeoCard(){
   const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
   if(!proj||proj.lat==null||proj.lng==null){
     card.style.display='block';
-    document.getElementById('punchDistVal').textContent='尚無座標';
+    document.getElementById('punchDistVal').textContent='案場尚未定位';
     if(proj&&proj.address){
       document.getElementById('punchFenceVal').innerHTML='<span style="color:var(--g400)">這個案場有地址，但座標查詢還沒成功</span>';
       const accEl=document.getElementById('punchAccuracyVal');
@@ -992,7 +1122,7 @@ async function openPunchMap(){
     </div>`).join('');
 }
 
-function doPunch(){
+async function doPunch(){
   const now=new Date();
   const today=now.toLocaleDateString('zh-TW');
   const selProjectId=document.getElementById('punchProjectSel')?.value||'';
@@ -1006,60 +1136,63 @@ function doPunch(){
   const isIn=!alreadyIn; // 這個案場今天沒打過上班 → 打上班
   if(!isIn&&alreadyOut){showToast('⚠️ 今日在這個案場已完成上下班打卡！如果還要去別的案場，先在上面選好案場再打卡');return;}
   if(isIn&&alreadyIn){showToast('⚠️ 今日在這個案場已打過上班卡！');return;}
-  // 取得定位
+
+  const btn=document.getElementById('punchBtn');
+  const txt=document.getElementById('punchBtnTxt');
+  if(btn){btn.disabled=true;btn.style.opacity='.75';}
+  if(txt)txt.textContent='定位中…';
+  showToast('正在取得定位，請允許手機跳出的授權',4000);
+
+  let pos=null;
+  try{
+    pos=await requestPunchLocation();
+  }catch(err){
+    if(btn){btn.disabled=false;btn.style.opacity='1';}
+    updatePunchBtn();
+    showPunchLocHelp(punchLocState);
+    return;
+  }
+  if(!pos||pos.lat==null||pos.lng==null){
+    if(btn){btn.disabled=false;btn.style.opacity='1';}
+    updatePunchBtn();
+    showPunchLocHelp(punchLocState||'error');
+    return;
+  }
+
   const empName=document.getElementById('uName')?.textContent||curRole;
-  const save=(lat,lng,addr)=>{
-    DB.push('punch_recs',{
-      summary:(isIn?'上班':'下班')+'打卡 '+now.toLocaleTimeString('zh-TW',{hour12:false}),
-      user:getPunchUser(),userName:empName,date:today,
-      time:now.toLocaleTimeString('zh-TW',{hour12:false}),
-      type:isIn?'in':'out',
-      lat:lat||null,lng:lng||null,addr:addr||null,
-      photo:punchPhotoData||null,
-      projectId:selProjectId?(localStorage.setItem('zeju_last_punch_proj',selProjectId),selProjectId):null
-    });
-    // 修正重點：這筆記錄的確切 id，直接抓「目前所有記錄裡 _id 最大的那筆」
-    // （新記錄的 id 是用當下時間戳記產生，一定是最大的），回傳給呼叫端存起來給非同步查地址用，
-    // 不要用猜的方式去找要更新哪一筆，猜錯或猜不到是「一直只有一個案場有地址」的真正原因。
-    const allRecs=DB.get('punch_recs');
-    const newRecId=allRecs.reduce((max,r)=>r._id>max?r._id:max,0);
-    // 打卡完清空這次的拍照佐證，下一次打卡不會誤帶到上一次的照片
-    punchPhotoData=null;
-    const preview=document.getElementById('punchPhotoPreview');if(preview)preview.style.display='none';
-    const photoFile=document.getElementById('punchPhotoFile');if(photoFile)photoFile.value='';
-    renderPunchRec();updatePunchBtn();
-    showToast('✅ '+(isIn?'上班':'下班')+'打卡成功！'+now.toLocaleTimeString('zh-TW',{hour12:false}));
-    return newRecId;
-  };
-  if(navigator.geolocation){
-    navigator.geolocation.getCurrentPosition(
-      async pos=>{
-        const lat=pos.coords.latitude.toFixed(6);
-        const lng=pos.coords.longitude.toFixed(6);
-        punchCurPos={lat:pos.coords.latitude,lng:pos.coords.longitude,acc:pos.coords.accuracy};
-        // 先用座標存檔，背景查地址；記住這筆記錄的 id，等一下查到地址要更新回同一筆
-        const newRecId=save(lat, lng, lat+','+lng);
-        // 修正重點：原本這裡是拿 GPS 座標去問 AI「這是哪個地址」——AI 語言模型本來就不是地圖服務，
-        // 沒有精確的地址資料庫，用猜的常常猜不準或乾脆猜不出來，這也是「一直只有座標、沒有中文地址」的原因，
-        // 而且每次打卡都要為了這個查詢扣一次 AI 點數，划不來。
-        // 改用 OpenStreetMap 的免費地址反查服務（Nominatim），這是真正的地圖資料庫查詢，不是用猜的，也不用扣點。
-        try{
-          const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&accept-language=zh-TW&zoom=18');
-          const d=await r.json();
-          const a=d.address||{};
-          const addr=[a.state||a.county,a.city||a.town||a.district||a.suburb,a.road,a.house_number].filter(Boolean).join('').trim()
-            || d.display_name || '';
-          if(addr){
-            DB.upd('punch_recs',newRecId,{addr});
-            renderPunchRec&&renderPunchRec();
-            if(typeof renderHRPanel==='function'&&document.getElementById('hrPunchList'))renderHRPanel();
-          }
-        }catch(e){console.log('地址查詢失敗:',e.message);}
-      },
-      ()=>save(null,null,null),
-      {timeout:8000, enableHighAccuracy:true}
-    );
-  }else save(null,null,null);
+  const lat=Number(pos.lat).toFixed(6);
+  const lng=Number(pos.lng).toFixed(6);
+  DB.push('punch_recs',{
+    summary:(isIn?'上班':'下班')+'打卡 '+now.toLocaleTimeString('zh-TW',{hour12:false}),
+    user:getPunchUser(),userName:empName,date:today,
+    time:now.toLocaleTimeString('zh-TW',{hour12:false}),
+    type:isIn?'in':'out',
+    lat,lng,addr:lat+','+lng,
+    photo:punchPhotoData||null,
+    projectId:selProjectId?(localStorage.setItem('zeju_last_punch_proj',selProjectId),selProjectId):null
+  });
+  const allRecs=DB.get('punch_recs');
+  const newRecId=allRecs.reduce((max,r)=>r._id>max?r._id:max,0);
+  punchPhotoData=null;
+  const preview=document.getElementById('punchPhotoPreview');if(preview)preview.style.display='none';
+  const photoFile=document.getElementById('punchPhotoFile');if(photoFile)photoFile.value='';
+  if(btn){btn.disabled=false;btn.style.opacity='1';}
+  renderPunchRec();updatePunchBtn();
+  showToast('✅ '+(isIn?'上班':'下班')+'打卡成功！'+now.toLocaleTimeString('zh-TW',{hour12:false}));
+
+  // 座標先入帳，背景用 OpenStreetMap 反查中文地址（不是問 AI）
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat='+lat+'&lon='+lng+'&accept-language=zh-TW&zoom=18');
+    const d=await r.json();
+    const a=d.address||{};
+    const addr=[a.state||a.county,a.city||a.town||a.district||a.suburb,a.road,a.house_number].filter(Boolean).join('').trim()
+      || d.display_name || '';
+    if(addr){
+      DB.upd('punch_recs',newRecId,{addr});
+      renderPunchRec&&renderPunchRec();
+      if(typeof renderHRPanel==='function'&&document.getElementById('hrPunchList'))renderHRPanel();
+    }
+  }catch(e){console.log('地址查詢失敗:',e.message);}
 }
 
 
