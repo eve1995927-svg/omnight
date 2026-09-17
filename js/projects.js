@@ -13,18 +13,40 @@ const PROJECT_STATUS = {
 
 const PROJECT_TYPES = ['全室翻新','老屋翻新','局部裝修','新成屋裝修','商業空間','辦公室','廚衛翻修','其他'];
 
+function sameRecId(a,b){
+  return a!=null&&a!==''&&b!=null&&b!==''&&String(a)===String(b);
+}
+
+function quotesForProject(projectId,backfill){
+  const p=DB.get('projects').find(x=>sameRecId(x._id,projectId));
+  const pid=p?p._id:projectId;
+  const name=(p?.name||'').trim();
+  const all=DB.get('quotes');
+  const byId=all.filter(q=>sameRecId(q.projectId,pid));
+  const nameCount=name?DB.get('projects').filter(x=>(x.name||'').trim()===name).length:0;
+  const byName=(!name||nameCount>1)?[]:all.filter(q=>{
+    if(sameRecId(q.projectId,pid))return false;
+    if(q.projectId!=null&&q.projectId!==''&&DB.get('projects').some(x=>sameRecId(x._id,q.projectId)))return false;
+    return (q.caseN||'').trim()===name;
+  });
+  if(backfill){
+    byName.forEach(q=>DB.upd('quotes',q._id,{projectId:pid,caseN:name||q.caseN||''}));
+  }
+  return byId.concat(byName);
+}
+
 // ── 取得所有案場（含統計）────────────────────────────────
 function getProjects(){
   return DB.get('projects').map(p=>({
     ...p,
-    quotes: DB.get('quotes').filter(q=>q.projectId===p._id),
-    vendors: DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted),
-    ledger: DB.get('ledger').filter(l=>l.projectId===p._id),
+    quotes: quotesForProject(p._id),
+    vendors: DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted),
+    ledger: DB.get('ledger').filter(l=>sameRecId(l.projectId,p._id)),
   }));
 }
 
 function getProject(id){
-  return DB.get('projects').find(p=>p._id===id);
+  return DB.get('projects').find(p=>sameRecId(p._id,id));
 }
 
 // ── 首頁待辦計算 ──────────────────────────────────────────
@@ -152,7 +174,7 @@ function getTodayTodos(){
   if(typeof getVendorTrueCost==='function'){
     const overrun=projects.filter(p=>{
       if(p.status==='done'||p.status==='archived')return false;
-      const quotes=DB.get('quotes').filter(q=>q.projectId===p._id&&q.status!=='rejected');
+      const quotes=quotesForProject(p._id).filter(q=>q.status!=='rejected');
       const quoteTotal=quotes.reduce((s,q)=>s+(q.total||0),0);
       if(quoteTotal<=0)return false;
       const vendorCost=DB.get('vendors').filter(v=>v.projectId===p._id&&!v.deleted)
@@ -717,7 +739,7 @@ function openMergeProjectsModal(){
   }else{
     list.innerHTML=projects.map(p=>{
       const vCount=DB.get('vendors').filter(v=>v.projectId===p._id).length;
-      const qCount=DB.get('quotes').filter(q=>q.projectId===p._id).length;
+      const qCount=quotesForProject(p._id).length;
       return '<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);margin-bottom:8px;cursor:pointer" data-mergerow>'+
         '<input type="checkbox" value="'+p._id+'" style="width:17px;height:17px;margin-top:2px;cursor:pointer;accent-color:var(--gold)">'+
         '<div style="flex:1"><div style="font-weight:800;font-size:.9rem">'+esc(p.name||'未命名')+'</div>'+
@@ -1068,7 +1090,7 @@ function renderProjectDetail(id, activeTab='overview'){
 
 // ── 案場總覽 Tab ──────────────────────────────────────────
 function renderProjOverview(id,p,c){
-  const quotes=DB.get('quotes').filter(q=>q.projectId===id);
+  const quotes=quotesForProject(id);
   const vendors=DB.get('vendors').filter(v=>v.projectId===id&&!v.deleted);
   const contracts=DB.get('contracts').filter(ct=>ct.projectId===id&&!ct.deleted);
   const ledgerItems=DB.get('ledger').filter(l=>l.projectId===id);
@@ -1130,7 +1152,7 @@ function updateProjectStatus(id,status){
 
 // ── 案場報價 Tab ──────────────────────────────────────────
 function renderProjQuotes(id,p,c){
-  const quotes=DB.get('quotes').filter(q=>q.projectId===id);
+  const quotes=quotesForProject(id,true);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
@@ -1336,7 +1358,7 @@ function deleteSurvey(measureId,projectId){
 // 現在補上：如果這份報價單只有上傳的檔案、沒有明細（用上面新增的上傳功能存的），開一個小視窗顯示附件；
 // 如果是有明細的報價單（用系統的報價編輯器建立的），才進去完整的編輯畫面。
 function openQuoteEdit(id){
-  const q=DB.get('quotes').find(r=>r._id===id);if(!q)return;
+  const q=DB.get('quotes').find(r=>sameRecId(r._id,id));if(!q)return;
   // 這裡本來沒有設定 qEditId，導致從案場詳情的「報價」分頁點進來編輯、存檔時，
   // 系統會誤判成「這是一份新報價」而另外新增一筆，不是更新原本這筆——
   // 這就是為什麼案場詳情看到的金額改了，但「報價管理」列表那邊的舊記錄還是沒變、變成兩筆對不起來的真正原因。
@@ -1627,7 +1649,7 @@ function getProjCatProfitRows(projectId,includeHidden){
     adoptedByCat[k].cost+=getVendorTrueCost(v);
     if(v.vendor&&!adoptedByCat[k].vendor.split('、').includes(v.vendor))adoptedByCat[k].vendor=adoptedByCat[k].vendor?adoptedByCat[k].vendor+'、'+v.vendor:v.vendor;
   });
-  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
+  const quotes=quotesForProject(projectId);
   const clientByCat={};
   quotes.forEach(q=>{
     (q.sections||[]).forEach(sec=>{
@@ -1715,7 +1737,7 @@ function openRenameCatModal(projectId,oldCat){
 }
 function renameCatProfitRow(projectId,oldCat,newCat){
   // 1. 找這個案場所有報價單，把大項名稱等於舊名稱的都改成新名稱
-  const quotes=DB.get('quotes').filter(q=>q.projectId===projectId);
+  const quotes=quotesForProject(projectId);
   let changedSections=0;
   quotes.forEach(q=>{
     if(!q.sections||!q.sections.length)return;
@@ -1988,7 +2010,7 @@ function openContractForProject(projectId){
     // 帶入這個案場最新一份報價單的總價，不用再手動重算重打一次
     // 修正重點：原本這裡找的是 'ctAmt'，但表單欄位實際 id 是 'ctAmt2'，
     // 兩者對不起來導致這個自動帶入金額的功能完全沒作用（找不到元素，靜默失敗）。
-    const quotes=DB.get('quotes').filter(q=>q.projectId===projectId).sort((a,b)=>b._id-a._id);
+    const quotes=quotesForProject(projectId).sort((a,b)=>b._id-a._id);
     if(quotes.length){
       const latest=quotes[0];
       const {grand}=typeof calcQuoteTotals==='function'?calcQuoteTotals(latest.sections||[]):{grand:latest.total||0};

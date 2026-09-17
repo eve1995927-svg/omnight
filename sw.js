@@ -1,7 +1,7 @@
 // 案場通 Service Worker
 // 策略：優先用網路上最新的版本（network-first），只有完全離線時才退回快取，
 // 這樣不會有「明明部署了新版，使用者卻卡在舊版」的常見 PWA 陷阱。
-const CACHE_NAME = 'ancase-shell-v8';
+const CACHE_NAME = 'ancase-shell-v9';
 const APP_SHELL = [
   './index.html',
   './css/style.css',
