@@ -499,19 +499,19 @@ function savePayDate(v){localStorage.setItem('zeju_pay_date',v);showToast('✅ �
 // ══ 每月薪資記錄（含獎金、代墊費，存在雲端不再用 localStorage）══════
 // 取得（或建立預設值）某位員工某個月的薪資記錄
 function getSalaryRecord(empId, monthKey){
-  const existing=DB.get('salary_records').find(r=>r.empId===empId&&r.monthKey===monthKey);
+  const key=typeof normMonthKey==='function'?normMonthKey(monthKey):monthKey;
+  const existing=DB.get('salary_records').find(r=>sameRecId(r.empId,empId)&&(typeof normMonthKey==='function'?normMonthKey(r.monthKey):r.monthKey)===key);
   if(existing)return existing;
-  // 找不到就用員工當前的固定資料建立一筆預設記錄（獎金、代墊費預設為0，之後可個別調整）
-  const e=DB.get('employees').find(x=>x._id===empId);
+  const e=DB.get('employees').find(x=>sameRecId(x._id,empId));
   if(!e)return null;
+  if(e.empType==='punch')return null;
   const rec={
-    empId, monthKey,
+    empId:e._id, monthKey:key,
     baseSalary:e.salary||0, meal:e.meal||0, transport:e.transport||0, other:e.other||0,
     bonus:0, reimbursement:0, note:'',
     paid:false, paidDate:null,
-    summary:'薪資 '+e.name+' '+monthKey,
+    summary:'薪資 '+e.name+' '+key,
   };
-  // DB.push 回傳的是整個陣列（新項目在最前面，因為內部用 unshift），不是單一ID，這裡直接取陣列第一筆
   const all=DB.push('salary_records',rec);
   return all[0];
 }
@@ -519,7 +519,7 @@ function getSalaryRecord(empId, monthKey){
 // 計算薪資記錄的實際數字（勞健保照員工當時設定的固定扣除額計算，獎金代墊費不計入勞健保級距，符合一般實務）
 function calcSalaryRecord(rec){
   const gross=(rec.baseSalary||0)+(rec.meal||0)+(rec.transport||0)+(rec.other||0)+(rec.bonus||0);
-  const e=DB.get('employees').find(x=>x._id===rec.empId)||{};
+  const e=DB.get('employees').find(x=>sameRecId(x._id,rec.empId))||{};
   // 新版：直接用員工資料裡儲存的四個欄位（laborEmployee/laborCompany 等）。
   // 向下相容舊資料：沒有新欄位時退回用 e.labor/e.health，如果有 absorbInsurance 勾選也照顧到。
   const laborEmployee=e.laborEmployee!=null?e.laborEmployee:(e.absorbInsurance?0:(e.labor||0));
@@ -549,6 +549,7 @@ function renderMonthSalary(monthKey){
 
   let totalNet=0,totalCompanyCost=0,totalBonus=0,totalReimb=0,totalOtPay=0;
   emps.forEach(e=>{
+    if(e.empType==='punch')return;
     const rec=getSalaryRecord(e._id,monthKey);if(!rec)return;
     const {gross,laborDeduct,healthDeduct,laborCompany,healthCompany,retireCompany,net,companyCost}=calcSalaryRecord(rec);
     totalNet+=net;totalCompanyCost+=companyCost;totalBonus+=(rec.bonus||0);totalReimb+=(rec.reimbursement||0);

@@ -1500,12 +1500,12 @@
 
   <div class="field"><label class="fl">備注</label><input class="fi" id="svNote" placeholder="例：有樑柱、插座位置、拆除範圍…"></div>
 
-  <div class="upz" id="svZone" style="border-style:solid;border-width:2px;overflow:hidden">
-   <input type="file" id="svFile" accept="image/*" multiple style="position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;z-index:2;font-size:20px">
+  <label class="upz" id="svZone" for="svFile" style="border-style:solid;border-width:2px;display:block;cursor:pointer">
    <span class="upz-ic">📷</span>
    <div class="upz-title">拍現況照片（可多張，選填）</div>
    <div class="upz-sub">點這裡從相簿選，或直接拍照</div>
-  </div>
+  </label>
+  <input type="file" id="svFile" accept="image/*" multiple style="position:fixed;left:-9999px;width:1px;height:1px;opacity:0">
   <div id="svFileCard" style="display:none;margin:12px 0">
    <div style="font-size:.82rem;font-weight:700;color:var(--g600);margin-bottom:8px" id="svFileCount">已上傳 0 張</div>
    <div id="svPhotoGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(80px,1fr));gap:8px"></div>

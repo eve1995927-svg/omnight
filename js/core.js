@@ -40,14 +40,14 @@ const GROUPS={
     {l:'儀表板',   items:[{id:'owner-dash',l:'今日總覽',ic:'📊'}]},
     {l:'案場',     items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
     {l:'業務',     items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'試算報價',ic:'📐'},{id:'mk-post',l:'行銷貼文',ic:'✨'},{id:'ad-quote',l:'全部報價',ic:'📋'},{id:'contract',l:'全部合約',ic:'📝'}]},
-    {l:'工程',     items:[{id:'ad-progress',l:'全部進度',ic:'🔧'}]},
+    {l:'工程',     items:[{id:'ad-vendor',l:'全部廠商',ic:'🏗️'},{id:'ad-progress',l:'全部進度',ic:'🔧'}]},
     {l:'會計',     items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'},{id:'ac-report',l:'財務報表',ic:'📊'},{id:'ac-billing',l:'AI 帳單',ic:'🧮'},{id:'ac-chat',l:'AI 對帳',ic:'🤖'}]},
     {l:'管理',     items:[{id:'hr-settings',l:'人資管理',ic:'👥'},{id:'settings',l:'系統設定',ic:'⚙️'}]},
   ],
   staff:[
     {l:'案場',   _perm:'projects',   items:[{id:'projects',l:'案場總覽',ic:'🏗️'}]},
     {l:'業務',   _perm:'business',   items:[{id:'inbox',l:'社群訊息',ic:'📥'},{id:'cs-chat',l:'客戶諮詢',ic:'💬'},{id:'crm',l:'客戶總覽',ic:'👥'},{id:'cs-quote',l:'試算報價',ic:'📐'},{id:'mk-post',l:'行銷小編',ic:'✨'},{id:'ad-quote',l:'全部報價',ic:'📋'},{id:'contract',l:'全部合約',ic:'📝'}]},
-    {l:'工程',   _perm:'vendor',     items:[{id:'ad-progress',l:'全部進度',ic:'🔧'}]},
+    {l:'工程',   _perm:'vendor',     items:[{id:'ad-vendor',l:'全部廠商',ic:'🏗️'},{id:'ad-progress',l:'全部進度',ic:'🔧'}]},
     {l:'會計',   _perm:'accounting', items:[{id:'ac-overview',l:'帳款總覽',ic:'💰'}]},
     {l:'管理',   _perm:'settings',   items:[{id:'settings',l:'系統設定',ic:'🔧'}]},
   ],
@@ -63,6 +63,13 @@ const MOBILE_PRIMARY=[{id:'projects',l:'案場',ic:'🏗️'},{id:'inbox',l:'訊
 function isMobileView(){ return window.matchMedia('(max-width:767px)').matches; }
 function sameRecId(a,b){
   return a!=null&&a!==''&&b!=null&&b!==''&&String(a)===String(b);
+}
+function normMonthKey(v){
+  if(v==null||v==='')return '';
+  const s=String(v).trim();
+  const m=s.match(/(\d{4})\D{0,3}(\d{1,2})/);
+  if(!m)return s.slice(0,7);
+  return m[1]+'-'+String(parseInt(m[2],10)).padStart(2,'0');
 }
 
 // 員工權限預設值（老闆帳號、公務帳號、共用員工帳號不受限制，全部視為擁有全部權限）
@@ -811,9 +818,29 @@ function startCloudSync(){
         const hp=document.getElementById('p-hr-settings');
         if(hp&&hp.classList.contains('show'))renderHRPanel();
       }
+      refreshListsForKey(k);
     }, ()=>setSyncStatus&&setSyncStatus('error'));
   });
   console.log('✅ Firebase realtime listener started（每個資料表獨立監聽，降低流量用量）');
+}
+
+function refreshListsForKey(k){
+  if(k==='quotes'&&typeof renderQTable==='function')renderQTable();
+  if(k==='contracts'){
+    if(typeof renderContracts==='function')renderContracts();
+    if(typeof updContractStats==='function')updContractStats();
+  }
+  if(k==='vendors'){
+    if(typeof renderVendors==='function')renderVendors(typeof vCurrentFilter!=='undefined'?vCurrentFilter:'all');
+    if(typeof updStats==='function')updStats();
+  }
+  if(k==='progress'&&typeof renderProgress==='function')renderProgress();
+  if(k==='projects'&&typeof renderProjects==='function'&&document.getElementById('p-projects')?.classList.contains('on'))renderProjects();
+  if(k==='ledger'&&typeof renderLedger==='function'){
+    renderLedger();
+    if(typeof renderLedgerMonthly==='function')renderLedgerMonthly();
+  }
+  if(k==='salary_records'&&typeof renderLedgerMonthly==='function')renderLedgerMonthly();
 }
 
 // ── 備份/還原也寫入雲端 ──
@@ -1635,6 +1662,12 @@ function showPanel(id){
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
   if(id==='inbox') setTimeout(()=>renderInboxPanel(),50);
   if(id==='settings') setTimeout(()=>{if(typeof updateLastBackupInfo==='function')updateLastBackupInfo();},50);
+  if(id==='ad-quote') setTimeout(()=>{if(typeof renderQTable==='function')renderQTable();},30);
+  if(id==='contract') setTimeout(()=>{if(typeof renderContracts==='function')renderContracts();if(typeof updContractStats==='function')updContractStats();},30);
+  if(id==='ad-vendor') setTimeout(()=>{if(typeof renderVendors==='function')renderVendors(typeof vCurrentFilter!=='undefined'?vCurrentFilter:'all');},30);
+  if(id==='ad-progress') setTimeout(()=>{if(typeof renderProgress==='function')renderProgress();},30);
+  if(id==='ac-overview') setTimeout(()=>{if(typeof renderLedger==='function')renderLedger();if(typeof renderLedgerMonthly==='function')renderLedgerMonthly();},30);
+  if(id==='projects') setTimeout(()=>{if(typeof renderProjects==='function')renderProjects();},30);
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.ni,.bnav-item').forEach(n=>n.classList.remove('on'));
   document.getElementById('p-'+id)?.classList.add('on');

@@ -597,7 +597,7 @@ function switchLedgerView(view,el){
 }
 function getFilteredLedger(){
   let items=DB.get('ledger');
-  if(curLedgerMonth)items=items.filter(r=>(r.date||'').startsWith(curLedgerMonth));
+  if(curLedgerMonth)items=items.filter(r=>(typeof normMonthKey==='function'?normMonthKey(r.date):(r.date||'').slice(0,7))===curLedgerMonth);
   const pf=document.getElementById('ledgerProjectFilter')?.value||'';
   if(pf)items=items.filter(r=>r.projectId==pf);
   return items.sort((a,b)=>b._id-a._id);
@@ -697,10 +697,10 @@ function renderLedgerMonthly(){
   // 陳冠語也反映平常記帳主要是看這張（案場為主），所以把人事成本併進來這裡，
   // 原本獨立的「月度損益報表」就整個拿掉了，不用再切去財務報表那邊另外看一次。
   const salaryRecs=DB.get('salary_records');
-  const emps=DB.get('employees');
+  const emps=DB.get('employees').filter(e=>e.empType!=='punch');
   const months=new Set();
-  all.forEach(r=>{if(r.date)months.add(r.date.slice(0,7));});
-  salaryRecs.forEach(r=>{if(r.monthKey)months.add(r.monthKey);});
+  all.forEach(r=>{const mk=typeof normMonthKey==='function'?normMonthKey(r.date): (r.date||'').slice(0,7); if(mk)months.add(mk);});
+  salaryRecs.forEach(r=>{const mk=typeof normMonthKey==='function'?normMonthKey(r.monthKey):r.monthKey; if(mk)months.add(mk);});
   const allMonths=[...months].sort().reverse();
   if(!allMonths.length){c.innerHTML='<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">尚無帳款記錄</div></div>';return;}
 
@@ -731,25 +731,43 @@ function renderLedgerMonthly(){
   c.appendChild(hd);
   let tIn=0,tOut=0,tPersonnel=0;
   sm.forEach(month=>{
-    const it=all.filter(r=>(r.date||'').startsWith(month));
+    const it=all.filter(r=>(typeof normMonthKey==='function'?normMonthKey(r.date):(r.date||'').slice(0,7))===month);
     const inIn=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
     const inOut=it.filter(r=>getLedgerBook(r)==='in'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
     const outOut=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='out').reduce((s,r)=>s+(r.amount||0),0);
     const outIn=it.filter(r=>getLedgerBook(r)==='out'&&r.type==='in').reduce((s,r)=>s+(r.amount||0),0);
     const profit=(inIn-inOut)-(outOut-outIn);const rate=inIn>0?Math.round(profit/inIn*100):0;
     tIn+=inIn;tOut+=outOut;
-    // 人事成本：按月份抓薪資記錄，用全站統一的薪資計算函式（跟「薪資管理」頁同一套算法），
-    // 這樣才會把公司負擔的勞健保、勞退也算進去，不會只算到底薪跟津貼。
-    // 修正重點：這裡原本自己另外寫了一套簡化算法（只加底薪+津貼+獎金+代墊），
-    // 完全沒把「員工的勞健保由公司負擔」跟「勞退」算進去，導致某些月份（例如有員工勞健保由公司吸收）
-    // 這裡顯示的人事成本比實際低很多，跟「薪資管理」頁看到的公司人事總成本對不起來。
-    const monthSalaries=salaryRecs.filter(r=>r.monthKey===month);
-    const personnel=monthSalaries.reduce((s,r)=>s+(typeof calcSalaryRecord==='function'?calcSalaryRecord(r).companyCost:((r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0))),0);
+    const monthSalaries=salaryRecs.filter(r=>{
+      if((typeof normMonthKey==='function'?normMonthKey(r.monthKey):r.monthKey)!==month)return false;
+      const emp=DB.get('employees').find(x=>sameRecId(x._id,r.empId));
+      if(emp&&emp.empType==='punch')return false;
+      return true;
+    });
+    const seenEmp=new Set();
+    const uniqueSalaries=[];
+    monthSalaries.forEach(r=>{
+      const key=String(r.empId);
+      if(seenEmp.has(key))return;
+      seenEmp.add(key);
+      uniqueSalaries.push(r);
+    });
+    emps.forEach(e=>{
+      if(seenEmp.has(String(e._id)))return;
+      if(e.startDate&&(typeof normMonthKey==='function'?normMonthKey(e.startDate):e.startDate.slice(0,7))>month)return;
+      uniqueSalaries.push({
+        empId:e._id, monthKey:month, paid:false,
+        baseSalary:e.salary||0, meal:e.meal||0, transport:e.transport||0, other:e.other||0,
+        bonus:0, reimbursement:0
+      });
+      seenEmp.add(String(e._id));
+    });
+    const personnel=uniqueSalaries.reduce((s,r)=>s+(typeof calcSalaryRecord==='function'?calcSalaryRecord(r).companyCost:((r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0))),0);
     tPersonnel+=personnel;
     const netProfit=profit-personnel;
-    const personnelDetailId='pd-'+month.replace('-','');
-    const personnelDetailRows=monthSalaries.map(r=>{
-      const e=emps.find(x=>x._id===r.empId)||{name:'（已刪除員工）'};
+    const personnelDetailId='pd-'+month.replace(/-/g,'');
+    const personnelDetailRows=uniqueSalaries.map(r=>{
+      const e=emps.find(x=>sameRecId(x._id,r.empId))||{name:'（已刪除員工）'};
       const calc=typeof calcSalaryRecord==='function'?calcSalaryRecord(r):null;
       const gross=calc?calc.companyCost:((r.baseSalary||0)+(r.meal||0)+(r.transport||0)+(r.other||0)+(r.bonus||0)+(r.reimbursement||0));
       const parts=[];
@@ -793,7 +811,7 @@ function renderLedgerMonthly(){
 }
 function renderLedgerByProject(){
   const c=document.getElementById('ledger-project-table');if(!c)return;
-  const all=curLedgerMonth?DB.get('ledger').filter(r=>(r.date||'').startsWith(curLedgerMonth)):DB.get('ledger');
+  const all=curLedgerMonth?DB.get('ledger').filter(r=>(typeof normMonthKey==='function'?normMonthKey(r.date):(r.date||'').slice(0,7))===curLedgerMonth):DB.get('ledger');
   const projects=DB.get('projects');
   const allVendors=DB.get('vendors').filter(v=>!v.deleted);
   const byP={};
@@ -818,7 +836,7 @@ function renderLedgerByProject(){
     }
     return allVendors.filter(v=>String(v.projectId)===projKey)
       .reduce((s,v)=>s+(v.payments||[])
-        .filter(pay=>(pay.date||'').startsWith(curLedgerMonth))
+        .filter(pay=>(typeof normMonthKey==='function'?normMonthKey(pay.date):(pay.date||'').slice(0,7))===curLedgerMonth)
         .reduce((ps,pay)=>ps+(pay.amount||0),0),0);
   };
 
@@ -997,7 +1015,7 @@ function renderInvoices(filter){
   // 修正重點：這裡本來完全沒有跟上面的月份選擇器連動，不管切到哪個月份，發票記錄永遠顯示全部。
   // 改成跟其他分頁（收支明細、月度總表）用同一個 curLedgerMonth，切到「2026年9月」，
   // 這裡就只顯示9月份的發票；切回「全期」（curLedgerMonth 是 null）才會顯示全部。
-  if(curLedgerMonth)data=data.filter(v=>(v.date||'').startsWith(curLedgerMonth));
+  if(curLedgerMonth)data=data.filter(v=>(typeof normMonthKey==='function'?normMonthKey(v.date):(v.date||'').slice(0,7))===curLedgerMonth);
   if(filter)data=data.filter(v=>(v.no||'').includes(filter)||(v.desc||'').includes(filter)||(v.cat||'').includes(filter));
   if(!data.length){
     list.innerHTML='<div class="empty-state"><div class="es-ic">🧾</div><div class="es-t">'+(curLedgerMonth?'這個月份沒有發票記錄':'尚無發票記錄')+'</div><div class="es-s">點右上方「新增發票」，上傳照片 AI 自動辨識</div></div>';return;

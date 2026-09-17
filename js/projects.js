@@ -1060,9 +1060,9 @@ function renderProjectDetail(id, activeTab='overview'){
       </div>`;
   }
 
-  // Tab：主路五個 + 更多（廠商／合約／設計圖／備忘）
-  const primaryTabs=['overview','survey','quote','progress','ledger'];
-  const moreTabs=['vendor','contract','design','memo'];
+  // Tab：主路含廠商／合約，設計圖與備忘放更多
+  const primaryTabs=['overview','survey','quote','vendor','contract','progress','ledger'];
+  const moreTabs=['design','memo'];
   const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
@@ -1305,8 +1305,8 @@ function saveQuoteFileUpload(){
 
 function openProjectTabMore(id,activeTab){
   const old=document.getElementById('_projTabMore');if(old){old.remove();return;}
-  const moreTabs=['vendor','contract','design','memo'];
-  const tabLabels={vendor:'🏗️ 廠商報價',contract:'📝 合約',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
+  const moreTabs=['design','memo'];
+  const tabLabels={design:'🖼️ 設計圖',memo:'📝 備忘錄'};
   const overlay=document.createElement('div');
   overlay.id='_projTabMore';
   overlay.style.cssText='position:fixed;inset:0;background:rgba(15,20,15,.4);z-index:7000;display:flex;align-items:flex-end';
@@ -1329,7 +1329,7 @@ function renderProjSurvey(id,p,c){
         <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
         ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
       </div>
-      <button class="btn bg bsm" onclick="openSurveyModal(${id})">＋ 新增丈量</button>
+      <button class="btn bg bsm" onclick="openSurveyModal(${JSON.stringify(String(id))})">＋ 新增丈量</button>
     </div>
     ${items.length?items.map(m=>`
       <div class="card" style="margin-bottom:10px">
@@ -1342,8 +1342,8 @@ function renderProjSurvey(id,p,c){
             ${m.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(m.note)}</div>`:''}
           </div>
           <div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="btn bo bxs" onclick="openSurveyModal(${id},${m._id})">＋照片</button>
-            <button class="btn brd bxs" onclick="deleteSurvey(${m._id},${id})">🗑</button>
+            <button class="btn bo bxs" onclick="openSurveyModal(${JSON.stringify(String(id))},${JSON.stringify(String(m._id))})">＋照片</button>
+            <button class="btn brd bxs" onclick="deleteSurvey(${JSON.stringify(String(m._id))},${JSON.stringify(String(id))})">🗑</button>
           </div>
         </div>
         ${(m.fileUrls||[]).length?`
@@ -1396,31 +1396,32 @@ function renderSvPhotos(){
 }
 
 async function addSurveyPhotos(fileList){
-  const files=Array.from(fileList||[]).filter(f=>f.type.startsWith('image/'));
+  const files=Array.from(fileList||[]).filter(f=>{
+    if(!f)return false;
+    if((f.type||'').startsWith('image/'))return true;
+    if(!f.type&&/\.(jpe?g|png|gif|webp|heic|heif|bmp)$/i.test(f.name||''))return true;
+    if(!f.type&&f.size>0)return true;
+    return false;
+  });
   if(!files.length){showToast('⚠️ 請選照片');return;}
   if(!Array.isArray(svImgUrl))svImgUrl=[];
   showToast('照片處理中…',1800);
+  let added=0;
   for(const f of files){
-    const compressed=await compressImage(f,1600,0.75);
+    const compressed=await compressImage(f,1280,0.7);
     const url=compressed||await new Promise(res=>{const rd=new FileReader();rd.onload=ev=>res(ev.target.result);rd.readAsDataURL(f);});
-    svImgUrl.push({name:f.name,type:'image/jpeg',url});
+    if(!url){showToast('⚠️ 「'+(f.name||'照片')+'」無法讀取，請換一張');continue;}
+    svImgUrl.push({name:f.name||'照片',type:'image/jpeg',url});
+    added++;
   }
   renderSvPhotos();
-  showToast('✅ 已加入 '+files.length+' 張照片');
+  if(added)showToast('✅ 已加入 '+added+' 張照片');
 }
 
 function initSurveyListeners(){
   const zone=document.getElementById('svZone');
-  const file=document.getElementById('svFile');
   const save=document.getElementById('svSaveBtn');
-  if(file&&!file._svBound){
-    file._svBound=true;
-    file.addEventListener('change',async e=>{
-      const list=e.target.files;if(!list||!list.length)return;
-      await addSurveyPhotos(list);
-      e.target.value='';
-    });
-  }
+  bindSurveyFileInput();
   if(zone&&!zone._svDrag){
     zone._svDrag=true;
     zone.addEventListener('dragover',e=>{e.preventDefault();zone.classList.add('drag');});
@@ -1434,6 +1435,19 @@ function initSurveyListeners(){
     save._svBound=true;
     save.addEventListener('click',saveSurvey);
   }
+}
+
+function bindSurveyFileInput(){
+  const file=document.getElementById('svFile');
+  if(!file||!file.parentNode)return;
+  const fresh=file.cloneNode(true);
+  fresh.id='svFile';
+  file.parentNode.replaceChild(fresh,file);
+  fresh.addEventListener('change',async e=>{
+    const list=e.target.files;if(!list||!list.length)return;
+    await addSurveyPhotos(list);
+    e.target.value='';
+  });
 }
 
 function openSurveyModal(projectId,measureId){
