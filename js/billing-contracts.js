@@ -107,18 +107,85 @@ function monthUsageFee(month){
   const ptsFee=Math.round(points*BILL_PTS_RATE);
   return {points, ptsFee, total:BILL_BASE_FEE+ptsFee, recs};
 }
+function billsForMonth(month){
+  return DB.get('monthly_bills').filter(b=>b.month===month);
+}
+function pickMonthlyBill(list,month){
+  if(!list||!list.length)return null;
+  const built=typeof packageForMonth==='function'?packageForMonth(month):null;
+  return list.slice().sort((a,b)=>{
+    const score=x=>{
+      let s=0;
+      if(x.status==='paid')s+=8;
+      if(x.histSeason)s+=4;
+      if(built&&Number(x.total)===Number(built.total))s+=3;
+      if((x.tax||0)>0)s+=2;
+      return s;
+    };
+    return score(b)-score(a)||(Number(b._id)||0)-(Number(a._id)||0);
+  })[0];
+}
 function getMonthlyBill(month){
-  return DB.get('monthly_bills').find(b=>b.month===month)||null;
+  return pickMonthlyBill(billsForMonth(month),month);
 }
 function getUnpaidMonthlyBills(){
-  return DB.get('monthly_bills').filter(b=>b.status!=='paid').sort((a,b)=>(a.month||'').localeCompare(b.month||''));
+  const seen=new Set();
+  return DB.get('monthly_bills')
+    .filter(b=>b.status!=='paid')
+    .sort((a,b)=>(a.month||'').localeCompare(b.month||''))
+    .filter(b=>{
+      if(!b.month||seen.has(b.month))return false;
+      seen.add(b.month);
+      return true;
+    });
+}
+function dedupeMonthlyBills(){
+  const cur=billMonthKey(new Date());
+  const groups={};
+  DB.get('monthly_bills').forEach(b=>{
+    if(!b.month)return;
+    (groups[b.month]||(groups[b.month]=[])).push(b);
+  });
+  Object.keys(groups).forEach(month=>{
+    const list=groups[month];
+    if(month===cur&&!isHistBillMonth(month)){
+      list.forEach(b=>{if(b.status!=='paid')DB.del('monthly_bills',b._id);});
+      return;
+    }
+    const keep=pickMonthlyBill(list,month);
+    if(!keep)return;
+    const paid=list.find(b=>b.status==='paid');
+    const built=packageForMonth(month);
+    const nextStatus=paid?'paid':keep.status;
+    const nextPaidAt=paid?paid.paidAt||keep.paidAt:keep.paidAt;
+    const same=Number(keep.total)===Number(built.total)
+      && Number(keep.tax||0)===Number(built.tax||0)
+      && !!keep.histSeason===!!built.histSeason
+      && keep.status===nextStatus;
+    if(!same){
+      DB.upd('monthly_bills',keep._id,{
+        package:built.pack,
+        baseFee:built.baseFee,
+        tax:built.tax||0,
+        taxRate:built.taxRate||0,
+        points:built.points,
+        ptsFee:built.ptsFee,
+        total:built.total,
+        histSeason:!!built.histSeason,
+        summary:month.replace('-','年')+'月 平台帳單 NT$'+built.total.toLocaleString(),
+        status:nextStatus,
+        paidAt:nextPaidAt,
+      });
+    }
+    list.forEach(b=>{if(String(b._id)!==String(keep._id))DB.del('monthly_bills',b._id);});
+  });
 }
 function issueMonthlyBill(month,force){
   if(!month)return null;
   const built=packageForMonth(month);
   const existing=getMonthlyBill(month);
   const staleHist=existing&&isHistBillMonth(month)&&(
-    !existing.histSeason||Number(existing.taxRate)!==BILL_TAX_RATE||existing.total!==built.total
+    !existing.histSeason||Number(existing.taxRate)!==BILL_TAX_RATE||Number(existing.total)!==built.total
   );
   if(existing&&!force&&!staleHist)return existing;
   const rec={
@@ -141,23 +208,23 @@ function issueMonthlyBill(month,force){
       ...rec,
       status:existing.status==='paid'&&!staleHist?'paid':rec.status,
     });
+    billsForMonth(month).forEach(b=>{if(String(b._id)!==String(existing._id))DB.del('monthly_bills',b._id);});
     return getMonthlyBill(month);
   }
   DB.push('monthly_bills',rec);
   return getMonthlyBill(month);
 }
 function generateDueMonthlyBills(){
+  dedupeMonthlyBills();
   BILL_HIST_MONTHS.forEach(mo=>issueMonthlyBill(mo,false));
   const now=new Date();
   const y=now.getFullYear(), m=now.getMonth();
-  // 當月還沒走完不出帳單，只產出「上個月」（5–8 月歷史季另外處理）
   const prev=billMonthKey(new Date(y,m-1,1));
   if(!isHistBillMonth(prev)) issueMonthlyBill(prev,false);
   const cur=billMonthKey(now);
-  const premature=getMonthlyBill(cur);
-  if(premature&&premature.status!=='paid'&&!isHistBillMonth(cur)){
-    DB.del('monthly_bills',premature._id);
-  }
+  billsForMonth(cur).forEach(b=>{
+    if(b.status!=='paid'&&!isHistBillMonth(cur)) DB.del('monthly_bills',b._id);
+  });
   ensurePlatformBillCalendar();
   updNextBilDate();
 }
@@ -207,11 +274,14 @@ function renderMonthlyBillList(){
     return;
   }
   const histBills=bills.filter(b=>isHistBillMonth(b.month));
-  const histSum=histBills.reduce((s,b)=>s+(b.total||0),0);
-  const histTax=histBills.reduce((s,b)=>s+(b.tax||0),0);
-  const histSub=histSum-histTax;
-  const head=histBills.length?'<div style="font-size:.78rem;color:var(--g500);padding:4px 0 10px">2026年5–8月未稅 <strong>NT$'+(histSub||BILL_HIST_SUM).toLocaleString()+'</strong> ＋營業稅5% <strong>NT$'+(histTax||BILL_HIST_TAX).toLocaleString()+'</strong> ＝ <strong>NT$'+histSum.toLocaleString()+'</strong>。9月尚未結束，不會先出帳單。</div>':'';
-  box.innerHTML=head+bills.map(b=>{
+  const seenMonth=new Set();
+  const unique=bills.filter(b=>{
+    if(!b.month||seenMonth.has(b.month))return false;
+    seenMonth.add(b.month);
+    return true;
+  });
+  const head=histBills.length?'<div style="font-size:.78rem;color:var(--g500);padding:4px 0 10px">2026年5–8月未稅 <strong>NT$'+BILL_HIST_SUM.toLocaleString()+'</strong> ＋營業稅5% <strong>NT$'+BILL_HIST_TAX.toLocaleString()+'</strong> ＝ <strong>NT$'+BILL_HIST_GRAND.toLocaleString()+'</strong>。9月尚未結束，不會先出帳單。</div>':'';
+  box.innerHTML=head+unique.map(b=>{
     const paid=b.status==='paid';
     const sub=b.histSeason
       ?('未稅 NT$'+(b.baseFee||0).toLocaleString()+' ＋稅 NT$'+(b.tax||0).toLocaleString()+(b.issuedAt?'　產出 '+b.issuedAt:''))

@@ -841,6 +841,11 @@ function refreshListsForKey(k){
     if(typeof renderLedgerMonthly==='function')renderLedgerMonthly();
   }
   if(k==='salary_records'&&typeof renderLedgerMonthly==='function')renderLedgerMonthly();
+  if(k==='monthly_bills'){
+    if(typeof generateDueMonthlyBills==='function')generateDueMonthlyBills();
+    if(typeof renderBilling==='function'&&document.getElementById('p-ac-billing')?.classList.contains('on'))renderBilling();
+    if(typeof renderDashboard==='function')renderDashboard();
+  }
 }
 
 // ── 備份/還原也寫入雲端 ──
