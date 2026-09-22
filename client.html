@@ -148,6 +148,36 @@ function toArr(v){
   if(Array.isArray(v))return v.filter(x=>x);
   return Object.values(v).filter(x=>x);
 }
+function sameId(a,b){
+  return a!=null&&a!==''&&b!=null&&b!==''&&String(a)===String(b);
+}
+function designViewFiles(f){
+  if(f.fileUrls&&f.fileUrls.length)return f.fileUrls;
+  if(f.imgDataUrl)return [{name:f.name||'設計圖',type:'image/jpeg',url:f.imgDataUrl}];
+  if(f.fileUrl)return [{name:f.name||'設計圖',type:'image/jpeg',url:f.fileUrl}];
+  return [];
+}
+function flattenProgress(rows,project){
+  const pid=project&&project._id;
+  const contracts=toArr(window._clientAllContracts||[]);
+  const out=[];
+  (rows||[]).forEach(r=>{
+    const byProj=sameId(r.projectId,pid);
+    const byCt=!r.projectId&&r.contractId&&contracts.some(ct=>sameId(ct._id,r.contractId)&&sameId(ct.projectId,pid));
+    if(!byProj&&!byCt)return;
+    if(Array.isArray(r.items)&&r.items.length){
+      r.items.forEach(it=>out.push({text:it.text,done:!!it.done,date:it.date||'',note:it.note||'',photoUrl:it.photoUrl,photoUrls:it.photoUrls}));
+    }else{
+      out.push(r);
+    }
+  });
+  return out;
+}
+function stepPhotos(step){
+  if(step.photoUrls&&step.photoUrls.length)return step.photoUrls;
+  if(step.photoUrl)return [step.photoUrl];
+  return [];
+}
 
 async function load(){
   const token=getToken();
@@ -171,11 +201,12 @@ async function load(){
     const project=projects.find(p=>p&&p.token===token);
     if(!project){return showError('找不到工程資料','此連結可能已失效，或工程尚未建立。請聯繫您的建商確認。');}
 
-    const progress=toArr(data.progress).filter(r=>r.projectId==project._id);
+    window._clientAllContracts=toArr(data.contracts);
+    const progress=flattenProgress(toArr(data.progress),project);
     // 只顯示外帳收入（業主付的款），絕不顯示內帳成本
-    const payments=toArr(data.ledger).filter(l=>l.projectId==project._id&&(l.book==='in')&&l.type==='in'&&!l.deleted);
-    const contracts=toArr(data.contracts).filter(c=>c.projectId==project._id&&!c.deleted);
-    const designFiles=toArr(data.design_files).filter(f=>f.projectId==project._id&&!f.deleted);
+    const payments=toArr(data.ledger).filter(l=>sameId(l.projectId,project._id)&&(l.book==='in')&&l.type==='in'&&!l.deleted);
+    const contracts=toArr(data.contracts).filter(c=>sameId(c.projectId,project._id)&&!c.deleted);
+    const designFiles=toArr(data.design_files).filter(f=>sameId(f.projectId,project._id)&&!f.deleted);
 
     render(project,progress,payments,contracts,designFiles);
   }catch(err){
@@ -252,7 +283,7 @@ function render(p,progress,payments,contracts,designFiles){
         '<div class="tl-title">'+esc(step.text||step.name||'進度')+'</div>'+
         (step.date?'<div class="tl-date">'+esc(step.date)+'</div>':'')+
         (step.note?'<div class="tl-note">'+esc(step.note)+'</div>':'')+
-        (step.photoUrl?'<img src="'+step.photoUrl+'" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px;object-fit:cover;display:block">':'')+
+        stepPhotos(step).map(url=>'<img src="'+url+'" style="max-width:100%;max-height:220px;border-radius:10px;margin-top:8px;object-fit:cover;display:block">').join('')+
       '</div>';
     });
   }else{
@@ -281,7 +312,7 @@ function render(p,progress,payments,contracts,designFiles){
     const catLabel={render:'🖼️ 渲染圖',plan:'📐 平面圖',other:'📄 圖檔'};
     html+='<div class="card reveal" style="animation-delay:.22s"><div class="card-t">🖼️ 設計圖／渲染圖</div>';
     designFiles.forEach((f,idx)=>{
-      const hasFile=(f.fileUrls&&f.fileUrls.length);
+      const hasFile=designViewFiles(f).length;
       html+='<div class="doc-row"><div class="doc-ico">🖼️</div>'+
         '<div class="doc-info"><div class="doc-name">'+esc(f.name||'設計圖')+'</div>'+
         '<div class="doc-sub">'+esc(catLabel[f.cat]||'')+(f._ts?' · '+esc(f._ts.split(' ')[0]):'')+'</div></div>'+
@@ -362,7 +393,7 @@ function openContractFiles(idx){
 // 設計圖／渲染圖用同一套燈箱，不用另外寫一份
 function openDesignFiles(idx){
   const f=(window._clientDesignFiles||[])[idx];if(!f)return;
-  const files=f.fileUrls&&f.fileUrls.length?f.fileUrls:[];
+  const files=designViewFiles(f);
   if(!files.length)return;
   document.getElementById('lbTitle').textContent=f.name||'設計圖';
   const wrap=document.getElementById('lbImgs');

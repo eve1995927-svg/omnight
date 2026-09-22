@@ -1278,51 +1278,52 @@ function runGlobalSearch(kw){
   if(!kw){out.innerHTML='<div style="padding:24px;text-align:center;color:var(--g400);font-size:.85rem">輸入關鍵字開始搜尋</div>';return;}
   const k=kw.toLowerCase();
   const hit=(...vals)=>vals.some(v=>String(v||'').toLowerCase().includes(k));
+  const allow=id=>typeof canAccessPanel!=='function'||canAccessPanel(id);
   const groups=[];
 
-  const projects=DB.get('projects').filter(p=>hit(p.name,p.client,p.address,p.type));
+  const projects=allow('projects')?DB.get('projects').filter(p=>hit(p.name,p.client,p.address,p.type)):[];
   if(projects.length)groups.push({label:'🏗️ 案場',items:projects.map(p=>({
     title:p.name||'未命名案場',
     sub:[p.client,p.address].filter(Boolean).join(' · '),
     go:()=>{openProject(p._id);}
   }))});
 
-  const clients=DB.get('clients').filter(c=>hit(c.name,c.phone,c.addr,c.note));
+  const clients=allow('crm')?DB.get('clients').filter(c=>hit(c.name,c.phone,c.addr,c.note)):[];
   if(clients.length)groups.push({label:'👥 客戶',items:clients.map(c=>({
     title:c.name||'未命名客戶',
     sub:[c.phone,c.addr].filter(Boolean).join(' · '),
     go:()=>showPanel('crm')
   }))});
 
-  const vendors=DB.get('vendors').filter(v=>!v.deleted&&hit(v.vendor,v.cat,v.caseN,v.note));
+  const vendors=allow('ad-vendor')?DB.get('vendors').filter(v=>!v.deleted&&hit(v.vendor,v.cat,v.caseN,v.note)):[];
   if(vendors.length)groups.push({label:'🔧 廠商報價',items:vendors.slice(0,20).map(v=>({
     title:(v.vendor||'未填廠商')+(v.cat?'（'+v.cat+'）':''),
     sub:[v.caseN,v.amount?'NT$'+(v.amount||0).toLocaleString():''].filter(Boolean).join(' · '),
-    go:()=>{v.projectId?openProject(v.projectId,'vendor'):showPanel('ad-progress');}
+    go:()=>{v.projectId?openProject(v.projectId,allow('ad-vendor')?'vendor':'overview'):showPanel('ad-vendor');}
   }))});
 
-  const quotes=DB.get('quotes').filter(q=>hit(q.name,q.caseN,q.addr));
+  const quotes=allow('ad-quote')?DB.get('quotes').filter(q=>hit(q.name,q.caseN,q.addr)):[];
   if(quotes.length)groups.push({label:'📋 報價單',items:quotes.slice(0,20).map(q=>({
     title:(q.name||'未命名')+(q.total?'　NT$'+(q.total||0).toLocaleString():''),
     sub:[q.caseN,(q._ts||'').split(' ')[0]].filter(Boolean).join(' · '),
     go:()=>{q.projectId?openProject(q.projectId,'quote'):showPanel('ad-quote');}
   }))});
 
-  const contracts=DB.get('contracts').filter(c=>!c.deleted&&hit(c.name,c.client,c.note));
+  const contracts=allow('contract')?DB.get('contracts').filter(c=>!c.deleted&&hit(c.name,c.client,c.note)):[];
   if(contracts.length)groups.push({label:'📝 合約',items:contracts.map(c=>({
     title:c.name||'未命名合約',
     sub:[c.client,c.amount?'NT$'+(c.amount||0).toLocaleString():''].filter(Boolean).join(' · '),
     go:()=>{c.projectId?openProject(c.projectId,'contract'):showPanel('contract');}
   }))});
 
-  const invoices=DB.get('invoices').filter(v=>hit(v.no,v.desc,v.cat));
+  const invoices=allow('ac-overview')?DB.get('invoices').filter(v=>hit(v.no,v.desc,v.cat)):[];
   if(invoices.length)groups.push({label:'🧾 發票',items:invoices.slice(0,20).map(v=>({
     title:(v.no||'無號碼')+'　NT$'+(v.amount||0).toLocaleString(),
     sub:[v.desc,v.date].filter(Boolean).join(' · '),
     go:()=>{showPanel('ac-overview');setTimeout(()=>switchLedgerView('invoice'),100);}
   }))});
 
-  const ledger=DB.get('ledger').filter(l=>!l.deleted&&hit(l.desc,l.cat,l.caseN));
+  const ledger=allow('ac-overview')?DB.get('ledger').filter(l=>!l.deleted&&hit(l.desc,l.cat,l.caseN)):[];
   if(ledger.length)groups.push({label:'💰 帳款',items:ledger.slice(0,15).map(l=>({
     title:(l.desc||l.cat||'記錄')+'　'+(l.type==='in'?'+':'-')+'NT$'+(l.amount||0).toLocaleString(),
     sub:[l.date,l.caseN].filter(Boolean).join(' · '),

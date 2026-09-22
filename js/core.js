@@ -218,6 +218,35 @@ function getUnlockedStaffGroups(){
   return getFilteredStaffGroups().filter(g=>!g._locked);
 }
 
+function panelPermKey(id){
+  const map={
+    'owner-dash':null,projects:'projects','project-detail':'projects',
+    inbox:'business','cs-chat':'business',crm:'business','cs-quote':'business',
+    'mk-post':'business','ad-quote':'business','ad-newquote':'business',contract:'business',
+    'ad-vendor':'vendor','ad-progress':'vendor',
+    'ac-overview':'accounting','ac-report':'accounting','ac-billing':'accounting','ac-chat':'accounting',
+    'hr-settings':'settings',settings:'settings','punch-clock':null
+  };
+  return Object.prototype.hasOwnProperty.call(map,id)?map[id]:undefined;
+}
+function canAccessPanel(id){
+  if(!id)return false;
+  if(curRole==='owner')return true;
+  if(curRole==='punch')return id==='punch-clock';
+  if(curRole!=='staff')return true;
+  const key=panelPermKey(id);
+  if(key===undefined)return false;
+  if(key===null)return id==='punch-clock';
+  return !!getEmployeePermissions()[key];
+}
+function canAccessProjectTab(tab){
+  if(curRole==='owner')return true;
+  if(curRole==='punch')return false;
+  const map={overview:'projects',survey:'projects',progress:'projects',design:'projects',memo:'projects',quote:'business',contract:'business',vendor:'vendor',ledger:'accounting'};
+  const perm=map[tab]||'projects';
+  return !!getEmployeePermissions()[perm];
+}
+
 // 統一入口：取得某個角色實際可見的導覽分組（員工角色會套用個人權限過濾，只回傳有開放的）
 function groupsFor(role){
   return role==='staff' ? getUnlockedStaffGroups() : (GROUPS[role]||[]);
@@ -1393,7 +1422,7 @@ function doLogin(){
     _punchEmployee=emp;
   } else {
     // 打卡一律要選自己的名字才能打，不能再用共用密碼登入
-    err.style.display='block'; err.textContent='請選擇你的名字才能打卡'; return;
+    err.style.display='block'; err.textContent=curRole==='staff'?'請先選擇你的名字，不能用共用帳號登入':'請選擇你的名字才能打卡'; return;
   }
   err.style.display='none';
   // 儲存登入狀態
@@ -1702,10 +1731,7 @@ function showPanel(id){
   if(!id)return;
   if(String(id).startsWith('p-')&&!document.getElementById('p-'+id)&&document.getElementById(id)) id=id.slice(2);
   if(curRole==='punch'&&id!=='punch-clock'){id='punch-clock';}
-  if(curRole==='staff'){
-    const allowed=new Set(groupsFor('staff').flatMap(g=>g.items.map(i=>i.id)).concat(['project-detail','ad-newquote']));
-    if(!allowed.has(id)){showToast('此功能尚未開放給你，請洽老闆開通權限');return;}
-  }
+  if(!canAccessPanel(id)){showToast('此功能尚未開放給你，請洽老闆開通權限');return;}
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
   if(id==='inbox') setTimeout(()=>renderInboxPanel(),50);
   if(id==='settings') setTimeout(()=>{if(typeof updateLastBackupInfo==='function')updateLastBackupInfo();},50);

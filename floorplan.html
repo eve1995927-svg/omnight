@@ -223,7 +223,7 @@
 <body>
 
 <header>
-  <div class="brand"><b>案場通</b><span>平面規劃 β</span></div>
+  <div class="brand"><b>案場通</b><span>平面規劃 β</span><span id="fpProjLabel" style="opacity:.7;margin-left:8px;font-size:.78rem"></span></div>
   <div class="spacer"></div>
   <button class="hbtn primary" id="btnUpload">上傳底圖</button>
   <button class="hbtn" id="btn3d">3D 預覽</button>
@@ -341,6 +341,11 @@
 ========================================================= */
 
 const PING = 33057.85; // 1坪 = 33057.85 cm²
+(function(){
+  const pid=new URLSearchParams(location.search).get('projectId');
+  const el=document.getElementById('fpProjLabel');
+  if(pid&&el)el.textContent='案場 '+pid;
+})();
 
 // ── 家具庫 ──
 // 項目格式：[名稱, 寬cm, 深cm, (高cm), (離地cm)] — 高/離地供 3D 使用

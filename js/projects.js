@@ -65,7 +65,7 @@ function getTodayTodos(){
     todos.push({type:'quote',level:'warn',icon:'📋',
       title:`${pendingQuotes.length} 份報價單等待超過3天`,
       desc:'點此查看 → 可追蹤業主是否回覆',
-      action:()=>showPanel('ad-quote')});
+      panel:'ad-quote',action:()=>showPanel('ad-quote')});
   }
 
   // 2. 待收款（外帳有未結清的）
@@ -75,7 +75,7 @@ function getTodayTodos(){
     todos.push({type:'payment',level:'bad',icon:'💰',
       title:`${unpaid.length} 筆應收款尚未到帳　共 NT$${unpaidAmt.toLocaleString()}`,
       desc:'點此查看帳款總覽',
-      action:()=>showPanel('ac-overview')});
+      panel:'ac-overview',action:()=>showPanel('ac-overview')});
   }
 
   // 3. 施工中但超過7天沒更新進度
@@ -90,7 +90,7 @@ function getTodayTodos(){
     todos.push({type:'progress',level:'warn',icon:'🔨',
       title:`${stale.length} 個施工案場超過7天未更新進度`,
       desc:stale.map(p=>p.name).join('、'),
-      action:()=>showPanel('ad-progress')});
+      panel:'ad-progress',action:()=>showPanel('ad-progress')});
   }
 
   // 4. 待審核補登打卡
@@ -189,7 +189,12 @@ function getTodayTodos(){
     }
   }
 
-  return todos;
+  return todos.filter(t=>{
+    if(typeof canAccessPanel!=='function'||curRole==='owner')return true;
+    if(t.panel)return canAccessPanel(t.panel);
+    const byType={quote:'ad-quote',payment:'ac-overview',progress:'ad-progress',punch:'hr-settings',settle:'projects',nopunch:'hr-settings',margin:'projects','platform-bill':'ac-billing',overrun:'projects'};
+    return canAccessPanel(byType[t.type]||'projects');
+  });
 }
 
 // ── 渲染首頁儀表板 ────────────────────────────────────────
@@ -1032,6 +1037,11 @@ function showNextStep(msg, options){
 function openProject(id, tab='overview'){
   curProjectId=id;
   const p=getProject(id);if(!p)return;
+  if(typeof canAccessPanel==='function'&&!canAccessPanel('project-detail')){
+    showToast('此功能尚未開放給你，請洽老闆開通權限');
+    return;
+  }
+  if(typeof canAccessProjectTab==='function'&&!canAccessProjectTab(tab))tab='overview';
   showPanel('project-detail');
   renderProjectDetail(id, tab);
 }
@@ -1062,8 +1072,9 @@ function renderProjectDetail(id, activeTab='overview'){
   }
 
   // Tab：主路含廠商／合約，設計圖與備忘放更多
-  const primaryTabs=['overview','survey','quote','vendor','contract','progress','ledger'];
-  const moreTabs=['design','memo'];
+  const primaryTabs=['overview','survey','quote','vendor','contract','progress','ledger'].filter(t=>typeof canAccessProjectTab!=='function'||canAccessProjectTab(t));
+  const moreTabs=['design','memo'].filter(t=>typeof canAccessProjectTab!=='function'||canAccessProjectTab(t));
+  if(typeof canAccessProjectTab==='function'&&!canAccessProjectTab(activeTab))activeTab=primaryTabs[0]||'overview';
   const tabLabels={overview:'📊 總覽',survey:'📐 丈量',quote:'📋 報價',vendor:'🏗️ 廠商報價',contract:'📝 合約',ledger:'💰 帳款',progress:'🔨 進度',design:'🖼️ 設計圖',memo:'📝 備忘錄'};
   const tabBar=document.getElementById('projDetailTabs');
   if(tabBar){
@@ -1334,7 +1345,10 @@ function renderProjSurvey(id,p,c){
         <div style="font-weight:800;color:var(--g700)">丈量記錄（${items.length} 個房間／區域）</div>
         ${totalArea?`<div style="font-size:.82rem;color:var(--gold-d);font-weight:700;margin-top:2px">總坪數：${totalArea.toFixed(2)} 坪</div>`:''}
       </div>
-      <button class="btn bg bsm" onclick="openSurveyModal(${JSON.stringify(String(id))})">＋ 新增丈量</button>
+      <div style="display:flex;gap:8px">
+        <a class="btn bo bsm" href="floorplan.html?projectId=${encodeURIComponent(String(id))}" target="_blank" rel="noopener">📐 平面規劃</a>
+        <button class="btn bg bsm" onclick="openSurveyModal(${JSON.stringify(String(id))})">＋ 新增丈量</button>
+      </div>
     </div>
     ${items.length?items.map(m=>`
       <div class="card" style="margin-bottom:10px">
@@ -1737,7 +1751,7 @@ function openProjDesignUpload(projectId){
       }else{
         imgDataUrl=await new Promise(res=>{const rd=new FileReader();rd.onload=()=>res(rd.result);rd.readAsDataURL(file);});
       }
-      DB.push('design_files',{projectId,name:file.name,date:new Date().toISOString().split('T')[0],imgDataUrl,summary:'設計圖 '+file.name});
+      DB.push('design_files',{projectId,name:file.name,date:new Date().toISOString().split('T')[0],imgDataUrl,fileUrls:[{name:file.name,type:file.type||'image/jpeg',url:imgDataUrl}],summary:'設計圖 '+file.name});
       count++;
     }
     renderProjDesign(projectId,null,document.getElementById('projDetailContent'));
