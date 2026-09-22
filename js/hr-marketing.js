@@ -254,7 +254,7 @@ function updHRStats(){
 // 歷史資料完整保留、不會憑空消失。
 function openMergeEmployeeModal(id1,id2){
   const emps=DB.get('employees');
-  const e1=emps.find(e=>e._id===id1),e2=emps.find(e=>e._id===id2);
+  const e1=emps.find(e=>sameRecId(e._id,id1)),e2=emps.find(e=>sameRecId(e._id,id2));
   if(!e1||!e2){showToast('⚠️ 找不到這兩筆員工資料');return;}
   const old=document.getElementById('_mergeEmpBox');if(old)old.remove();
   const box=document.createElement('div');box.id='_mergeEmpBox';
@@ -280,9 +280,9 @@ function openMergeEmployeeModal(id1,id2){
   document.body.appendChild(box);
   document.getElementById('_mergeEmpCancel').addEventListener('click',()=>box.remove());
   document.getElementById('_mergeEmpConfirm').addEventListener('click',()=>{
-    const keepId=parseInt(document.querySelector('input[name="mergeKeep"]:checked')?.value);
+    const keepId=document.querySelector('input[name="mergeKeep"]:checked')?.value;
     if(!keepId){showToast('⚠️ 請先選擇要保留哪一筆');return;}
-    const dropId=keepId===id1?id2:id1;
+    const dropId=sameRecId(keepId,id1)?id2:id1;
     confirmAction('確定合併？ID:'+dropId+' 的打卡／薪資記錄會轉移到 ID:'+keepId+'，然後 ID:'+dropId+' 這筆會被刪除，這個動作沒辦法復原。',()=>{
       mergeEmployees(keepId,dropId);
       box.remove();

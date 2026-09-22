@@ -40,7 +40,7 @@ function getProjects(){
   return DB.get('projects').map(p=>({
     ...p,
     quotes: quotesForProject(p._id),
-    vendors: DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted),
+    vendors: DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted&&(typeof isVendorAwarded==='function'?isVendorAwarded(v):v.adopted!==false)),
     ledger: DB.get('ledger').filter(l=>sameRecId(l.projectId,p._id)),
   }));
 }
@@ -69,7 +69,7 @@ function getTodayTodos(){
   }
 
   // 2. 待收款（外帳有未結清的）
-  const unpaid=DB.get('ledger').filter(l=>l.book==='in'&&l.type==='in'&&!l.paid);
+  const unpaid=DB.get('ledger').filter(l=>(typeof getLedgerBook==='function'?getLedgerBook(l):l.book)==='in'&&l.type==='in'&&l.paid===false);
   const unpaidAmt=unpaid.reduce((s,l)=>s+(l.amount||0),0);
   if(unpaid.length){
     todos.push({type:'payment',level:'bad',icon:'💰',
@@ -175,9 +175,9 @@ function getTodayTodos(){
     const overrun=projects.filter(p=>{
       if(p.status==='done'||p.status==='archived')return false;
       const quotes=quotesForProject(p._id).filter(q=>q.status!=='rejected');
-      const quoteTotal=quotes.reduce((s,q)=>s+(q.total||0),0);
+      const quoteTotal=quotes.reduce((s,q)=>s+(typeof quoteGrand==='function'?quoteGrand(q):(q.total||0)),0);
       if(quoteTotal<=0)return false;
-      const vendorCost=DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted)
+      const vendorCost=DB.get('vendors').filter(v=>sameRecId(v.projectId,p._id)&&!v.deleted&&(typeof isVendorAwarded==='function'?isVendorAwarded(v):v.adopted!==false))
         .reduce((s,v)=>s+getVendorTrueCost(v),0);
       return vendorCost>quoteTotal;
     });
@@ -201,9 +201,10 @@ function renderDashboard(){
   // 統計
   const active=projects.filter(p=>p.status==='progress').length;
   const thisMonth=new Date().toISOString().slice(0,7);
-  const monthIncome=ledger.filter(l=>l.book==='in'&&l.type==='in'&&(l.date||'').startsWith(thisMonth))
+  const bookOf=l=>(typeof getLedgerBook==='function'?getLedgerBook(l):(l.book||(l.type==='in'?'in':'out')));
+  const monthIncome=ledger.filter(l=>bookOf(l)==='in'&&l.type==='in'&&(l.date||'').startsWith(thisMonth))
     .reduce((s,l)=>s+(l.amount||0),0);
-  const monthCost=ledger.filter(l=>l.book==='out'&&l.type==='out'&&(l.date||'').startsWith(thisMonth))
+  const monthCost=ledger.filter(l=>bookOf(l)==='out'&&l.type==='out'&&(l.date||'').startsWith(thisMonth))
     .reduce((s,l)=>s+(l.amount||0),0);
   const monthProfit=monthIncome-monthCost;
 
@@ -455,7 +456,7 @@ function renderProjectsKanban(){
     col.addEventListener('drop',e=>{
       e.preventDefault();
       col.classList.remove('drag-over');
-      const draggedId=parseInt(e.dataTransfer.getData('text/plain'));
+      const draggedId=e.dataTransfer.getData('text/plain');
       const proj=getProject(draggedId);
       if(!proj)return;
       const newStatus=col.dataset.status;
@@ -583,15 +584,15 @@ function renderProjectCalendar(){
       const raw=e.dataTransfer.getData('text/plain');
       const newDate=el.dataset.date;
       if(raw.startsWith('event:')){
-        const evId=parseInt(raw.slice(6));
-        const ev=DB.get('calendar_events').find(x=>x._id===evId);
+        const evId=raw.slice(6);
+        const ev=findRec('calendar_events',evId);
         if(!ev||ev.date===newDate)return;
-        DB.upd('calendar_events',evId,{date:newDate});
+        DB.upd('calendar_events',ev._id,{date:newDate});
         renderProjectCalendar();
         showToast('📅 已把「'+(ev.title||'行程')+'」改到 '+newDate);
         return;
       }
-      const draggedId=parseInt(raw.startsWith('project:')?raw.slice(8):raw);
+      const draggedId=raw.startsWith('project:')?raw.slice(8):raw;
       const proj=getProject(draggedId);
       if(!proj||!proj.startDate)return;
       if(proj.startDate===newDate)return;
@@ -605,7 +606,7 @@ function renderProjectCalendar(){
         const newEnd=new Date(newStart.getTime()+durationDays*86400000);
         patch.endDate=ymd(newEnd);
       }
-      DB.upd('projects',draggedId,patch);
+      DB.upd('projects',proj._id,patch);
       renderProjectCalendar();
       showToast('📅 已把「'+(proj.name||'案場')+'」的開工日改到 '+newDate);
     });
@@ -661,10 +662,10 @@ function showDayItemsPopover(dateStr,items){
     row.addEventListener('mouseleave',()=>row.style.background='');
     row.addEventListener('click',()=>{
       box.remove();
-      const id=parseInt(row.dataset.id);
+      const id=row.dataset.id;
       if(row.dataset.ptype==='project')openProject(id);
       else{
-        const ev=DB.get('calendar_events').find(x=>x._id===id);
+        const ev=findRec('calendar_events',id);
         if(ev)openCalEventModal(dateStr,ev);
       }
     });
@@ -714,7 +715,7 @@ function openCalEventModal(dateStr,existingEvent){
     const projectIdSel=document.getElementById('calEvProject')?.value;
     if(!title){showToast('⚠️ 請輸入行程標題');return;}
     if(!date){showToast('⚠️ 請選擇日期');return;}
-    const data={title,date,time,note,projectId:projectIdSel?parseInt(projectIdSel):null,summary:'行程 '+title};
+    const data={title,date,time,note,projectId:recId(projectIdSel),summary:'行程 '+title};
     if(ev)DB.upd('calendar_events',ev._id,data);
     else DB.push('calendar_events',data);
     box.remove();
@@ -749,7 +750,7 @@ function openMergeProjectsModal(){
     }).join('');
     list.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
       cb.addEventListener('change',()=>{
-        const id=parseInt(cb.value);
+        const id=cb.value;
         if(cb.checked)_mergeSelected.add(id);else _mergeSelected.delete(id);
         cb.closest('[data-mergerow]').style.background=cb.checked?'var(--gold-pale)':'';
         cb.closest('[data-mergerow]').style.borderColor=cb.checked?'var(--gold-l)':'var(--g200)';
@@ -773,21 +774,21 @@ function updateMergeProjectUI(){
   }
   if(primaryWrap)primaryWrap.style.display='block';
   if(primarySel){
-    const projects=ids.map(id=>DB.get('projects').find(p=>p._id===id)).filter(Boolean);
+    const projects=ids.map(id=>getProject(id)).filter(Boolean);
     const prevVal=primarySel.value;
     primarySel.innerHTML=projects.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名')+'</option>').join('');
-    if(ids.includes(parseInt(prevVal)))primarySel.value=prevVal;
+    if(ids.some(id=>sameRecId(id,prevVal)))primarySel.value=prevVal;
   }
   if(btn){btn.disabled=false;btn.textContent='合併這'+ids.length+' 筆案場';}
 }
 
 document.getElementById('mergeProjBtn')?.addEventListener('click',()=>{
   const ids=[..._mergeSelected];
-  const primaryId=parseInt(document.getElementById('mergeProjPrimary')?.value);
+  const primaryId=document.getElementById('mergeProjPrimary')?.value;
   if(ids.length<2||!primaryId)return;
-  const otherIds=ids.filter(id=>id!==primaryId);
-  const primary=DB.get('projects').find(p=>p._id===primaryId);
-  const others=otherIds.map(id=>DB.get('projects').find(p=>p._id===id)).filter(Boolean);
+  const otherIds=ids.filter(id=>!sameRecId(id,primaryId));
+  const primary=getProject(primaryId);
+  const others=otherIds.map(id=>getProject(id)).filter(Boolean);
 
   confirmAction(
     '確定合併嗎？「'+esc(primary?.name||'')+'」會保留，其他 '+otherIds.length+' 筆會移到垃圾桶，所有相關資料會轉移過去。',
@@ -807,7 +808,7 @@ document.getElementById('mergeProjBtn')?.addEventListener('click',()=>{
       let movedCount=0;
       collections.forEach(col=>{
         DB.getAll(col).forEach(rec=>{
-          if(otherIds.includes(rec.projectId)){
+          if(otherIds.some(id=>sameRecId(rec.projectId,id))){
             const patchRec={projectId:primaryId};
             // caseN 這種顯示用的文字欄位也一併更新，避免畫面上還顯示舊的案場名稱
             if(rec.caseN!==undefined)patchRec.caseN=primary.name||'';
@@ -867,7 +868,7 @@ function openAddProject(id=null){
   const empSel=document.getElementById('projEmployee');
   if(empSel){
     const emps=DB.get('employees');
-    empSel.innerHTML='<option value="">不指定</option>'+emps.map(e=>`<option value="${e._id}"${p?.employeeId===e._id?' selected':''}>${esc(e.name)}</option>`).join('');
+    empSel.innerHTML='<option value="">不指定</option>'+emps.map(e=>`<option value="${e._id}"${sameRecId(p?.employeeId,e._id)?' selected':''}>${esc(e.name)}</option>`).join('');
   }
 
   // 業主姓名自動帶出之前的客戶清單，打字就會搜尋，選了會自動關聯到同一個客戶身上
@@ -1044,7 +1045,7 @@ function renderProjectDetail(id, activeTab='overview'){
   const header=document.getElementById('projDetailHeader');
   if(header){
     const emps=DB.get('employees');
-    const emp=p.employeeId?emps.find(e=>e._id===p.employeeId):null;
+    const emp=p.employeeId?emps.find(e=>sameRecId(e._id,p.employeeId)):null;
     header.innerHTML=`
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <button onclick="showPanel('projects')" style="background:none;border:none;color:var(--g400);cursor:pointer;font-size:.85rem;padding:0">← 返回</button>
@@ -1096,26 +1097,27 @@ function renderProjectDetail(id, activeTab='overview'){
 // ── 案場總覽 Tab ──────────────────────────────────────────
 function renderProjOverview(id,p,c){
   const quotes=quotesForProject(id);
-  const vendors=DB.get('vendors').filter(v=>sameRecId(v.projectId,id)&&!v.deleted);
+  const vendors=DB.get('vendors').filter(v=>sameRecId(v.projectId,id)&&!v.deleted&&(typeof isVendorAwarded==='function'?isVendorAwarded(v):v.adopted!==false));
   const contracts=DB.get('contracts').filter(ct=>sameRecId(ct.projectId,id)&&!ct.deleted);
   const ledgerItems=DB.get('ledger').filter(l=>sameRecId(l.projectId,id));
   // 毛利改用全站唯一的計算函式（core.js 的 calcProjectProfit），
   // 避免各頁面各自寫一套公式、算出來的數字兜不起來
   const {income,cost,vendorCost,profit}=calcProjectProfit(id);
   const st=PROJECT_STATUS[p.status||'inquiry'];
+  const pid=jsId(id);
 
   c.innerHTML=`
     <div class="g3" style="margin-bottom:20px">
       <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">客戶收款</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${(cost+vendorCost)?'NT$'+(cost+vendorCost).toLocaleString():'NT$0'}</div><div class="sl">工程成本</div></div>
-      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
+      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${pid})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:20px">
       ${[
-        {icon:'📋',label:'報價單',count:quotes.length,action:`renderProjectDetail(${id},'quote')`,btn:'查看報價',color:'var(--info)'},
-        {icon:'🏗️',label:'廠商報價',count:vendors.length,action:`renderProjectDetail(${id},'vendor')`,btn:'查看廠商',color:'var(--warn)'},
-        {icon:'📝',label:'合約',count:contracts.length,action:`renderProjectDetail(${id},'contract')`,btn:'查看合約',color:'var(--ok)'},
-        {icon:'💰',label:'帳款紀錄',count:ledgerItems.length,action:`renderProjectDetail(${id},'ledger')`,btn:'查看帳款',color:'var(--gold-d)'},
+        {icon:'📋',label:'報價單',count:quotes.length,action:`renderProjectDetail(${pid},'quote')`,btn:'查看報價',color:'var(--info)'},
+        {icon:'🏗️',label:'廠商報價',count:vendors.length,action:`renderProjectDetail(${pid},'vendor')`,btn:'查看廠商',color:'var(--warn)'},
+        {icon:'📝',label:'合約',count:contracts.length,action:`renderProjectDetail(${pid},'contract')`,btn:'查看合約',color:'var(--ok)'},
+        {icon:'💰',label:'帳款紀錄',count:ledgerItems.length,action:`renderProjectDetail(${pid},'ledger')`,btn:'查看帳款',color:'var(--gold-d)'},
       ].map(item=>`
         <div onclick="${item.action}" style="padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r);cursor:pointer;transition:all var(--ease)" 
           onmouseenter="this.style.borderColor='var(--gold-l)';this.style.boxShadow='var(--sh2)'"
@@ -1126,13 +1128,13 @@ function renderProjOverview(id,p,c){
         </div>`).join('')}
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn bg" onclick="shareProjectToClient(${id})" style="background:var(--ok);color:#fff">分享給業主</button>
-      <button class="btn bo" onclick="openAddProject(${id})">編輯案場資料</button>
-      <select onchange="if(this.value)updateProjectStatus(${id},this.value)" style="padding:8px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
+      <button class="btn bg" onclick="shareProjectToClient(${pid})" style="background:var(--ok);color:#fff">分享給業主</button>
+      <button class="btn bo" onclick="openAddProject(${pid})">編輯案場資料</button>
+      <select onchange="if(this.value)updateProjectStatus(${pid},this.value)" style="padding:8px 12px;border:1.5px solid var(--g200);border-radius:var(--rs);font-size:.82rem;font-family:inherit;color:var(--g600);background:var(--w);cursor:pointer">
         <option value="">更改狀態...</option>
         ${Object.entries(PROJECT_STATUS).map(([k,v])=>`<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
       </select>
-      <button class="btn bo" id="catProfitToggleBtn" onclick="toggleProjCatProfit(${id})">工種毛利</button>
+      <button class="btn bo" id="catProfitToggleBtn" onclick="toggleProjCatProfit(${pid})">工種毛利</button>
     </div>
     <div id="projCatProfitBox" style="display:none;margin-top:14px;padding:16px;background:var(--w);border:1px solid var(--g200);border-radius:var(--r)"></div>`;
 }
@@ -1141,9 +1143,11 @@ function updateProjectStatus(id,status){
   DB.upd('projects',id,{status,doneDate:status==='done'?new Date().toISOString().split('T')[0]:undefined});
   // 只在目前正顯示這個案場的詳情頁時才重繪，避免從案場總覽（列表/看板）呼叫時做多餘的DOM操作
   const detailPanel=document.getElementById('p-project-detail');
-  if(detailPanel&&detailPanel.classList.contains('on')&&curProjectId===id){
+  if(detailPanel&&detailPanel.classList.contains('on')&&sameRecId(curProjectId,id)){
     renderProjectDetail(id,'overview');
   }
+  if(typeof renderProjects==='function'&&document.getElementById('p-projects')?.classList.contains('on'))renderProjects();
+  if(typeof renderDashboard==='function')renderDashboard();
   showToast('✅ 案場狀態已更新：'+PROJECT_STATUS[status].label);
   if(status==='done'&&typeof showNextStep==='function'){
     setTimeout(()=>{
@@ -1158,20 +1162,21 @@ function updateProjectStatus(id,status){
 // ── 案場報價 Tab ──────────────────────────────────────────
 function renderProjQuotes(id,p,c){
   const quotes=quotesForProject(id,true);
+  const pid=jsId(id);
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:8px">
       <div style="font-weight:800;color:var(--g700)">報價單（${quotes.length} 份）</div>
       <div style="display:flex;gap:8px">
-        <button class="btn bo bsm" onclick="openQuoteFileUpload(${id})">上傳報價單檔案</button>
-        <button class="btn bg bsm" onclick="newProjQuote(${id})">＋ 新建報價單</button>
+        <button class="btn bo bsm" onclick="openQuoteFileUpload(${pid})">上傳報價單檔案</button>
+        <button class="btn bg bsm" onclick="newProjQuote(${pid})">＋ 新建報價單</button>
       </div>
     </div>
     ${quotes.length?quotes.map(q=>{
       const hasItems=(q.sections||[]).some(sec=>(sec.items||[]).length);
       const fileCount=(q.fileUrls||[]).length;
-      const amt=Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05);
+      const amt=typeof quoteGrand==='function'?quoteGrand(q):Math.round((q.sections||[]).reduce((s,sec)=>(sec.items||[]).reduce((a,it)=>a+(parseFloat(it.price)||0)*(parseFloat(it.qty)||1),s),0)*1.05);
       return `
-      <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openQuoteEdit(${q._id})">
+      <div class="card" style="margin-bottom:10px;cursor:pointer" onclick="openQuoteEdit(${jsId(q._id)})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:800">${esc(q.name||'報價單')}${!hasItems&&fileCount?' <span style="font-size:.68rem;background:var(--info-bg);color:var(--info);padding:2px 8px;border-radius:20px;font-weight:800">📎 檔案 '+fileCount+' 張</span>':''}</div>
@@ -1608,8 +1613,8 @@ function refreshAccountViews(){
   if(typeof renderLedgerByProject==='function'&&document.getElementById('ledger-project-table'))renderLedgerByProject();
   if(typeof updLedgerStats==='function')updLedgerStats();
   const pc=document.getElementById('projDetailContent');
-  if(pc&&pc.dataset.tab==='ledger'&&pc.dataset.projId&&typeof renderProjectDetail==='function'){
-    renderProjectDetail(pc.dataset.projId,'ledger');
+  if(pc&&pc.dataset.projId&&typeof renderProjectDetail==='function'&&(pc.dataset.tab==='ledger'||pc.dataset.tab==='overview')){
+    renderProjectDetail(pc.dataset.projId,pc.dataset.tab);
   }
   if(typeof renderDashboard==='function')renderDashboard();
 }
@@ -2095,9 +2100,10 @@ function toggleProjCatProfit(id){
 
 function showProjProfitDetail(projectId){
   const items=DB.get('ledger').filter(l=>sameRecId(l.projectId,projectId));
-  const incomeItems=items.filter(l=>l.book==='in'&&l.type==='in');
-  const costItems=items.filter(l=>l.book==='out'&&l.type==='out'&&!l.vendorId);
-  const vendorList=DB.get('vendors').filter(v=>sameRecId(v.projectId,projectId)&&!v.deleted);
+  const bookOf=l=>(typeof getLedgerBook==='function'?getLedgerBook(l):(l.book||(l.type==='in'?'in':'out')));
+  const incomeItems=items.filter(l=>bookOf(l)==='in'&&l.type==='in');
+  const costItems=items.filter(l=>bookOf(l)==='out'&&l.type==='out'&&!l.vendorId);
+  const vendorList=DB.get('vendors').filter(v=>sameRecId(v.projectId,projectId)&&!v.deleted&&(typeof isVendorAwarded==='function'?isVendorAwarded(v):v.adopted!==false));
   // 毛利用全站唯一的計算函式，明細清單仍在上面各自取（要逐筆列出來給人看）
   const {income,cost,vendorCost,profit,margin}=calcProjectProfit(projectId);
 
@@ -2183,10 +2189,10 @@ function renderProjContract(id,p,c){
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">合約（${contracts.length} 份）</div>
-      <button class="btn bg bsm" onclick="openContractForProject(${id})">＋ 上傳合約</button>
+      <button class="btn bg bsm" onclick="openContractForProject(${jsId(id)})">＋ 上傳合約</button>
     </div>
     ${contracts.length?contracts.map(ct=>`
-      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="previewContract(${ct._id})">
+      <div class="card" style="margin-bottom:8px;cursor:pointer" onclick="previewContract(${jsId(ct._id)})">
         <div style="display:flex;justify-content:space-between;align-items:center">
           <div>
             <div style="font-weight:700">${esc(ct.name||'合約')}</div>
@@ -2275,8 +2281,8 @@ function renderProjLedger(id,p,c){
         </div>
         <div style="font-weight:900;color:${l.type==='in'?'var(--ok)':'var(--bad)'};font-size:.95rem">${l.type==='in'?'+':'-'}NT$${(l.amount||0).toLocaleString()}</div>
         ${isVendorAuto?'':`<div style="display:flex;gap:4px;flex-shrink:0">
-          <button onclick="editLedgerFromProject(${l._id},${l.projectId})" title="編輯" style="width:26px;height:26px;border:1px solid var(--g200);background:var(--w);border-radius:var(--rxs);color:var(--g500);cursor:pointer;font-size:.72rem;padding:0">✏️</button>
-          <button onclick="delLedgerFromProject(${l._id},${l.projectId})" title="刪除" style="width:26px;height:26px;border:1px solid var(--bad-bd);background:var(--w);border-radius:var(--rxs);color:var(--bad);cursor:pointer;font-size:.72rem;padding:0">🗑</button>
+          <button onclick="editLedgerFromProject(${jsId(l._id)},${jsId(l.projectId)})" title="編輯" style="width:26px;height:26px;border:1px solid var(--g200);background:var(--w);border-radius:var(--rxs);color:var(--g500);cursor:pointer;font-size:.72rem;padding:0">✏️</button>
+          <button onclick="delLedgerFromProject(${jsId(l._id)},${jsId(l.projectId)})" title="刪除" style="width:26px;height:26px;border:1px solid var(--bad-bd);background:var(--w);border-radius:var(--rxs);color:var(--bad);cursor:pointer;font-size:.72rem;padding:0">🗑</button>
         </div>`}
       </div>`;
   };
@@ -2294,14 +2300,14 @@ function renderProjLedger(id,p,c){
       <div class="stat"><div class="sn" style="color:var(--ok)">${income?'NT$'+income.toLocaleString():'NT$0'}</div><div class="sl">外帳收入</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${cost?'NT$'+cost.toLocaleString():'NT$0'}</div><div class="sl">內帳支出</div></div>
       <div class="stat"><div class="sn" style="color:var(--bad)">${vendorCost?'NT$'+vendorCost.toLocaleString():'NT$0'}</div><div class="sl">廠商成本</div></div>
-      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${id})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
+      <div class="stat" style="cursor:pointer" onclick="showProjProfitDetail(${jsId(id)})"><div class="sn" style="color:${profit>=0?'var(--ok)':'var(--bad)'}">${profit>=0?'+':'-'}NT$${Math.abs(profit).toLocaleString()}</div><div class="sl">毛利 <span style="text-decoration:underline">明細 →</span></div></div>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px">
-      <button class="btn bg bsm" onclick="openProjLedgerModal(${id},'in')">＋ 新增收款</button>
-      <button class="btn bo bsm" onclick="openProjLedgerModal(${id},'out')">＋ 新增支出</button>
+      <button class="btn bg bsm" onclick="openProjLedgerModal(${jsId(id)},'in')">＋ 新增收款</button>
+      <button class="btn bo bsm" onclick="openProjLedgerModal(${jsId(id)},'out')">＋ 新增支出</button>
     </div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
-      ${dirTabs.map(t=>`<button onclick="setProjLedgerDir(${id},'${t.key}')" style="padding:5px 14px;border-radius:20px;border:1.5px solid ${curDir===t.key?'var(--gold)':'var(--g200)'};background:${curDir===t.key?'var(--gold)':'var(--w)'};color:${curDir===t.key?'#fff':'var(--g600)'};font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">${t.label}</button>`).join('')}
+      ${dirTabs.map(t=>`<button onclick="setProjLedgerDir(${jsId(id)},'${t.key}')" style="padding:5px 14px;border-radius:20px;border:1.5px solid ${curDir===t.key?'var(--gold)':'var(--g200)'};background:${curDir===t.key?'var(--gold)':'var(--w)'};color:${curDir===t.key?'#fff':'var(--g600)'};font-size:.78rem;font-weight:700;cursor:pointer;font-family:inherit">${t.label}</button>`).join('')}
     </div>
     <div id="projLedgerList">
     ${items.length?monthKeys.map(key=>{
@@ -2332,14 +2338,28 @@ function openProjLedgerModal(projectId, dir){
 }
 
 // ── 案場進度 Tab ──────────────────────────────────────────
+function flattenProgressForProject(id){
+  const rows=[];
+  DB.get('progress').forEach(r=>{
+    const linkedByProject=sameRecId(r.projectId,id);
+    const linkedByContract=!r.projectId&&r.contractId&&DB.get('contracts').some(ct=>sameRecId(ct._id,r.contractId)&&sameRecId(ct.projectId,id));
+    if(!linkedByProject&&!linkedByContract)return;
+    if(Array.isArray(r.items)&&r.items.length){
+      r.items.forEach((it,i)=>rows.push({text:it.text,done:!!it.done,date:it.date||'',note:it.note||'',photoUrls:it.photoUrls||(it.photoUrl?[it.photoUrl]:[]),_id:r._id,_fromChecklist:true,_idx:i}));
+    }else{
+      rows.push(r);
+    }
+  });
+  return rows;
+}
 function renderProjProgress(id,p,c){
-  const items=DB.get('progress').filter(r=>sameRecId(r.projectId,id)).sort((a,b)=>a._id-b._id);
+  const items=flattenProgressForProject(id);
   const nextItem=items.find(x=>!x.done);
 
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
       <div style="font-weight:800;color:var(--g700)">工程進度</div>
-      <button class="btn bg bsm" onclick="openAddProgressEntry(${id})">新增進度</button>
+      <button class="btn bg bsm" onclick="openAddProgressEntry(${jsId(id)})">新增進度</button>
     </div>
     ${nextItem?`<div style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--gold-pale);border:1.5px solid var(--gold-l);border-radius:var(--r);margin-bottom:18px">
       <span style="font-size:1.4rem">👉</span>
@@ -2358,8 +2378,7 @@ function renderProjProgress(id,p,c){
               </div>
               <div style="display:flex;gap:6px;flex-shrink:0;align-items:center">
                 <span style="font-size:.72rem;padding:2px 8px;border-radius:20px;background:${item.done?'var(--ok-bg)':'var(--warn-bg)'};color:${item.done?'var(--ok)':'var(--warn)'};white-space:nowrap">${item.done?'✅ 完成':'進行中'}</span>
-                <button onclick="openAddProgressEntry(${id},${item._id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;padding:2px">✏️</button>
-                <button onclick="deleteProgressEntry(${item._id},${id})" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;padding:2px">🗑</button>
+                ${item._fromChecklist?'':'<button onclick="openAddProgressEntry('+jsId(id)+','+jsId(item._id)+')" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;padding:2px">✏️</button><button onclick="deleteProgressEntry('+jsId(item._id)+','+jsId(id)+')" style="background:none;border:none;color:var(--g300);cursor:pointer;font-size:.85rem;padding:2px">🗑</button>'}
               </div>
             </div>
             ${item.note?`<div style="font-size:.78rem;color:var(--g500);margin-top:6px">${esc(item.note)}</div>`:''}
@@ -2386,7 +2405,7 @@ function openProgressForProject(projectId){
 // 各自對應不同用途，這裡只處理案場詳情頁的進度時間軸（也是業主端QR Code看到的內容）
 function openAddProgressEntry(projectId, editId){
   const p=getProject(projectId);if(!p)return;
-  const existing=editId?DB.get('progress').find(r=>r._id===editId):null;
+  const existing=editId?findRec('progress',editId):null;
 
   const old=document.getElementById('_progBox');if(old)old.remove();
   const box=document.createElement('div');
@@ -2466,8 +2485,10 @@ function openAddProgressEntry(projectId, editId){
     };
     if(editId){DB.upd('progress',editId,data);showToast('✅ 進度已更新');}
     else{DB.push('progress',{...data,summary:'進度 '+p.name+' '+text});showToast('✅ 進度已新增');}
+    if(typeof bumpProjectStatus==='function')bumpProjectStatus(projectId,'progress');
     box.remove();
     renderProjectDetail(projectId,'progress');
+    if(typeof renderDashboard==='function')renderDashboard();
   });
 }
 
@@ -2494,9 +2515,12 @@ function getVendorTrueCost(v){
     return s+(it.taxType==='excl'?Math.round(amt*1.05):amt);
   },0);
 }
+function getVendorRemain(v){
+  return Math.max(0,getVendorTrueCost(v)-getVendorPaid(v));
+}
 function getVendorPayStatus(v){
   const paid=getVendorPaid(v);
-  const total=v.amount||0;
+  const total=getVendorTrueCost(v);
   if(paid<=0)return {label:'未付款',color:'var(--bad)',bg:'var(--bad-bg)',bd:'var(--bad-bd)'};
   if(paid<total)return {label:'部分付款',color:'var(--warn)',bg:'var(--warn-bg)',bd:'var(--warn-bd)'};
   return {label:'已付清',color:'var(--ok)',bg:'var(--ok-bg)',bd:'var(--ok-bd)'};
@@ -2510,7 +2534,7 @@ function openVendorPay(vendorId){
   _payVendorId=vendorId;
   const v=(typeof findVendor==='function'?findVendor(vendorId):DB.get('vendors').find(r=>sameRecId(r._id,vendorId)));if(!v)return;
   const paid=getVendorPaid(v);
-  const remain=(v.amount||0)-paid;
+  const remain=getVendorRemain(v);
 
   const old=document.getElementById('_payBox');if(old)old.remove();
   const box=document.createElement('div');
@@ -2609,7 +2633,7 @@ function confirmVendorPay(){
   // 1. 記錄到廠商付款歷史（如果有掃描發票，一併存進這筆付款記錄，之後可以點開查驗）
   const payments=[...(v.payments||[]),{payId,amount:amt,date:payDate,note,invoiceUrl:_payInvoiceUrl||null}];
   const totalPaid=payments.reduce((s,p)=>s+(p.amount||0),0);
-  DB.upd('vendors',v._id,{payments,paid:totalPaid>=(v.amount||0)});
+  DB.upd('vendors',v._id,{payments,paid:totalPaid>=getVendorTrueCost(v)});
 
   // 2. 自動記入內帳支出（雙式記帳，這是 ERP 核心），發票照片也存到帳款記錄的憑證欄位
   DB.push('ledger',{
@@ -2666,7 +2690,7 @@ function openEditVendorPayModal(vendorId,payIdx){
     const newPayments=[...(freshV.payments||[])];
     newPayments[payIdx]={...newPayments[payIdx],amount:newAmt,date:newDate,note:newNote};
     const totalPaid=newPayments.reduce((s,p)=>s+(p.amount||0),0);
-    DB.upd('vendors',vendorId,{payments:newPayments,paid:totalPaid>=(freshV.amount||0)});
+    DB.upd('vendors',vendorId,{payments:newPayments,paid:totalPaid>=getVendorTrueCost(freshV)});
     // 有 payId 的話，一併找到並更新對應的那筆內帳支出，兩邊保持一致
     if(pay.payId){
       const linkedLedger=DB.get('ledger').find(l=>sameRecId(l.vendorId,vendorId)&&l.payRecordId===pay.payId);
@@ -2740,14 +2764,17 @@ function saveQuickExpense(cat){
     book:'out',type:'out',amount:amt,
     desc:note||cat,cat:cat==='交通油錢'?'其他支出':cat,
     date:new Date().toISOString().split('T')[0],
-    projectId:projId?parseInt(projId):null,
+    projectId:recId(projId),
     imgUrl:_qeReceiptUrl||null,
   });
   _qeReceiptUrl=null;
   document.getElementById('_qeBox')?.remove();
   showToast('✅ 已記帳 NT$'+amt.toLocaleString());
-  if(typeof renderLedger==='function')renderLedger();
-  if(typeof renderDashboard==='function')renderDashboard();
+  if(typeof refreshLinkedViews==='function')refreshLinkedViews(projId);
+  else{
+    if(typeof renderLedger==='function')renderLedger();
+    if(typeof renderDashboard==='function')renderDashboard();
+  }
 }
 
 

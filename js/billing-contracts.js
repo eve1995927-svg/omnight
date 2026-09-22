@@ -901,7 +901,7 @@ function renderLedgerByProject(){
   const vendorCostOf=(projKey)=>{
     if(projKey==='_other')return 0;
     if(!curLedgerMonth){
-      return allVendors.filter(v=>String(v.projectId)===projKey)
+      return allVendors.filter(v=>String(v.projectId)===projKey&&(typeof isVendorAwarded==='function'?isVendorAwarded(v):v.adopted!==false))
         .reduce((s,v)=>s+(typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0)),0);
     }
     return allVendors.filter(v=>String(v.projectId)===projKey)
@@ -968,14 +968,15 @@ function renderRecurringExpList(){
       <button class="btn brd bxs" data-rdel="${r._id}">🗑</button>
     </div>`).join('');
   list.querySelectorAll('[data-rtgl]').forEach(btn=>{btn.addEventListener('click',()=>{
-    const r=DB.get('recurring_expenses').find(x=>x._id===parseInt(btn.dataset.rtgl));if(!r)return;
+    const r=findRec('recurring_expenses',btn.dataset.rtgl);if(!r)return;
     DB.upd('recurring_expenses',r._id,{active:r.active===false});
     renderRecurringExpList();
     showToast(r.active===false?'✅ 已啟用':'⏸ 已暫停，之後不會再自動記帳');
   });});
   list.querySelectorAll('[data-rdel]').forEach(btn=>{btn.addEventListener('click',()=>{
     confirmAction('刪除這筆固定支出設定？已經記過的帳款不會被刪除，只是之後不會再自動產生新的。',()=>{
-      DB.del('recurring_expenses',parseInt(btn.dataset.rdel));
+      const rec=findRec('recurring_expenses',btn.dataset.rdel);if(!rec)return;
+      DB.del('recurring_expenses',rec._id);
       renderRecurringExpList();
       showToast('✅ 已刪除');
     });
@@ -1063,9 +1064,9 @@ function openLedgerModal(book, projectId, editId){
   openModal('ledgerModal');
 }
 function switchLedger(book){openLedgerModal(book);}
-function delLedger(id){DB.softDel('ledger',id);renderLedger();updLedgerStats();showToast('✅ 已移至垃圾桶');}
+function delLedger(id){DB.softDel('ledger',id);if(typeof refreshLinkedViews==='function')refreshLinkedViews();else{renderLedger();updLedgerStats();}showToast('✅ 已移至垃圾桶');}
 function editLedgerFromProject(id,projectId){
-  const l=DB.get('ledger').find(x=>x._id===id);if(!l)return;
+  const l=findRec('ledger',id);if(!l)return;
   openLedgerModal(l.type==='in'?'in':'out',projectId,id);
 }
 function delLedgerFromProject(id,projectId){
@@ -1242,13 +1243,18 @@ function previewContract(id){
   // 僅可點右上角 ✕ 關閉，避免左右滑動瀏覽圖片時誤觸背景而關閉
 }
 function toggleContractStatus(id){
-  const c=DB.get('contracts').find(r=>r._id===id);if(!c)return;
+  const c=findRec('contracts',id);if(!c)return;
   // 循環切換：未開始 → 施工中 → 結案 → 未開始
   const cycle={pending:'progress',progress:'signed',signed:'pending'};
   const next=cycle[c.status]||'progress';
   const labels={pending:'📋 未開始',progress:'🔨 施工中',signed:'✅ 結案'};
-  DB.upd('contracts',id,{status:next});
-  renderContracts();updContractStats();
+  DB.upd('contracts',c._id,{status:next});
+  if(c.projectId&&typeof bumpProjectStatus==='function'){
+    if(next==='progress')bumpProjectStatus(c.projectId,'progress');
+    if(next==='signed')bumpProjectStatus(c.projectId,'signed');
+  }
+  if(typeof refreshLinkedViews==='function')refreshLinkedViews(c.projectId);
+  else{renderContracts();updContractStats();}
   showToast('已更新為：'+labels[next]);
 }
 
@@ -1307,9 +1313,11 @@ function openSignaturePad(contractId){
     const signatureUrl=canvas.toDataURL('image/png');
     const signedAt=new Date().toLocaleString('zh-TW');
     DB.upd('contracts',contractId,{signatureUrl,signedAt,status:'signed'});
+    if(c.projectId&&typeof bumpProjectStatus==='function')bumpProjectStatus(c.projectId,'signed');
     cleanupSigListener();
     box.remove();
-    renderContracts();updContractStats();
+    if(typeof refreshLinkedViews==='function')refreshLinkedViews(c.projectId);
+    else{renderContracts();updContractStats();}
     showToast('✅ 已完成簽署，合約標記為結案');
   });
 }
@@ -1350,8 +1358,8 @@ function setApiDot(ok){
 // ── 統計 ──────────────────────────────────────────────────
 function updStats(){
   const qs=DB.get('quotes'),vs=DB.get('vendors'),is=DB.get('invoices');
-  const qsum=qs.reduce((a,q)=>a+(q.total||0),0);
-  const vtot=vs.reduce((a,v)=>a+(v.amount||0),0);
+  const qsum=qs.reduce((a,q)=>a+(typeof quoteGrand==='function'?quoteGrand(q):(q.total||0)),0);
+  const vtot=vs.filter(v=>!v.deleted&&(typeof isVendorAwarded==='function'?isVendorAwarded(v):v.adopted!==false)).reduce((a,v)=>a+(typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0)),0);
   const isum=is.reduce((a,v)=>a+(v.amount||0),0);
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.textContent=v;};
   set('qCnt',qs.length);set('qSum',qsum?fmt(qsum):'—');
@@ -1389,14 +1397,14 @@ function initAdQuote(){
     adSaveBtn._bound=true;
     adSaveBtn.addEventListener('click',()=>{
       ensureProjectSelected(document.getElementById('adCase'),(projectIdVal)=>{
-      const sub=calcAll(adSections);
+      const tot=typeof calcQuoteTotals==='function'?calcQuoteTotals(adSections):{grand:calcAll(adSections)};
       const selectedProject=DB.get('projects').find(p=>sameRecId(p._id,projectIdVal));
       const caseNv=selectedProject?.name||'';
-      const payload={summary:'報價 '+getN()+' '+caseNv+' '+fmt(sub),
+      const payload={summary:'報價 '+getN()+' '+caseNv+' '+fmt(tot.grand),
         name:getN(),type:getTp(),caseN:caseNv,
         addr:document.getElementById('adAd')?.value||'',
         projectId:selectedProject?._id||projectIdVal,
-        sections:JSON.parse(JSON.stringify(adSections)),total:sub,
+        sections:JSON.parse(JSON.stringify(adSections)),total:tot.grand,
         updatedAt:new Date().toLocaleString('zh-TW')};
       if(qEditId){
         DB.upd('quotes',qEditId,payload);
@@ -1404,7 +1412,9 @@ function initAdQuote(){
       } else {
         DB.push('quotes',payload);
       }
+      if(typeof bumpProjectStatus==='function')bumpProjectStatus(payload.projectId,'quoting');
       updStats();renderQTable();
+      if(typeof refreshLinkedViews==='function')refreshLinkedViews(payload.projectId);
       showToast('✅ 報價單已儲存！');
       // 下一步提示
       if(typeof showNextStep==='function'){
@@ -1608,7 +1618,7 @@ const RPTS={
   receivable:{
     t:'客戶應收帳款',
     b:()=>{
-      const ledger=DB.get('ledger').filter(l=>getLedgerBook(l)==='in'&&l.type==='in'&&!l.paid);
+      const ledger=DB.get('ledger').filter(l=>getLedgerBook(l)==='in'&&l.type==='in'&&l.paid===false);
       if(!ledger.length)return '<p style="color:var(--g400)">目前沒有未收款項</p>';
       const projects=DB.get('projects');
       const total=ledger.reduce((s,l)=>s+(l.amount||0),0);

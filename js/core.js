@@ -25,6 +25,47 @@ function isImageUrl(fileUrl){
   return url.startsWith('data:image')||url.match(/\.(jpg|jpeg|png|gif|webp)$/i);
 }
 
+function sameRecId(a,b){
+  return a!=null&&a!==''&&b!=null&&b!==''&&String(a)===String(b);
+}
+function recId(val){
+  return (val==null||val==='')?null:val;
+}
+function jsId(id){
+  return JSON.stringify(id==null?'':String(id));
+}
+function findRec(key,id){
+  return DB.get(key).find(r=>sameRecId(r._id,id));
+}
+function quoteGrand(q){
+  if(q&&(q.sections||[]).length&&typeof calcQuoteTotals==='function'){
+    return calcQuoteTotals(q.sections).grand||0;
+  }
+  return Number(q&&q.total)||0;
+}
+function bumpProjectStatus(projectId,minStatus){
+  const order=['inquiry','quoting','signed','progress','done'];
+  const p=typeof getProject==='function'?getProject(projectId):DB.get('projects').find(x=>sameRecId(x._id,projectId));
+  if(!p||p.status==='done'||p.status==='paused')return;
+  const cur=order.indexOf(p.status||'inquiry');
+  const next=order.indexOf(minStatus);
+  if(next>cur){
+    DB.upd('projects',p._id,{status:minStatus});
+    if(typeof renderDashboard==='function')renderDashboard();
+  }
+}
+function refreshLinkedViews(projectId){
+  if(typeof refreshAccountViews==='function')refreshAccountViews();
+  if(typeof renderQTable==='function'&&document.getElementById('qList'))renderQTable();
+  if(typeof renderContracts==='function')renderContracts();
+  if(typeof updContractStats==='function')updContractStats();
+  if(typeof renderProjects==='function'&&document.getElementById('p-projects')?.classList.contains('on'))renderProjects();
+  const pc=document.getElementById('projDetailContent');
+  if(pc&&pc.dataset.projId&&(!projectId||sameRecId(pc.dataset.projId,projectId))&&typeof renderProjectDetail==='function'){
+    renderProjectDetail(pc.dataset.projId,pc.dataset.tab||'overview');
+  }
+}
+
 // ══ CONFIG ════════════════════════════════════════════════
 const ACCTS={
   owner:{user:'omnight',pass:'0923',name:'老闆',abbr:'老',role:'Owner · 最高權限',label:'老闆'},
@@ -1900,7 +1941,7 @@ function initCsChatProject(){
     projects.map(p=>'<option value="'+p._id+'">'+esc(p.name)+'</option>').join('');
   sel.addEventListener('change',()=>{
     if(sel.value) showToast('✅ 已連結到案場：'+projects.find(p=>p._id==sel.value)?.name);
-    curProjectId=sel.value?parseInt(sel.value):null;
+    curProjectId=sel.value||null;
   });
 }
 function filterProjects(filter, el){

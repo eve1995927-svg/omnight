@@ -434,9 +434,9 @@ function updateMergeVGroupUI(){
 
 document.getElementById('mergeVGroupBtn')?.addEventListener('click',()=>{
   const names=[..._mergeVGroupSelected];
-  const targetId=parseInt(document.getElementById('mergeVGroupTarget')?.value);
+  const targetId=document.getElementById('mergeVGroupTarget')?.value;
   if(names.length<2||!targetId)return;
-  const targetProj=DB.get('projects').find(p=>p._id===targetId);
+  const targetProj=typeof getProject==='function'?getProject(targetId):DB.get('projects').find(p=>sameRecId(p._id,targetId));
   if(!targetProj)return;
 
   confirmAction(
@@ -515,7 +515,7 @@ function buildVendorCard(v,opts){
       '</div>'+
       '<div style="text-align:right;flex-shrink:0">'+
         '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+amt.toLocaleString()+'</div>'+
-        (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<amt?' '+Math.round(paid/amt*100)+'%':'')+'</div>';})()+
+        (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);const cost=getVendorTrueCost(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<cost?' '+Math.round(paid/cost*100)+'%':'')+'</div>';})()+
       '</div>'+
       '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
         (opts.hideAdopt?'':'<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'標記採用')+'</button>')+
@@ -683,7 +683,7 @@ function buildVendorCard(v,opts){
         confirmAction('刪除第'+(idx+1)+'期這筆付款記錄？（帳款裡對應的內帳支出會一起刪）',()=>{
           const pay=(v.payments||[])[idx];
           const newPayments=(v.payments||[]).filter((_,i)=>i!==idx);
-          DB.upd('vendors',v._id,{payments:newPayments,paid:newPayments.reduce((s,p)=>s+(p.amount||0),0)>=(v.amount||0)});
+          DB.upd('vendors',v._id,{payments:newPayments,paid:newPayments.reduce((s,p)=>s+(p.amount||0),0)>=getVendorTrueCost(v)});
           if(pay&&pay.payId){
             const linked=DB.get('ledger').find(l=>sameRecId(l.vendorId,v._id)&&l.payRecordId===pay.payId);
             if(linked)DB.del('ledger',linked._id);
@@ -1397,21 +1397,27 @@ document.getElementById('addLedgerBtn')?.addEventListener('click',()=>{
   const bookLabel=curLedgerBook==='out'?'內帳':'外帳';
   const data={
     summary:bookLabel+(curLedgerType==='in'?'收入':'支出')+' '+desc+' '+fmt(amt||ldItems.reduce((s,x)=>s+(x.amount||0),0)),
-    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,projectId:pid?parseInt(pid):null,items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
+    book:curLedgerBook,type:curLedgerType,amount:amt,desc,cat,date,caseN,projectId:recId(pid),items:ldItems.map(x=>({...x})),imgUrl:ldImgUrl
   };
+  if(curLedgerBook==='in'&&curLedgerType==='in'&&data.paid==null)data.paid=true;
   if(ldEditId){
     DB.upd('ledger',ldEditId,data);
     closeModal('ledgerModal');
-    // 從案場的帳款分頁編輯完，畫面要留在原本那個案場、重新整理列表，不要跳去別的地方
-    const content=document.getElementById('projDetailContent');
-    if(pid&&content)renderProjLedger(parseInt(pid),null,content);
-    if(typeof renderLedger==='function'&&document.getElementById('ledgerList'))renderLedger();
-    updLedgerStats&&updLedgerStats();
+    if(typeof refreshLinkedViews==='function')refreshLinkedViews(data.projectId);
+    else{
+      const content=document.getElementById('projDetailContent');
+      if(pid&&content)renderProjLedger(pid,null,content);
+      if(typeof renderLedger==='function'&&document.getElementById('ledgerList'))renderLedger();
+      updLedgerStats&&updLedgerStats();
+    }
     showToast('✅ 已儲存修改');
     ldEditId=null;
   }else{
     DB.push('ledger',data);
-    closeModal('ledgerModal');renderLedger();updLedgerStats();renderHistory();showToast('✅ 已儲存！');
+    closeModal('ledgerModal');
+    if(typeof refreshLinkedViews==='function')refreshLinkedViews(data.projectId);
+    else{renderLedger();updLedgerStats();renderHistory();}
+    showToast('✅ 已儲存！');
   }
 });
 

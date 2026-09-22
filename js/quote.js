@@ -448,14 +448,14 @@ function renderQTable(){
 
   list.innerHTML=sortedGroups.map(([caseName,quotes])=>{
     const activeQuotes=quotes.filter(q=>!q.archived);
-    const caseTotal=activeQuotes.reduce((s,q)=>s+(q.total||0),0);
+    const caseTotal=activeQuotes.reduce((s,q)=>s+(typeof quoteGrand==='function'?quoteGrand(q):(q.total||0)),0);
     const rows=quotes.map(q=>`
       <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;border-bottom:1px solid var(--g100);${q.archived?'opacity:.55':''}">
         <div style="flex:1;min-width:0">
           <div style="font-weight:800;font-size:.86rem">${esc(q.name||'未命名')}${q.archived?' <span style="font-size:.65rem;background:var(--g100);color:var(--g500);padding:1px 7px;border-radius:20px;font-weight:700">📦 已封存</span>':''}</div>
           <div style="font-size:.72rem;color:var(--g400);margin-top:2px">${esc(q.type||'—')} · 修改於 ${esc((q.updatedAt||q._ts||'').split(' ')[0])}</div>
         </div>
-        <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(q.total||0)}</div>
+        <div style="font-family:monospace;font-weight:800;color:var(--gold-d);margin-right:14px">${fmt(typeof quoteGrand==='function'?quoteGrand(q):(q.total||0))}</div>
         <div style="display:flex;gap:5px;flex-shrink:0">
           <button class="btn bo bxs" data-qid="${q._id}">編輯</button>
           <button class="btn bo bxs" data-qcopy="${q._id}" title="複製這份報價單成新的一份草稿，內容都一樣可以再改">複製</button>
@@ -540,7 +540,8 @@ function convertQuoteToContract(quoteId){
   const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
   set('ctName',q.name?q.name+' 裝修合約':'');
   set('ctClient',q.name||'');
-  set('ctAmt2',q.total||'');
+  window._pendingContractQuoteId=q._id;
+  set('ctAmt2',(typeof quoteGrand==='function'?quoteGrand(q):q.total)||'');
   set('ctNote','');
   const stEl=document.getElementById('ctStatus');if(stEl)stEl.value='pending';
   const fcEl=document.getElementById('ctFileCard');if(fcEl)fcEl.style.display='none';

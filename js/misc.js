@@ -97,15 +97,22 @@ function initContractListeners(){
     const note=(document.getElementById('ctNote')?.value||'').trim();
     if(!name){showToast('⚠️ 請填入合約名稱');return;}
     const fileUrls=Array.isArray(ctImgUrl)?ctImgUrl:(ctImgUrl?[ctImgUrl]:[]);
+    const quoteId=window._pendingContractQuoteId||null;
     if(ctEditId){
-      DB.upd('contracts',ctEditId,{name,client,amount:amt,status,note,fileUrls,fileUrl:fileUrls[0]?.url||null,summary:'合約 '+name+' '+client});
+      DB.upd('contracts',ctEditId,{name,client,amount:amt,status,note,fileUrls,fileUrl:fileUrls[0]?.url||null,summary:'合約 '+name+' '+client,projectId:curProjectId||null,quoteId:quoteId||undefined});
       ctEditId=null;showToast('✅ 合約已更新！');
     }else{
-      const newCt=DB.push('contracts',{summary:'合約 '+name+' '+client,name,client,amount:amt,status,note,projectId:curProjectId||null,fileUrls,fileUrl:fileUrls[0]?.url||null})[0];
-      if(newCt){DB.push('progress',{summary:'進度 '+name,caseN:name,client,contractId:newCt._id,status:'pending',items:[{text:'合約簽訂',done:true,date:new Date().toLocaleDateString('zh-TW')},{text:'開工日期確認',done:false,date:''},{text:'施工進行中',done:false,date:''},{text:'驗收',done:false,date:''},{text:'結案',done:false,date:''}]});}
+      const newCt=DB.push('contracts',{summary:'合約 '+name+' '+client,name,client,amount:amt,status,note,projectId:curProjectId||null,quoteId,fileUrls,fileUrl:fileUrls[0]?.url||null})[0];
+      if(newCt){DB.push('progress',{summary:'進度 '+name,caseN:name,client,projectId:curProjectId||null,contractId:newCt._id,status:'pending',items:[{text:'合約簽訂',done:true,date:new Date().toLocaleDateString('zh-TW')},{text:'開工日期確認',done:false,date:''},{text:'施工進行中',done:false,date:''},{text:'驗收',done:false,date:''},{text:'結案',done:false,date:''}]});}
       showToast('✅ 合約已儲存！');
     }
-    closeModal('contractModal');renderContracts();updContractStats();
+    window._pendingContractQuoteId=null;
+    if(typeof bumpProjectStatus==='function'&&curProjectId){
+      bumpProjectStatus(curProjectId,(status==='progress'||status==='signed')?(status==='progress'?'progress':'signed'):'signed');
+    }
+    closeModal('contractModal');
+    if(typeof refreshLinkedViews==='function')refreshLinkedViews(curProjectId);
+    else{renderContracts();updContractStats();}
     const btn=document.getElementById('addCtBtn');if(btn)btn.textContent='儲存合約';
   });
 }
@@ -220,9 +227,11 @@ function updInvBatchFoot(){
 document.getElementById('qSave')?.addEventListener('click',()=>{
   const n=document.getElementById('qN')?.value||'業主';
   const tp=document.getElementById('qTp')?.value||'全室裝修';
-  const sub=calcAll(qSections);
-  const savedQ=DB.push('quotes',{summary:'報價 '+n+' '+sub,name:n,type:tp,projectId:curProjectId||null,sections:JSON.parse(JSON.stringify(qSections)),total:sub,updatedAt:new Date().toLocaleString('zh-TW')});
+  const tot=typeof calcQuoteTotals==='function'?calcQuoteTotals(qSections):{grand:calcAll(qSections)};
+  const savedQ=DB.push('quotes',{summary:'報價 '+n+' '+tot.grand,name:n,type:tp,projectId:curProjectId||null,sections:JSON.parse(JSON.stringify(qSections)),total:tot.grand,updatedAt:new Date().toLocaleString('zh-TW')});
+  if(typeof bumpProjectStatus==='function')bumpProjectStatus(curProjectId,'quoting');
   updStats();renderQTable();
+  if(typeof refreshLinkedViews==='function')refreshLinkedViews(curProjectId);
   // 下一步提示
   if(typeof showNextStep==='function'){
     showNextStep('報價單已儲存！下一步呢？',[
