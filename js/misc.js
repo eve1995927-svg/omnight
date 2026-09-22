@@ -457,7 +457,7 @@ function showPunchDayDetail(dateStr,recs){
   const groups={};
   recs.forEach(r=>{const key=r.projectId||'none';(groups[key]=groups[key]||[]).push(r);});
   const groupsHtml=Object.entries(groups).map(([key,items])=>{
-    const locLabel=key==='none'?'未指定案場':getPunchLocationLabel(key);
+    const locLabel=key==='none'?'未指定案場':getPunchLocationLabel(key,items[0]&&items[0].projectName);
     const inRec=items.find(r=>r.type==='in');
     const outRec=items.find(r=>r.type==='out');
     let workHours='';
@@ -500,7 +500,7 @@ function updateTodayCard(){
     (groups[key]=groups[key]||[]).push(r);
   });
   box.innerHTML=Object.entries(groups).map(([key,items])=>{
-    const locLabel=key==='none'?'未指定案場':getPunchLocationLabel(key);
+    const locLabel=key==='none'?'未指定案場':getPunchLocationLabel(key,items[0]&&items[0].projectName);
     const inRec=items.find(r=>r.type==='in');
     const outRec=items.find(r=>r.type==='out');
     return `<div style="display:grid;grid-template-columns:1fr 1fr;gap:0;border-bottom:1px solid var(--g100)">

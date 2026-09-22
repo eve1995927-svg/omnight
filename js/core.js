@@ -906,7 +906,10 @@ function refreshListsForKey(k){
     if(typeof updStats==='function')updStats();
   }
   if(k==='progress'&&typeof renderProgress==='function')renderProgress();
-  if(k==='projects'&&typeof renderProjects==='function'&&document.getElementById('p-projects')?.classList.contains('on'))renderProjects();
+  if(k==='projects'){
+    if(typeof renderProjects==='function'&&document.getElementById('p-projects')?.classList.contains('on'))renderProjects();
+    if(typeof fillPunchProjectSelect==='function')fillPunchProjectSelect();
+  }
   if(k==='ledger'&&typeof renderLedger==='function'){
     renderLedger();
     if(typeof renderLedgerMonthly==='function')renderLedgerMonthly();
@@ -1581,7 +1584,7 @@ function setupApp(role){
   }
 
   setTimeout(()=>{
-    
+    if(typeof initPunchClock==='function')initPunchClock();
   },600);
 }
 const IMAP={owner:'👑',cs:'💬',mk:'✨',ad:'📋',ac:'📊'};
@@ -1741,6 +1744,10 @@ function showPanel(id){
   if(id==='ad-progress') setTimeout(()=>{if(typeof renderProgress==='function')renderProgress();},30);
   if(id==='ac-overview') setTimeout(()=>{if(typeof renderLedger==='function')renderLedger();if(typeof renderLedgerMonthly==='function')renderLedgerMonthly();},30);
   if(id==='projects') setTimeout(()=>{if(typeof renderProjects==='function')renderProjects();},30);
+  if(id==='punch-clock') setTimeout(()=>{
+    if(typeof initPunchClock==='function')initPunchClock();
+    else if(typeof fillPunchProjectSelect==='function')fillPunchProjectSelect();
+  },30);
   document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
   document.querySelectorAll('.ni,.bnav-item').forEach(n=>n.classList.remove('on'));
   document.getElementById('p-'+id)?.classList.add('on');

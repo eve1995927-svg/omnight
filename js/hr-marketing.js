@@ -1102,7 +1102,7 @@ function compareVendorsByCat(cat){
   modal.id='_vendorCompareBox';
   modal.className='mov show';
   modal.innerHTML='<div class="modal" style="max-width:640px"><div class="mtit">'+esc(cat)+' 廠商比價 <button class="mcl" type="button">✕</button></div>'+
-    '<div style="font-size:.78rem;color:var(--g400);margin:0 16px 10px">先看公司，點進去才展開這家的歷史報價。要比哪一筆，再按採用。</div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin:0 16px 10px">先看公司，點報價開細項。採用可複選，可以同時勾好幾筆。</div>'+
     '<div id="_vendorCompareList"></div>'+
     '<div style="margin:12px 16px 16px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+allMin.toLocaleString()+'（'+esc(cheapest?.vendor||'')+'）</div>'+
     '</div>';
@@ -1145,21 +1145,19 @@ function compareVendorsByCat(cat){
             '</div>'+
             '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
               '<div style="font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
-              '<button type="button" class="btn '+(v.adopted?'bg':'bo')+' bxs" data-cmpadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'採用')+'</button>'+
+              '<span style="font-size:.68rem;color:var(--g400);white-space:nowrap">細項 →</span>'+
+              '<label data-cmpadopt style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:800;cursor:pointer;padding:3px 8px;border:1.5px solid '+(v.adopted?'var(--ok)':'var(--g200)')+';border-radius:20px;background:'+(v.adopted?'var(--ok-bg)':'var(--w)')+'"><input type="checkbox" '+(v.adopted?'checked':'')+' style="accent-color:var(--ok);width:14px;height:14px">採用</label>'+
             '</div>';
-          item.querySelector('[data-cmpadopt]').addEventListener('click',e=>{
+          item.style.cursor='pointer';
+          item.addEventListener('click',()=>openVendorCompareDetail(v,()=>{
+            const fresh=typeof findVendor==='function'?findVendor(v._id):DB.get('vendors').find(x=>sameRecId(x._id,v._id));
+            if(fresh)v.adopted=fresh.adopted;
+            paint();
+          }));
+          item.querySelector('[data-cmpadopt]').addEventListener('click',e=>e.stopPropagation());
+          item.querySelector('[data-cmpadopt] input').addEventListener('change',e=>{
             e.stopPropagation();
-            const nowAdopted=!v.adopted;
-            DB.upd('vendors',v._id,{adopted:nowAdopted});
-            v.adopted=nowAdopted;
-            if(nowAdopted&&v.projectId&&v.cat){
-              DB.get('vendors').filter(o=>!sameRecId(o._id,v._id)&&sameRecId(o.projectId,v.projectId)&&o.cat===v.cat&&!o.deleted&&o.adopted)
-                .forEach(o=>{DB.upd('vendors',o._id,{adopted:false});o.adopted=false;});
-              groups.forEach(og=>og.quotes.forEach(q=>{
-                if(sameRecId(q.projectId,v.projectId)&&q.cat===v.cat&&!sameRecId(q._id,v._id))q.adopted=false;
-              }));
-            }
-            if(typeof refreshVendorViews==='function')refreshVendorViews();
+            toggleVendorAdopt(v,!!e.target.checked);
             paint();
           });
           hist.appendChild(item);
@@ -1174,6 +1172,60 @@ function compareVendorsByCat(cat){
     });
   }
   paint();
+}
+
+function toggleVendorAdopt(v,adopted){
+  const nowAdopted=adopted==null?!v.adopted:!!adopted;
+  DB.upd('vendors',v._id,{adopted:nowAdopted});
+  v.adopted=nowAdopted;
+  if(typeof refreshVendorViews==='function')refreshVendorViews();
+}
+
+function openVendorCompareDetail(v,onClose){
+  const fresh=(typeof findVendor==='function'?findVendor(v._id):DB.get('vendors').find(x=>sameRecId(x._id,v._id)))||v;
+  const dateOf=typeof vendorQuoteDate==='function'?vendorQuoteDate:q=>String(q._ts||'').split(' ')[0]||'';
+  const items=fresh.items||[];
+  const old=document.getElementById('_vendorCompareDetail');if(old)old.remove();
+  const box=document.createElement('div');
+  box.id='_vendorCompareDetail';
+  box.className='mov show';
+  box.style.zIndex='9800';
+  const rows=items.length?items.map(it=>{
+    const qty=it.qty!=null?it.qty:'';
+    const unit=it.unit||'';
+    const up=it.unitPrice!=null?it.unitPrice:'';
+    const tax=it.taxType==='excl'?'未稅':'含稅';
+    return '<tr>'+
+      '<td style="padding:8px 10px;font-weight:700">'+esc(it.name||'未填工項')+'</td>'+
+      '<td style="padding:8px 10px;text-align:center;color:var(--g500)">'+esc(String(qty))+'</td>'+
+      '<td style="padding:8px 10px;text-align:center;color:var(--g500)">'+esc(unit)+'</td>'+
+      '<td style="padding:8px 10px;text-align:right;font-family:monospace">'+(up===''?'—':'NT$'+Number(up).toLocaleString())+'</td>'+
+      '<td style="padding:8px 10px;text-align:center;font-size:.72rem;color:var(--g500)">'+tax+'</td>'+
+      '<td style="padding:8px 10px;text-align:right;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+Number(it.amount||0).toLocaleString()+'</td>'+
+    '</tr>'+(it.note?'<tr><td colspan="6" style="padding:0 10px 8px;font-size:.72rem;color:var(--g400)">'+esc(it.note)+'</td></tr>':'');
+  }).join(''):'<tr><td colspan="6" style="padding:18px;text-align:center;color:var(--g400)">這筆報價沒有細項</td></tr>';
+  const taxHtml=typeof buildTaxBreakdownHtml==='function'?buildTaxBreakdownHtml(items,'合計'):('NT$'+Number(fresh.amount||0).toLocaleString());
+  box.innerHTML='<div class="modal" style="max-width:720px;max-height:88vh;overflow:auto"><div class="mtit">'+esc(fresh.vendor||'廠商報價')+' <button class="mcl" type="button">✕</button></div>'+
+    '<div style="padding:0 16px 8px;font-size:.78rem;color:var(--g400)">'+esc(dateOf(fresh)||'未填日期')+' · '+esc(fresh.caseN||'未指定案場')+(fresh.cat?' · '+esc(fresh.cat):'')+(fresh.note?' · '+esc(fresh.note):'')+'</div>'+
+    (fresh.imgDataUrl?'<div style="padding:0 16px 10px"><img src="'+fresh.imgDataUrl+'" onclick="openLB(\''+fresh.imgDataUrl+'\')" style="max-width:100%;max-height:160px;border-radius:var(--rxs);object-fit:cover;cursor:pointer"></div>':'')+
+    '<div style="overflow-x:auto;padding:0 8px 8px"><table class="tbl" style="width:100%;border-collapse:collapse;font-size:.82rem"><thead><tr style="background:var(--g100)">'+
+      '<th style="padding:8px 10px;text-align:left">工項</th><th style="padding:8px 10px">數量</th><th style="padding:8px 10px">單位</th><th style="padding:8px 10px;text-align:right">單價</th><th style="padding:8px 10px">稅別</th><th style="padding:8px 10px;text-align:right">小計</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table></div>'+
+    '<div style="margin:4px 16px 16px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div style="font-weight:800">'+taxHtml+'</div>'+
+      '<label id="_cmpDetailAdopt" style="display:inline-flex;align-items:center;gap:6px;font-weight:800;cursor:pointer;padding:8px 12px;border:1.5px solid '+(fresh.adopted?'var(--ok)':'var(--g200)')+';border-radius:20px;background:'+(fresh.adopted?'var(--ok-bg)':'var(--w)')+'"><input type="checkbox" '+(fresh.adopted?'checked':'')+' style="accent-color:var(--ok);width:16px;height:16px">採用這筆（可複選）</label>'+
+    '</div></div>';
+  document.body.appendChild(box);
+  const close=()=>{box.remove();if(typeof onClose==='function')onClose();};
+  box.querySelector('.mcl').addEventListener('click',close);
+  box.addEventListener('click',e=>{if(e.target===box)close();});
+  box.querySelector('#_cmpDetailAdopt input').addEventListener('change',e=>{
+    toggleVendorAdopt(fresh,!!e.target.checked);
+    const lab=box.querySelector('#_cmpDetailAdopt');
+    lab.style.borderColor=fresh.adopted?'var(--ok)':'var(--g200)';
+    lab.style.background=fresh.adopted?'var(--ok-bg)':'var(--w)';
+    showToast(fresh.adopted?'✅ 已採用這筆報價':'已取消採用');
+  });
 }
 
 // ══ 進度連結付款提醒 ══════════════════════════════════════

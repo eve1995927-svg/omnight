@@ -518,7 +518,7 @@ function buildVendorCard(v,opts){
         (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);const cost=getVendorTrueCost(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<cost?' '+Math.round(paid/cost*100)+'%':'')+'</div>';})()+
       '</div>'+
       '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
-        (opts.hideAdopt?'':'<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'標記採用')+'</button>')+
+        (opts.hideAdopt?'':'<label data-vadopt style="display:inline-flex;align-items:center;gap:4px;font-size:.72rem;font-weight:800;color:var(--g600);cursor:pointer;padding:4px 8px;border:1.5px solid '+(v.adopted?'var(--ok)':'var(--g200)')+';border-radius:20px;background:'+(v.adopted?'var(--ok-bg)':'var(--w)')+'"><input type="checkbox" '+(v.adopted?'checked':'')+' style="accent-color:var(--ok);width:14px;height:14px;cursor:pointer">採用</label>')+
         '<button class="btn bg bxs" data-vpay style="background:var(--gold)">付款</button>'+
         '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
         '<button class="btn brd bxs" data-vdel>🗑</button>'+
@@ -695,16 +695,10 @@ function buildVendorCard(v,opts){
       });
     });
 
-    hd.querySelector('[data-vadopt]')?.addEventListener('click',e=>{
+    hd.querySelector('[data-vadopt]')?.addEventListener('click',e=>e.stopPropagation());
+    hd.querySelector('[data-vadopt] input')?.addEventListener('change',e=>{
       e.stopPropagation();
-      const nowAdopted=!v.adopted;
-      DB.upd('vendors',v._id,{adopted:nowAdopted});
-      // 同一個案場、同一個工程類別下，一次只能有一家是「已採用」的報價（工種毛利要抓實際採用的那筆成本，
-      // 不能同一個工種被好幾家廠商的成本重複算進去），所以標記這家的同時，把同類別的其他家自動取消採用
-      if(nowAdopted&&v.projectId&&v.cat){
-        DB.get('vendors').filter(o=>o._id!==v._id&&sameRecId(o.projectId,v.projectId)&&o.cat===v.cat&&!o.deleted&&o.adopted)
-          .forEach(o=>DB.upd('vendors',o._id,{adopted:false}));
-      }
+      DB.upd('vendors',v._id,{adopted:!!e.target.checked});
       refreshVendorViews();
     });
     hd.querySelector('[data-vpay]').addEventListener('click',e=>{e.stopPropagation();openVendorPay(v._id);});
@@ -792,11 +786,11 @@ let punchInterval=null;
 // 兩個座標之間的距離（公尺），拿來算「員工現在距離工地多遠」
 // 把打卡記錄的 projectId 轉成畫面上要顯示的地點名稱，「辦公室」是固定選項不是真實案場，
 // 這裡統一處理，避免每個顯示打卡地點的地方各自漏掉這個特殊情況、誤顯示成「未指定案場」
-function getPunchLocationLabel(projectId){
-  if(!projectId)return '未指定案場';
+function getPunchLocationLabel(projectId,fallbackName){
+  if(!projectId)return fallbackName||'未指定案場';
   if(projectId==='__office__')return '🏢 辦公室';
-  const proj=DB.get('projects').find(p=>String(p._id)===String(projectId));
-  return proj?proj.name:'未指定案場';
+  const proj=DB.get('projects').find(p=>sameRecId(p._id,projectId));
+  return (proj&&proj.name)||fallbackName||'未指定案場';
 }
 
 function haversineDist(lat1,lng1,lat2,lng2){
@@ -946,6 +940,36 @@ async function syncPunchLocPermission(){
   updatePunchLocCard();
 }
 
+function fillPunchProjectSelect(){
+  const sel=document.getElementById('punchProjectSel');if(!sel)return;
+  const last=sel.value||localStorage.getItem('zeju_last_punch_proj')||'';
+  const projects=DB.get('projects').slice().sort((a,b)=>{
+    const aa=a.archived?1:0,bb=b.archived?1:0;
+    if(aa!==bb)return aa-bb;
+    return String(a.name||'').localeCompare(String(b.name||''),'zh-Hant');
+  });
+  const active=projects.filter(p=>!p.archived);
+  const archived=projects.filter(p=>p.archived);
+  let html='<option value="">不指定案場</option><option value="__office__">🏢 辦公室</option>';
+  if(active.length){
+    html+='<optgroup label="案場">'+active.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+(p.address?' · '+esc(p.address):'')+'</option>').join('')+'</optgroup>';
+  }
+  if(archived.length){
+    html+='<optgroup label="已封存">'+archived.map(p=>'<option value="'+p._id+'">'+esc(p.name||'未命名案場')+'</option>').join('')+'</optgroup>';
+  }
+  sel.innerHTML=html;
+  if(last&&[...sel.options].some(o=>String(o.value)===String(last)))sel.value=String(last);
+  if(!sel._geoBound){
+    sel._geoBound=true;
+    sel.addEventListener('change',()=>{
+      localStorage.setItem('zeju_last_punch_proj',sel.value||'');
+      if(typeof updatePunchGeoCard==='function')updatePunchGeoCard();
+      if(typeof updatePunchBtn==='function')updatePunchBtn();
+      if(typeof renderPunchRec==='function')renderPunchRec();
+    });
+  }
+}
+
 function initPunchClock(){
   const el=document.getElementById('punchTime');const de=document.getElementById('punchDate');
   if(!el)return;
@@ -958,26 +982,7 @@ function initPunchClock(){
   renderPunchRec();updatePunchBtn();
   if(typeof renderMyLeaveStatus==='function')renderMyLeaveStatus();
 
-  // 案場選單：帶入之前用過的那個案場，不用每次重選
-  const sel=document.getElementById('punchProjectSel');
-  if(sel&&typeof buildProjectSelect==='function'){
-    const lastId=localStorage.getItem('zeju_last_punch_proj');
-    buildProjectSelect(sel,lastId,true);
-    // 辦公室不是系統裡的「案場」（案場專指裝修工程），但很多人是「先在辦公室打卡上下班，
-    // 再去工地打卡上下班」，兩邊都不選案場的話會被系統當成同一組，第二次會打不了卡。
-    // 這裡在「不指定案場」下面加一個固定的「🏢 辦公室」選項，讓辦公室打卡自成一組，
-    // 跟去工地選了實際案場的打卡分開，不會互相卡住。
-    if(!sel.querySelector('option[value="__office__"]')){
-      const officeOpt=document.createElement('option');
-      officeOpt.value='__office__';officeOpt.textContent='🏢 辦公室';
-      sel.insertBefore(officeOpt,sel.options[1]||null);
-    }
-    if(lastId==='__office__')sel.value='__office__';
-    if(!sel._geoBound){
-      sel._geoBound=true;
-      sel.addEventListener('change',()=>{updatePunchGeoCard();updatePunchBtn();});
-    }
-  }
+  fillPunchProjectSelect();
 
   // 不要進頁面就默默要定位：iPhone 沒有使用者點擊時通常不會跳出授權，還可能直接記成拒絕。
   initPunchLocBtn();
@@ -1123,7 +1128,7 @@ async function openPunchMap(){
   });
   rows.sort((a,b)=>(a.dist??1e15)-(b.dist??1e15));
   listEl.innerHTML=rows.map(({p,dist})=>`
-    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--g100);cursor:pointer" onclick="document.getElementById('punchProjectSel').value='${p._id}';updatePunchGeoCard();updatePunchBtn();closeModal('punchMapModal');">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 8px;border-bottom:1px solid var(--g100);cursor:pointer" onclick="document.getElementById('punchProjectSel').value='${p._id}';localStorage.setItem('zeju_last_punch_proj','${p._id}');updatePunchGeoCard();updatePunchBtn();closeModal('punchMapModal');">
       <div>
         <div style="font-size:.85rem;font-weight:800">${esc(p.name||'未命名案場')}</div>
         <div style="font-size:.72rem;color:var(--g400)">${esc(p.address||'')}</div>
@@ -1179,8 +1184,10 @@ async function doPunch(){
     type:isIn?'in':'out',
     lat,lng,addr:lat+','+lng,
     photo:punchPhotoData||null,
-    projectId:selProjectId?(localStorage.setItem('zeju_last_punch_proj',selProjectId),selProjectId):null
+    projectId:selProjectId||null,
+    projectName:getPunchLocationLabel(selProjectId)
   });
+  localStorage.setItem('zeju_last_punch_proj',selProjectId||'');
   const allRecs=DB.get('punch_recs');
   const newRecId=allRecs.reduce((max,r)=>r._id>max?r._id:max,0);
   punchPhotoData=null;
@@ -1268,7 +1275,7 @@ function renderHRPanel(){
             ? '<div style="font-size:.68rem;color:var(--g400);margin-top:2px">📍 '+r.lat+', '+r.lng+'</div>'
             : '<div style="font-size:.68rem;color:var(--g300);margin-top:2px">無定位</div>';
         // 一天可能跑好幾個案場，老闆這邊要看得出這筆打卡是哪個案場的，不然多筆混在一起分不出來
-        const projName=r.projectId?getPunchLocationLabel(r.projectId):'';
+        const projName=r.projectId?getPunchLocationLabel(r.projectId,r.projectName):'';
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+
