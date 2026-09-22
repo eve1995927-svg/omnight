@@ -1077,19 +1077,103 @@ function switchHRTab(tab){
   if(tab==='request')renderHRPanel();
 };
 
-// ══ 廠商比價 ══════════════════════════════════════════════
+// ══ 廠商比價：先列公司，點進去才展開這家的歷史報價（含案場） ══
 function compareVendorsByCat(cat){
-  const vendors=DB.get('vendors').filter(v=>v.cat===cat);
-  if(vendors.length<2){showToast('同類別廠商不足 2 家，無法比較');return;}
-  const rows=vendors.map(v=>'<tr><td style="padding:10px 14px;font-weight:700">'+v.vendor+'</td><td style="padding:10px 14px;color:var(--g400)">'+( v.caseN||'—')+'</td><td style="padding:10px 14px;font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+( v.amount||0).toLocaleString()+'</td><td style="padding:10px 14px;font-size:.8rem;color:var(--g400)">'+( v._ts||'').split(' ')[0]+'</td></tr>').join('');
-  const min=Math.min(...vendors.map(v=>v.amount||0));
-  const modal=document.createElement('div');modal.className='mov show';
-  modal.innerHTML='<div class="modal" style="max-width:600px"><div class="mtit">'+cat+' 廠商比價 <button class="mcl" onclick="this.closest(\'.mov\').remove()">✕</button></div>'+
-    '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>廠商</th><th>案場</th><th>報價</th><th>日期</th></tr></thead><tbody>'+rows+'</tbody></table></div>'+
-    '<div style="margin-top:12px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+min.toLocaleString()+'（'+vendors.find(v=>v.amount===min)?.vendor+'）</div>'+
+  const vendors=DB.get('vendors').filter(v=>!v.deleted&&v.cat===cat);
+  if(!vendors.length){showToast('這個類別還沒有廠商報價');return;}
+  const keyOf=typeof vendorCompanyKey==='function'?vendorCompanyKey:n=>String(n||'未命名廠商').replace(/\s+/g,'').toLowerCase();
+  const dateOf=typeof vendorQuoteDate==='function'?vendorQuoteDate:v=>String(v._ts||'').split(' ')[0]||'';
+  const companies={};
+  vendors.forEach(v=>{
+    const key=keyOf(v.vendor);
+    if(!companies[key])companies[key]={key,name:v.vendor||'未命名廠商',quotes:[]};
+    companies[key].quotes.push(v);
+    if((v.vendor||'').length>companies[key].name.length)companies[key].name=v.vendor;
+  });
+  const groups=Object.values(companies).sort((a,b)=>{
+    const minA=Math.min(...a.quotes.map(q=>q.amount||0));
+    const minB=Math.min(...b.quotes.map(q=>q.amount||0));
+    return minA-minB;
+  });
+  const allMin=Math.min(...vendors.map(v=>v.amount||0));
+  const cheapest=vendors.find(v=>(v.amount||0)===allMin);
+  const old=document.getElementById('_vendorCompareBox');if(old)old.remove();
+  const modal=document.createElement('div');
+  modal.id='_vendorCompareBox';
+  modal.className='mov show';
+  modal.innerHTML='<div class="modal" style="max-width:640px"><div class="mtit">'+esc(cat)+' 廠商比價 <button class="mcl" type="button">✕</button></div>'+
+    '<div style="font-size:.78rem;color:var(--g400);margin:0 16px 10px">先看公司，點進去才展開這家的歷史報價。要比哪一筆，再按採用。</div>'+
+    '<div id="_vendorCompareList"></div>'+
+    '<div style="margin:12px 16px 16px;padding:12px 16px;background:var(--ok-bg);border:1.5px solid var(--ok-bd);border-radius:var(--rs);font-size:.85rem;font-weight:700;color:var(--ok)">💡 最低報價：NT$'+allMin.toLocaleString()+'（'+esc(cheapest?.vendor||'')+'）</div>'+
     '</div>';
   document.body.appendChild(modal);
+  modal.querySelector('.mcl').addEventListener('click',()=>modal.remove());
   modal.addEventListener('click',e=>{if(e.target===modal)modal.remove();});
+
+  const list=modal.querySelector('#_vendorCompareList');
+  const openKeys=new Set();
+  function paint(){
+    list.innerHTML='';
+    groups.forEach(g=>{
+      const quotes=g.quotes.slice().sort((a,b)=>dateOf(b).localeCompare(dateOf(a)));
+      const minAmt=Math.min(...quotes.map(q=>q.amount||0));
+      const latest=quotes[0]?dateOf(quotes[0]):'';
+      const open=openKeys.has(g.key);
+      const row=document.createElement('div');
+      row.style.cssText='border:1.5px solid var(--g100);border-radius:var(--rs);margin:0 16px 8px;overflow:hidden';
+      row.innerHTML=
+        '<button type="button" data-cmpco style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;background:var(--w);border:none;cursor:pointer;font-family:inherit;text-align:left">'+
+          '<div style="min-width:0">'+
+            '<div style="font-weight:900;color:var(--g800)">'+esc(g.name)+'</div>'+
+            '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+quotes.length+' 筆歷史報價'+(latest?' · 最近 '+esc(latest):'')+'</div>'+
+          '</div>'+
+          '<div style="text-align:right;flex-shrink:0">'+
+            '<div style="font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+minAmt.toLocaleString()+'</div>'+
+            '<div style="font-size:.68rem;color:var(--g400)">'+(open?'收起 ▴':'最低價 · 展開 ▾')+'</div>'+
+          '</div>'+
+        '</button>';
+      if(open){
+        const hist=document.createElement('div');
+        hist.style.cssText='background:var(--g50);border-top:1px solid var(--g100)';
+        quotes.forEach(v=>{
+          const item=document.createElement('div');
+          item.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 14px;border-bottom:1px solid var(--g100)';
+          item.innerHTML=
+            '<div style="min-width:0">'+
+              '<div style="font-size:.82rem;font-weight:700;color:var(--g700)">'+esc(dateOf(v)||'未填日期')+'</div>'+
+              '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+esc(v.caseN||'未指定案場')+(v.adopted?' · 已採用':'')+'</div>'+
+            '</div>'+
+            '<div style="display:flex;align-items:center;gap:8px;flex-shrink:0">'+
+              '<div style="font-family:monospace;font-weight:900;color:var(--gold-d)">NT$'+(v.amount||0).toLocaleString()+'</div>'+
+              '<button type="button" class="btn '+(v.adopted?'bg':'bo')+' bxs" data-cmpadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'採用')+'</button>'+
+            '</div>';
+          item.querySelector('[data-cmpadopt]').addEventListener('click',e=>{
+            e.stopPropagation();
+            const nowAdopted=!v.adopted;
+            DB.upd('vendors',v._id,{adopted:nowAdopted});
+            v.adopted=nowAdopted;
+            if(nowAdopted&&v.projectId&&v.cat){
+              DB.get('vendors').filter(o=>!sameRecId(o._id,v._id)&&sameRecId(o.projectId,v.projectId)&&o.cat===v.cat&&!o.deleted&&o.adopted)
+                .forEach(o=>{DB.upd('vendors',o._id,{adopted:false});o.adopted=false;});
+              groups.forEach(og=>og.quotes.forEach(q=>{
+                if(sameRecId(q.projectId,v.projectId)&&q.cat===v.cat&&!sameRecId(q._id,v._id))q.adopted=false;
+              }));
+            }
+            if(typeof refreshVendorViews==='function')refreshVendorViews();
+            paint();
+          });
+          hist.appendChild(item);
+        });
+        row.appendChild(hist);
+      }
+      row.querySelector('[data-cmpco]').addEventListener('click',()=>{
+        if(openKeys.has(g.key))openKeys.delete(g.key);else openKeys.add(g.key);
+        paint();
+      });
+      list.appendChild(row);
+    });
+  }
+  paint();
 }
 
 // ══ 進度連結付款提醒 ══════════════════════════════════════

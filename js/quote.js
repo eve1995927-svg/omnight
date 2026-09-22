@@ -945,6 +945,7 @@ function genDefaultSvg(style,text){
 
 document.getElementById('openV')?.addEventListener('click',()=>{
   vItems=[];
+  if(typeof window!=='undefined')window._vendorFromProject=false;
   ['vVd','vCs','vNt'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('vAmt')&&(document.getElementById('vAmt').value='');
   document.getElementById('vItemsTable').innerHTML='';

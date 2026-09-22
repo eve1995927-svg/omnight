@@ -331,10 +331,11 @@ document.getElementById('addVBtn')?.addEventListener('click',()=>{
   if(!pid){showToast('⚠️ 請先選擇案場，沒有案場的話請先到「案場總覽」新增');return;}
   const proj=DB.get('projects').find(p=>String(p._id)===String(pid));
   const cs=proj?.name||'';
-  curProjectId=parseInt(pid);
+  curProjectId=proj?proj._id:pid;
   const total=calcItemsTax(vItems).total;
   const ups=uSt['vUp']||{imgs:[]};const imgUrl=ups.imgs?.[0]?.url||null;
-  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||'',taxType:it.taxType||'incl'})),imgDataUrl:imgUrl});
+  DB.push('vendors',{summary:'廠商報價 '+vd+' '+cat+' '+fmt(total),vendor:vd,cat,caseN:cs,amount:total,note:nt,projectId:curProjectId,adopted:!!window._vendorFromProject,items:vItems.map(it=>({name:it.name,qty:it.qty,unit:it.unit||'式',unitPrice:it.unitPrice||0,amount:it.amount||0,note:it.note||'',taxType:it.taxType||'incl'})),imgDataUrl:imgUrl});
+  window._vendorFromProject=false;
   closeModal('vModal');refreshVendorViews();updStats();renderAdVendorPicker();renderHistory();showToast('✅ 廠商報價已儲存！');
 });
 
@@ -463,8 +464,9 @@ function refreshVendorViews(){
   if(typeof renderVendors==='function'&&document.getElementById('vList'))renderVendors(vCurrentFilter);
   const pc=document.getElementById('projDetailContent');
   if(pc&&pc.dataset.tab==='vendor'&&pc.dataset.projId&&typeof renderProjectDetail==='function'){
-    renderProjectDetail(parseInt(pc.dataset.projId),'vendor');
+    renderProjectDetail(pc.dataset.projId,'vendor');
   }
+  if(typeof refreshAccountViews==='function')refreshAccountViews();
 }
 
 // 統一計算一份廠商報價（不管是新增中的 vItems 還是編輯中的 editItems）的未稅金額／稅金／含稅金額，
@@ -494,27 +496,29 @@ function buildTaxBreakdownHtml(items,totalLabel){
   '</div>';
 }
 
-function buildVendorCard(v){
+function buildVendorCard(v,opts){
+    opts=opts||{};
     const editItems=v.items?v.items.map(it=>({...it})):[];
     const card=document.createElement('div');card.className='vcard';card.style.marginBottom='6px';
 
     // Header
     const hd=document.createElement('div');hd.className='vchd';
     const catIco=VICO[v.cat]||'📦';
+    const amt=Number(v.amount)||0;
     hd.innerHTML=
       '<span style="font-size:1.3rem;flex-shrink:0">'+catIco+'</span>'+
       '<div style="flex:1;min-width:0">'+
         '<div style="font-size:.9rem;font-weight:900">'+esc(v.vendor)+
           ' <span style="font-size:.68rem;background:var(--gold-pale);color:var(--gold-d);padding:2px 8px;border-radius:20px;font-weight:800">'+esc(v.cat)+'</span>'+
         '</div>'+
-        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+v._ts.split(' ')[0]+'</div>'+
+        '<div style="font-size:.72rem;color:var(--g400);margin-top:2px">'+(v._ts||'').split(' ')[0]+'</div>'+
       '</div>'+
       '<div style="text-align:right;flex-shrink:0">'+
-        '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+(v.amount||0).toLocaleString()+'</div>'+
-        (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<(v.amount||0)?' '+Math.round(paid/(v.amount||0)*100)+'%':'')+'</div>';})()+
+        '<div style="font-size:.95rem;font-weight:900;color:var(--gold-d);font-family:monospace">NT$'+amt.toLocaleString()+'</div>'+
+        (()=>{const ps=getVendorPayStatus(v);const paid=getVendorPaid(v);return '<div style="font-size:.62rem;font-weight:800;padding:1px 7px;border-radius:20px;background:'+ps.bg+';color:'+ps.color+';margin-top:2px;display:inline-block">'+ps.label+(paid>0&&paid<amt?' '+Math.round(paid/amt*100)+'%':'')+'</div>';})()+
       '</div>'+
       '<div style="display:flex;gap:4px;margin-left:8px;flex-shrink:0">'+
-        '<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'標記採用')+'</button>'+
+        (opts.hideAdopt?'':'<button class="btn '+(v.adopted?'bg':'bo')+' bxs" data-vadopt style="'+(v.adopted?'background:var(--ok);border-color:var(--ok)':'')+'">'+(v.adopted?'已採用':'標記採用')+'</button>')+
         '<button class="btn bg bxs" data-vpay style="background:var(--gold)">付款</button>'+
         '<button class="btn bo bxs" data-vtgl>▾ 明細</button>'+
         '<button class="btn brd bxs" data-vdel>🗑</button>'+
@@ -676,16 +680,22 @@ function buildVendorCard(v){
       btn.addEventListener('click',e=>{
         e.stopPropagation();
         const idx=parseInt(btn.dataset.vpaydel);
-        confirmAction('刪除第'+(idx+1)+'期這筆付款記錄？（只刪記錄，不會退款，記帳那邊也要記得手動刪掉對應的內帳支出）',()=>{
+        confirmAction('刪除第'+(idx+1)+'期這筆付款記錄？（帳款裡對應的內帳支出會一起刪）',()=>{
+          const pay=(v.payments||[])[idx];
           const newPayments=(v.payments||[]).filter((_,i)=>i!==idx);
           DB.upd('vendors',v._id,{payments:newPayments,paid:newPayments.reduce((s,p)=>s+(p.amount||0),0)>=(v.amount||0)});
+          if(pay&&pay.payId){
+            const linked=DB.get('ledger').find(l=>sameRecId(l.vendorId,v._id)&&l.payRecordId===pay.payId);
+            if(linked)DB.del('ledger',linked._id);
+          }
           refreshVendorViews();
+          if(typeof refreshAccountViews==='function')refreshAccountViews();
           showToast('✅ 已刪除這筆付款記錄');
         });
       });
     });
 
-    hd.querySelector('[data-vadopt]').addEventListener('click',e=>{
+    hd.querySelector('[data-vadopt]')?.addEventListener('click',e=>{
       e.stopPropagation();
       const nowAdopted=!v.adopted;
       DB.upd('vendors',v._id,{adopted:nowAdopted});

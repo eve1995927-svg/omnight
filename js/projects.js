@@ -1578,30 +1578,82 @@ function newProjQuote(projectId){
 
 // 案場詳情「廠商報價」分頁目前選的工種篩選，每個案場各自記自己選到哪個工種（預設「全部」）
 const projVendorCatFilter={};
+const projVendorSort={};
 
-// ── 案場廠商報價 Tab ──────────────────────────────────────
+function vendorQuoteDate(v){
+  const raw=v.date||String(v._ts||'').split(' ')[0]||'';
+  return String(raw).replace(/\//g,'-');
+}
+function vendorCompanyKey(name){
+  return String(name||'未命名廠商').replace(/\s+/g,'').toLowerCase();
+}
+function findVendor(id){
+  return DB.get('vendors').find(v=>sameRecId(v._id,id));
+}
+function isVendorAwarded(v){
+  return !!v&&v.adopted!==false;
+}
+function awardedVendorsForProject(projectId){
+  const awarded=DB.get('vendors').filter(v=>sameRecId(v.projectId,projectId)&&!v.deleted&&isVendorAwarded(v));
+  awarded.forEach(v=>{
+    if(v.adopted!==true){
+      DB.upd('vendors',v._id,{adopted:true});
+      v.adopted=true;
+    }
+  });
+  return awarded;
+}
+function refreshAccountViews(){
+  if(typeof renderLedger==='function')renderLedger();
+  if(typeof renderLedgerByProject==='function'&&document.getElementById('ledger-project-table'))renderLedgerByProject();
+  if(typeof updLedgerStats==='function')updLedgerStats();
+  const pc=document.getElementById('projDetailContent');
+  if(pc&&pc.dataset.tab==='ledger'&&pc.dataset.projId&&typeof renderProjectDetail==='function'){
+    renderProjectDetail(pc.dataset.projId,'ledger');
+  }
+  if(typeof renderDashboard==='function')renderDashboard();
+}
+
+// ── 案場廠商報價 Tab：這裡只放已確定發包的報價，成本跟已付款會跟帳款同步 ──
 function renderProjVendors(id,p,c){
-  const allVendors=DB.get('vendors').filter(v=>sameRecId(v.projectId,id)&&!v.deleted);
+  const allVendors=awardedVendorsForProject(id);
   const curCat=projVendorCatFilter[id]||'all';
-  const vendors=curCat==='all'?allVendors:allVendors.filter(v=>(v.cat||'其他')===curCat);
-  const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
-  // 已付款總額：把這個案場底下每一筆廠商報價的付款紀錄加總，一眼看出付了多少、還欠多少
-  const paidTotal=vendors.reduce((s,v)=>s+getVendorPaid(v),0);
+  const sort=projVendorSort[id]||{pay:'all',order:'date-desc'};
+  let vendors=curCat==='all'?allVendors.slice():allVendors.filter(v=>(v.cat||'其他')===curCat);
+  if(sort.pay==='paid')vendors=vendors.filter(v=>getVendorPaid(v)>=getVendorTrueCost(v)&&getVendorTrueCost(v)>0);
+  if(sort.pay==='unpaid')vendors=vendors.filter(v=>getVendorPaid(v)<getVendorTrueCost(v));
+  vendors.sort((a,b)=>{
+    if(sort.order==='amt-desc')return getVendorTrueCost(b)-getVendorTrueCost(a);
+    if(sort.order==='amt-asc')return getVendorTrueCost(a)-getVendorTrueCost(b);
+    if(sort.order==='date-asc')return vendorQuoteDate(a).localeCompare(vendorQuoteDate(b));
+    return vendorQuoteDate(b).localeCompare(vendorQuoteDate(a));
+  });
+  const total=allVendors.reduce((s,v)=>s+getVendorTrueCost(v),0);
+  const paidTotal=allVendors.reduce((s,v)=>s+getVendorPaid(v),0);
 
-  // 同一個工種常常會有好幾家廠商在比價（例如平鎮案場水電就有三組），列表一長就很難一次比較。
-  // 這裡把這個案場實際出現過的工種都列成篩選頁籤，點哪個工種就只看那個工種底下的幾筆報價，方便互相比較。
   const catCounts={};
   allVendors.forEach(v=>{const k=v.cat||'其他';catCounts[k]=(catCounts[k]||0)+1;});
   const cats=Object.keys(catCounts).sort((a,b)=>catCounts[b]-catCounts[a]);
+  const pidJs=JSON.stringify(String(id));
 
   c.innerHTML=`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
       <div>
-        <div style="font-weight:800;color:var(--g700)">廠商報價（${allVendors.length} 筆${curCat!=='all'?'，目前篩選 '+vendors.length+' 筆':''}）</div>
-        ${total?`<div style="font-size:.82rem;color:var(--bad);font-weight:700">合計成本：NT$${total.toLocaleString()}</div>`:''}
+        <div style="font-weight:800;color:var(--g700)">已發包廠商（${allVendors.length} 筆${curCat!=='all'?'，目前篩選 '+vendors.length+' 筆':''}）</div>
+        ${total?`<div style="font-size:.82rem;color:var(--bad);font-weight:700">確定成本：NT$${total.toLocaleString()}</div>`:''}
         ${paidTotal>0?`<div style="font-size:.78rem;color:var(--ok);font-weight:700;margin-top:2px">已付款：NT$${paidTotal.toLocaleString()}${paidTotal<total?'　尚欠：NT$'+(total-paidTotal).toLocaleString():'（已付清）'}</div>`:''}
       </div>
-      <button class="btn bg bsm" onclick="openVendorForProject(${id})">＋ 新增廠商報價</button>
+      <button class="btn bg bsm" onclick="openVendorForProject(${pidJs})">＋ 新增發包</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;align-items:center">
+      <button class="btn ${sort.pay==='all'?'bg':'bo'} bxs" data-pvpay="all">全部付款</button>
+      <button class="btn ${sort.pay==='unpaid'?'bg':'bo'} bxs" data-pvpay="unpaid">未付清</button>
+      <button class="btn ${sort.pay==='paid'?'bg':'bo'} bxs" data-pvpay="paid">已付清</button>
+      <span style="width:1px;height:16px;background:var(--g200);margin:0 2px"></span>
+      <button class="btn ${sort.order==='date-desc'?'bg':'bo'} bxs" data-pvord="date-desc">日期新→舊</button>
+      <button class="btn ${sort.order==='date-asc'?'bg':'bo'} bxs" data-pvord="date-asc">日期舊→新</button>
+      <button class="btn ${sort.order==='amt-desc'?'bg':'bo'} bxs" data-pvord="amt-desc">金額大→小</button>
+      <button class="btn ${sort.order==='amt-asc'?'bg':'bo'} bxs" data-pvord="amt-asc">金額小→大</button>
     </div>
     ${cats.length>1?`<div id="projVendorCatFilt" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px">
       <button class="btn ${curCat==='all'?'bg':'bo'} bxs" data-pvcat="all">全部（${allVendors.length}）</button>
@@ -1615,15 +1667,25 @@ function renderProjVendors(id,p,c){
       renderProjVendors(id,p,c);
     });
   });
+  c.querySelectorAll('[data-pvpay]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      projVendorSort[id]=Object.assign({},sort,{pay:btn.dataset.pvpay});
+      renderProjVendors(id,p,c);
+    });
+  });
+  c.querySelectorAll('[data-pvord]').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      projVendorSort[id]=Object.assign({},sort,{order:btn.dataset.pvord});
+      renderProjVendors(id,p,c);
+    });
+  });
 
   const wrap=c.querySelector('#projVendorCards');
   if(!vendors.length){
-    wrap.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+(curCat==='all'?'尚無廠商報價':'這個工種底下還沒有廠商報價')+'</div></div>';
+    wrap.innerHTML='<div class="empty-state"><div class="es-ic">🏗️</div><div class="es-t">'+(allVendors.length?'目前篩選沒有符合的發包':'尚無已發包廠商')+'</div><div class="es-s">'+(allVendors.length?'換一個排序或工種再看':'這裡只放確定發包的報價。要比價請到工程→全部廠商，採用後才會出現在這裡')+'</div></div>';
     return;
   }
-  // 直接沿用「廠商報價整理」頁面同一套卡片（可展開看細項、改廠商名稱／類別／備注／工項、標記付款、刪除），
-  // 這樣不用切去別的頁面找那一筆廠商報價，在案場詳情裡就能直接編輯，操作起來順很多。
-  vendors.forEach(v=>wrap.appendChild(buildVendorCard(v)));
+  vendors.forEach(v=>wrap.appendChild(buildVendorCard(v,{hideAdopt:true})));
 }
 
 // ── 案場設計圖 Tab（上傳平面圖、設計圖、渲染圖，跟業主或廠商共享用）────────
@@ -1787,7 +1849,7 @@ function getProjCatProfitRows(projectId,includeHidden){
   const hidden=p.catProfitHidden||[];
   const vendorList=DB.get('vendors').filter(v=>sameRecId(v.projectId,projectId)&&!v.deleted);
   const adoptedByCat={};
-  vendorList.filter(v=>v.adopted).forEach(v=>{
+  vendorList.filter(v=>v.adopted!==false).forEach(v=>{
     const k=v.cat||'其他';
     if(!adoptedByCat[k])adoptedByCat[k]={vendor:v.vendor||'',cost:0};
     adoptedByCat[k].cost+=getVendorTrueCost(v);
@@ -2090,6 +2152,7 @@ function showProjProfitDetail(projectId){
 }
 
 function openVendorForProject(projectId){
+  window._vendorFromProject=true;
   curProjectId=projectId;
   const p=getProject(projectId);
   vItems=[];
@@ -2445,7 +2508,7 @@ let _payInvoiceUrl=null; // 這次付款掃描的發票照片（選填），跟 
 let _qeReceiptUrl=null; // 快速記一筆附的收據照片（選填），彈窗期間暫存用
 function openVendorPay(vendorId){
   _payVendorId=vendorId;
-  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const v=(typeof findVendor==='function'?findVendor(vendorId):DB.get('vendors').find(r=>sameRecId(r._id,vendorId)));if(!v)return;
   const paid=getVendorPaid(v);
   const remain=(v.amount||0)-paid;
 
@@ -2532,7 +2595,7 @@ function openVendorPay(vendorId){
 }
 
 function confirmVendorPay(){
-  const v=DB.get('vendors').find(r=>r._id===_payVendorId);if(!v)return;
+  const v=(typeof findVendor==='function'?findVendor(_payVendorId):DB.get('vendors').find(r=>sameRecId(r._id,_payVendorId)));if(!v)return;
   const amt=parseInt(document.getElementById('_payAmt')?.value)||0;
   if(amt<=0){showToast('⚠️ 請輸入付款金額');return;}
   const note=document.getElementById('_payNote')?.value?.trim()||'';
@@ -2563,8 +2626,7 @@ function confirmVendorPay(){
   document.getElementById('_payBox')?.remove();
   showToast('✅ 已付款 NT$'+amt.toLocaleString()+'，並自動記入內帳');
   if(typeof refreshVendorViews==='function')refreshVendorViews();
-  if(typeof renderLedger==='function')renderLedger();
-  if(typeof renderDashboard==='function')renderDashboard();
+  if(typeof refreshAccountViews==='function')refreshAccountViews();
 }
 
 // ── 編輯既有的付款記錄（例如日期輸入錯了要改）──────────────────────
@@ -2573,7 +2635,7 @@ function confirmVendorPay(){
 // 舊資料（這個功能上線前記錄的付款）沒有 payId，還是可以編輯付款記錄本身，
 // 只是找不到對應的帳款那筆，會提醒使用者自己去帳款那邊手動修正。
 function openEditVendorPayModal(vendorId,payIdx){
-  const v=DB.get('vendors').find(r=>r._id===vendorId);if(!v)return;
+  const v=(typeof findVendor==='function'?findVendor(vendorId):DB.get('vendors').find(r=>sameRecId(r._id,vendorId)));if(!v)return;
   const pay=(v.payments||[])[payIdx];if(!pay)return;
   const old=document.getElementById('_payEditBox');if(old)old.remove();
   const box=document.createElement('div');
@@ -2600,14 +2662,14 @@ function openEditVendorPayModal(vendorId,payIdx){
     const newNote=document.getElementById('_payEditNote').value.trim();
     if(newAmt<=0){showToast('⚠️ 請輸入正確的金額');return;}
     if(!newDate){showToast('⚠️ 請選擇日期');return;}
-    const freshV=DB.get('vendors').find(r=>r._id===vendorId);if(!freshV)return;
+    const freshV=(typeof findVendor==='function'?findVendor(vendorId):DB.get('vendors').find(r=>sameRecId(r._id,vendorId)));if(!freshV)return;
     const newPayments=[...(freshV.payments||[])];
     newPayments[payIdx]={...newPayments[payIdx],amount:newAmt,date:newDate,note:newNote};
     const totalPaid=newPayments.reduce((s,p)=>s+(p.amount||0),0);
     DB.upd('vendors',vendorId,{payments:newPayments,paid:totalPaid>=(freshV.amount||0)});
     // 有 payId 的話，一併找到並更新對應的那筆內帳支出，兩邊保持一致
     if(pay.payId){
-      const linkedLedger=DB.get('ledger').find(l=>l.vendorId===vendorId&&l.payRecordId===pay.payId);
+      const linkedLedger=DB.get('ledger').find(l=>sameRecId(l.vendorId,vendorId)&&l.payRecordId===pay.payId);
       if(linkedLedger){
         DB.upd('ledger',linkedLedger._id,{
           amount:newAmt,date:newDate,
@@ -2619,8 +2681,7 @@ function openEditVendorPayModal(vendorId,payIdx){
     box.remove();
     showToast('✅ 已更新這筆付款記錄'+(pay.payId?'（帳款那邊也一併更新了）':''));
     if(typeof refreshVendorViews==='function')refreshVendorViews();
-    if(typeof renderLedger==='function')renderLedger();
-    if(typeof renderDashboard==='function')renderDashboard();
+    if(typeof refreshAccountViews==='function')refreshAccountViews();
   });
 }
 

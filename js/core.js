@@ -100,7 +100,7 @@ function calcProjectProfit(projectId){
   const income=ledger.filter(l=>bookOf(l)==='in'&&l.type==='in').reduce((s,l)=>s+(l.amount||0),0);
   const cost=ledger.filter(l=>bookOf(l)==='out'&&l.type==='out'&&!l.vendorId).reduce((s,l)=>s+(l.amount||0),0);
   const vendorCost=DB.get('vendors')
-    .filter(v=>String(v.projectId)===String(projectId)&&!v.deleted)
+    .filter(v=>(typeof sameRecId==='function'?sameRecId(v.projectId,projectId):String(v.projectId)===String(projectId))&&!v.deleted&&v.adopted!==false)
     .reduce((s,v)=>s+(typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0)),0);
   const profit=income-cost-vendorCost;
   const margin=income>0?Math.round(profit/income*100):null;
@@ -831,7 +831,8 @@ function refreshListsForKey(k){
     if(typeof updContractStats==='function')updContractStats();
   }
   if(k==='vendors'){
-    if(typeof renderVendors==='function')renderVendors(typeof vCurrentFilter!=='undefined'?vCurrentFilter:'all');
+    if(typeof refreshVendorViews==='function')refreshVendorViews();
+    else if(typeof renderVendors==='function')renderVendors(typeof vCurrentFilter!=='undefined'?vCurrentFilter:'all');
     if(typeof updStats==='function')updStats();
   }
   if(k==='progress'&&typeof renderProgress==='function')renderProgress();

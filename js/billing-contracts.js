@@ -1581,15 +1581,28 @@ const RPTS={
   payable:{
     t:'廠商應付帳款',
     b:()=>{
-      const vendors=DB.get('vendors').filter(v=>!v.deleted&&!v.paid);
+      const vendors=DB.get('vendors').filter(v=>{
+        if(v.deleted||v.adopted===false)return false;
+        const paid=typeof getVendorPaid==='function'?getVendorPaid(v):0;
+        const cost=typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0);
+        return paid<cost;
+      });
       if(!vendors.length)return '<p style="color:var(--g400)">目前沒有未付廠商款項</p>';
       const projects=DB.get('projects');
-      const total=vendors.reduce((s,v)=>s+(v.amount||0),0);
+      const remainOf=v=>{
+        const paid=typeof getVendorPaid==='function'?getVendorPaid(v):0;
+        const cost=typeof getVendorTrueCost==='function'?getVendorTrueCost(v):(v.amount||0);
+        return Math.max(0,cost-paid);
+      };
+      const total=vendors.reduce((s,v)=>s+remainOf(v),0);
       const rows=vendors.map(v=>{
-        const proj=v.projectId?projects.find(p=>p._id==v.projectId):null;
-        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${(v.amount||0).toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="const row=this.closest('tr');confirmAction('確定要標記「${esc(v.vendor||'這筆').replace(/'/g,"\\'")}」已付款嗎？',()=>{DB.upd('vendors',${v._id},{paid:true});row.remove();showToast('✅ 已標記付款')},false)" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">標記付款</button></td></tr>`;
+        const proj=v.projectId?projects.find(p=>sameRecId(p._id,v.projectId)):null;
+        const paid=typeof getVendorPaid==='function'?getVendorPaid(v):0;
+        const remain=remainOf(v);
+        const vid=JSON.stringify(String(v._id));
+        return `<tr><td style="padding:8px 12px;font-weight:700">${esc(v.vendor||'未填')}</td><td style="padding:8px 12px">${esc(v.cat||'')}</td><td style="padding:8px 12px">${proj?esc(proj.name):(v.caseN||'—')}</td><td style="padding:8px 12px;text-align:right;font-weight:700">NT$${paid.toLocaleString()}</td><td style="padding:8px 12px;text-align:right;color:var(--bad);font-weight:700">NT$${remain.toLocaleString()}</td><td style="padding:8px 12px;text-align:center"><button onclick="openVendorPay(${vid})" style="padding:4px 10px;border:1.5px solid var(--ok-bd);border-radius:var(--rxs);background:var(--ok-bg);color:var(--ok);font-size:.75rem;cursor:pointer;font-family:inherit">去付款</button></td></tr>`;
       }).join('');
-      return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">金額</th><th style="padding:8px 12px;text-align:center">狀態</th></tr></thead><tbody>${rows}</tbody></table>`;
+      return `<div style="font-size:.82rem;color:var(--bad);font-weight:800;margin-bottom:12px">未付總計：NT$${total.toLocaleString()}</div><table style="width:100%;border-collapse:collapse;font-size:.85rem"><thead><tr style="background:var(--g100)"><th style="padding:8px 12px;text-align:left">廠商</th><th style="padding:8px 12px;text-align:left">類別</th><th style="padding:8px 12px;text-align:left">案場</th><th style="padding:8px 12px;text-align:right">已付</th><th style="padding:8px 12px;text-align:right">尚欠</th><th style="padding:8px 12px;text-align:center">動作</th></tr></thead><tbody>${rows}</tbody></table>`;
     }
   },
   receivable:{
