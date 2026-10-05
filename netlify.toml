@@ -2,6 +2,18 @@
   publish = "."
   functions = "netlify/functions"
 
+[[redirects]]
+  from = "/AGENTS.md"
+  to = "/"
+  status = 404
+  force = true
+
+[[redirects]]
+  from = "/CODEX_HANDOFF.md"
+  to = "/"
+  status = 404
+  force = true
+
 [[headers]]
   for = "/*"
   [headers.values]
