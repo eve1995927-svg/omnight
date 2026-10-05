@@ -624,6 +624,15 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .ltab:hover{color:var(--g600)}
 .ltab.on{color:var(--gold-d);border-bottom-color:var(--gold);font-weight:900}
 .ledger-body{display:none}.ledger-body.on{display:block;animation:slideUp .2s ease}
+.ltab[data-hr-owner-only][hidden]{display:none}
+.punch-report-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.punch-report-nav .fi{width:auto;max-width:100%;font-weight:800}
+.punch-report-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.punch-report-note{font-size:.78rem;color:var(--g500);line-height:1.7;margin-bottom:14px}
+.punch-report-table{min-width:620px}
+.punch-report-detail{margin-top:18px}
+.punch-report-detail summary{cursor:pointer;font-weight:800;padding:12px 0}
+@media(max-width:600px){.punch-report-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.punch-report-nav .btn{padding:8px 10px}.punch-report-nav .fi{padding:8px}}
 .ldir{background:var(--g50);color:var(--g500);transition:all var(--ease)}
 .ldir:hover{background:var(--g100)}
 .ldir.on{background:var(--gold-pale);border-color:var(--gold-l)!important;color:var(--gold-d)}

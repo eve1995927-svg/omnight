@@ -1061,8 +1061,122 @@ function calcMonthlyOvertime(empUserKey,monthKey,hourlyRate){
   return {totalOtHours:+totalOtHours.toFixed(2),totalOtPay,dailyDetail};
 }
 
+// ══ 老闆每月打卡報告（只讀取記錄，不建立薪資或改動打卡）══════
+let hrPunchReportMonth='';
+
+function punchReportDate(value){
+  const date=normalizePunchDate(String(value||''));
+  if(!date||!/^\d{4}-\d{2}-\d{2}$/.test(date))return null;
+  const [year,month,day]=date.split('-').map(Number);
+  const check=new Date(year,month-1,day);
+  return check.getFullYear()===year&&check.getMonth()===month-1&&check.getDate()===day?date:null;
+}
+
+function punchReportTime(value){
+  const match=String(value||'').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if(!match)return null;
+  const [,h,m,s='0']=match;
+  return +h<24&&+m<60&&+s<60?+h*3600+ +m*60+ +s:null;
+}
+
+function buildMonthlyPunchReport(monthKey){
+  const employees=DB.getAll('employees');
+  const rows=new Map();
+  const addEmployee=emp=>{
+    const key='emp_'+String(emp._id);
+    if(!rows.has(key))rows.set(key,{key,name:emp.name||'未命名員工',title:emp.deleted?'已移除員工':(emp.title||'員工'),records:[],days:new Set(),groups:new Map(),complete:0,review:0});
+    return rows.get(key);
+  };
+  employees.filter(e=>!e.deleted).forEach(addEmployee);
+  DB.get('punch_recs').forEach(record=>{
+    const date=punchReportDate(record.date);
+    if(!date||date.slice(0,7)!==monthKey||!['in','out'].includes(record.type))return;
+    const user=String(record.user||'');
+    // 個人 ID 優先；只有舊共用帳號且姓名唯一時才以姓名找員工，避免同名誤併。
+    let emp=user.startsWith('emp_')?employees.find(e=>sameRecId(e._id,user.slice(4))):null;
+    if(!user.startsWith('emp_')&&record.userName){
+      const matches=employees.filter(e=>e.name===record.userName);
+      if(matches.length===1)emp=matches[0];
+    }
+    const key=emp?'emp_'+String(emp._id):(user.startsWith('emp_')?user:JSON.stringify([user,record.userName||'']));
+    if(emp)addEmployee(emp);
+    if(!rows.has(key))rows.set(key,{key,name:record.userName||record.user||'未識別帳號',title:'歷史打卡帳號',records:[],days:new Set(),groups:new Map(),complete:0,review:0});
+    const row=rows.get(key);
+    row.records.push(record);
+    if(record.type==='in')row.days.add(date);
+    const location=String(recId(record.projectId)??'');
+    const groupKey=JSON.stringify([date,location]);
+    if(!row.groups.has(groupKey))row.groups.set(groupKey,{date,location,records:[],complete:0,review:false});
+    row.groups.get(groupKey).records.push(record);
+  });
+  rows.forEach(row=>row.groups.forEach(group=>{
+    let pending=0;
+    group.records.sort((a,b)=>(punchReportTime(a.time)??-1)-(punchReportTime(b.time)??-1));
+    group.records.forEach(record=>{
+      if(punchReportTime(record.time)===null){group.review=true;return;}
+      if(record.type==='in')pending++;
+      else if(pending){pending--;group.complete++;}
+      else group.review=true;
+    });
+    if(pending)group.review=true;
+    row.complete+=group.complete;
+    if(group.review)row.review++;
+  }));
+  const result=Array.from(rows.values()).sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+  return {rows:result,people:result.filter(r=>r.days.size).length,days:result.reduce((n,r)=>n+r.days.size,0),records:result.reduce((n,r)=>n+r.records.length,0),review:result.reduce((n,r)=>n+r.review,0)};
+}
+
+function renderMonthlyPunchReport(){
+  const wrap=document.getElementById('hrPunchReport');if(!wrap)return;
+  if(curRole!=='owner'){wrap.innerHTML='';return;}
+  const now=new Date();
+  const currentMonth=fmtMonth(now.getFullYear(),now.getMonth());
+  if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(hrPunchReportMonth))hrPunchReportMonth=currentMonth;
+  const report=buildMonthlyPunchReport(hrPunchReportMonth);
+  const title=hrPunchReportMonth.replace('-','年')+'月';
+  wrap.innerHTML=`
+    <div class="punch-report-nav">
+      <button class="btn bo bsm" id="hrReportPrev" aria-label="上個月">◀</button>
+      <label for="hrReportMonth">月份</label>
+      <input class="fi" type="month" id="hrReportMonth" aria-label="報告月份" value="${hrPunchReportMonth}">
+      <button class="btn bo bsm" id="hrReportNext" aria-label="下個月">▶</button>
+      <button class="btn bo bsm" id="hrReportToday">回到本月</button>
+    </div>
+    <div class="ct">📅 ${title} 打卡總覽</div>
+    <div class="punch-report-stats">
+      ${[[report.people,'出勤人數'],[report.days,'出勤人天'],[report.records,'打卡筆數'],[report.review,'待確認組數']].map(([value,label])=>`<div class="stat"><div class="sn">${value}</div><div class="sl">${label}</div></div>`).join('')}
+    </div>
+    <p class="punch-report-note">同一人同一天跨案場只算一天出勤；上下班依日期、案場分組配對。待確認包含缺上班、缺下班或時間異常，可展開每日明細查看。總覽依系統目前保存的記錄統計。</p>
+    ${!report.records?'<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">這個月尚無打卡記錄</div></div>':''}
+    ${report.rows.length?`<div class="card"><div class="tw"><table class="tbl punch-report-table">
+      <thead><tr><th>員工／帳號</th><th>出勤天數</th><th>打卡筆數</th><th>完整上下班組數</th><th>待確認組數</th><th>每日明細</th></tr></thead>
+      <tbody>${report.rows.map((row,index)=>`<tr><td><strong>${esc(row.name)}</strong><div class="punch-report-note" style="margin:0">${esc(row.title)}</div></td><td>${row.days.size} 天</td><td>${row.records.length} 筆</td><td>${row.complete} 組</td><td style="color:${row.review?'var(--warn)':'var(--g500)'}">${row.review} 組</td><td>${row.records.length?`<button class="btn bo bxs" data-punch-detail="${index}">查看明細</button>`:'—'}</td></tr>`).join('')}</tbody>
+    </table></div></div>`:''}
+    <div class="punch-report-detail" id="hrReportDetails">
+      ${report.rows.map((row,index)=>row.records.length?`<details class="card" id="hrReportDetail${index}"><summary>${esc(row.name)} · ${row.days.size} 天出勤 · 每日明細</summary><div class="tw"><table class="tbl punch-report-table"><thead><tr><th>日期</th><th>案場／地點</th><th>上班時間</th><th>下班時間</th><th>狀態</th></tr></thead><tbody>
+        ${Array.from(row.groups.values()).sort((a,b)=>a.date.localeCompare(b.date)||a.location.localeCompare(b.location)).map(group=>{
+          const snapshot=group.records.find(r=>r.projectName)?.projectName;
+          const location=getPunchLocationLabel(group.location,snapshot);
+          const times=type=>group.records.filter(r=>r.type===type).map(r=>esc(r.time||'時間不明')).join('、')||'—';
+          return `<tr><td>${group.date}</td><td>${esc(location)}</td><td>${times('in')}</td><td>${times('out')}</td><td style="color:${group.review?'var(--warn)':'var(--ok)'}">${group.review?'待確認':'完整'}${group.complete?'（'+group.complete+'組）':''}</td></tr>`;
+        }).join('')}
+      </tbody></table></div></details>`:'').join('')}
+    </div>`;
+  const changeMonth=month=>{if(/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){hrPunchReportMonth=month;renderMonthlyPunchReport();}};
+  const [year,month]=hrPunchReportMonth.split('-').map(Number);
+  wrap.querySelector('#hrReportMonth').addEventListener('change',event=>changeMonth(event.target.value));
+  wrap.querySelector('#hrReportPrev').addEventListener('click',()=>changeMonth(fmtMonth(year,month-2)));
+  wrap.querySelector('#hrReportNext').addEventListener('click',()=>changeMonth(fmtMonth(year,month)));
+  wrap.querySelector('#hrReportToday').addEventListener('click',()=>changeMonth(currentMonth));
+  wrap.querySelectorAll('[data-punch-detail]').forEach(button=>button.addEventListener('click',()=>{
+    const detail=document.getElementById('hrReportDetail'+button.dataset.punchDetail);
+    detail.open=true;detail.scrollIntoView({behavior:'smooth',block:'start'});
+  }));
+}
+
 // switchHRTab 覆寫加出缺勤
 function switchHRTab(tab){
+  if(!canAccessPanel('hr-settings')||(tab==='punch-report'&&curRole!=='owner')){showToast('此功能僅開放給老闆');return;}
   // 更新 tab 樣式
   document.querySelectorAll('.ltab[data-ht]').forEach(t=>t.classList.toggle('on',t.dataset.ht===tab));
   // 顯示對應 body
@@ -1073,6 +1187,7 @@ function switchHRTab(tab){
   if(tab==='salary')renderSalaryList();
   if(tab==='leave')renderLeaveManagement();
   if(tab==='attend')renderAttendance();
+  if(tab==='punch-report')renderMonthlyPunchReport();
   if(tab==='punch')renderHRPanel();
   if(tab==='request')renderHRPanel();
 };

@@ -895,6 +895,10 @@ function startCloudSync(){
 }
 
 function refreshListsForKey(k){
+  if(['punch_recs','employees','projects'].includes(k)&&curRole==='owner'){
+    const hr=document.getElementById('p-hr-settings');
+    if(hr?.classList.contains('on')&&document.getElementById('hrb-punch-report')?.classList.contains('on')&&typeof renderMonthlyPunchReport==='function')renderMonthlyPunchReport();
+  }
   if(k==='quotes'&&typeof renderQTable==='function')renderQTable();
   if(k==='contracts'){
     if(typeof renderContracts==='function')renderContracts();
@@ -1589,6 +1593,7 @@ function setupApp(role){
 }
 const IMAP={owner:'👑',cs:'💬',mk:'✨',ad:'📋',ac:'📊'};
 function buildTabs(role){
+  document.querySelectorAll('[data-hr-owner-only]').forEach(el=>{el.hidden=role!=='owner';});
   const tabs=document.getElementById('rTabs');if(!tabs)return;tabs.innerHTML='';
   if(role==='punch')return;
   const grps=groupsFor(role);
@@ -1735,6 +1740,10 @@ function showPanel(id){
   if(String(id).startsWith('p-')&&!document.getElementById('p-'+id)&&document.getElementById(id)) id=id.slice(2);
   if(curRole==='punch'&&id!=='punch-clock'){id='punch-clock';}
   if(!canAccessPanel(id)){showToast('此功能尚未開放給你，請洽老闆開通權限');return;}
+  if(id==='hr-settings'){
+    if(curRole!=='owner'&&document.getElementById('hrb-punch-report')?.classList.contains('on'))switchHRTab('emp');
+    if(curRole==='owner'&&document.getElementById('hrb-punch-report')?.classList.contains('on'))renderMonthlyPunchReport();
+  }
   if(id==='ac-billing') setTimeout(()=>renderBilling(),100);
   if(id==='inbox') setTimeout(()=>renderInboxPanel(),50);
   if(id==='settings') setTimeout(()=>{if(typeof updateLastBackupInfo==='function')updateLastBackupInfo();},50);

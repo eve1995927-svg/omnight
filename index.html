@@ -960,6 +960,7 @@
   <div class="ltab"    data-ht="salary"  onclick="switchHRTab('salary')">💰 薪資管理</div>
   <div class="ltab"    data-ht="leave"   onclick="switchHRTab('leave')">🏖️ 休假管理 <span id="hrLeavePendingBadge" style="display:none;background:var(--bad);color:#fff;border-radius:20px;font-size:.66rem;padding:1px 7px;margin-left:3px;font-weight:900"></span></div>
   <div class="ltab"    data-ht="attend"  onclick="switchHRTab('attend')">📊 出勤統計</div>
+  <div class="ltab"    data-ht="punch-report" data-hr-owner-only hidden onclick="switchHRTab('punch-report')">📅 打卡報告</div>
   <div class="ltab"    data-ht="punch"   onclick="switchHRTab('punch')">🕐 打卡記錄</div>
   <div class="ltab"    data-ht="request" onclick="switchHRTab('request')">✏️ 修改申請</div>
  </div>
@@ -987,6 +988,10 @@
 
  <div class="ledger-body" id="hrb-attend">
   <div id="attendList"></div>
+ </div>
+
+ <div class="ledger-body" id="hrb-punch-report">
+  <div id="hrPunchReport"></div>
  </div>
 
  <div class="ledger-body" id="hrb-punch">
