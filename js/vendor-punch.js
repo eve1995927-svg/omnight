@@ -1243,9 +1243,10 @@ function updatePunchBtn(){
 }
 
 
+let hrApprovalHistoryPage=1;
 function renderHRPanel(){
   const list=document.getElementById('hrPunchList');if(!list)return;
-  const allRecs=DB.get('punch_recs').sort((a,b)=>b._id-a._id);
+  const allRecs=DB.get('punch_recs');
   if(!allRecs.length){
     list.innerHTML='<div class="empty-state"><div class="es-ic">🕐</div><div class="es-t">尚無打卡記錄</div><div class="es-s">公務帳號打卡後會顯示在這裡</div></div>';
   } else {
@@ -1279,13 +1280,13 @@ function renderHRPanel(){
         row.innerHTML=
           '<span style="font-size:1rem">'+(r.type==='in'?'🟢':'🔴')+'</span>'+
           '<div style="flex:1">'+
-            '<div style="font-size:.88rem;font-weight:800">'+nameLabel+
-              ' <span style="font-size:.7rem;background:var(--info-bg);color:var(--info);padding:1px 7px;border-radius:10px;font-weight:700">'+roleLabel+'</span>'+
+            '<div style="font-size:.88rem;font-weight:800">'+esc(nameLabel)+
+              ' <span style="font-size:.7rem;background:var(--info-bg);color:var(--info);padding:1px 7px;border-radius:10px;font-weight:700">'+esc(roleLabel)+'</span>'+
             '</div>'+
             '<div style="font-size:.75rem;color:var(--g500);margin-top:1px">'+(r.type==='in'?'上班打卡':'下班打卡')+(projName?' · 📍 '+esc(projName):'')+'</div>'+
           '</div>'+
           '<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px">'+
-            '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+r.time+'</div>'+
+            '<div style="font-family:monospace;font-weight:900;font-size:.92rem">'+esc(r.time||'')+'</div>'+
             addrHtml+
             (r.photo?'<img src="'+r.photo+'" onclick="openLB(\''+r.photo+'\')" style="width:52px;height:52px;object-fit:cover;border-radius:var(--rxs);cursor:pointer;flex-shrink:0;border:1.5px solid var(--g200)" title="打卡現場照片">':'')+
           '</div>';
@@ -1297,6 +1298,21 @@ function renderHRPanel(){
   // 審核請求
   const reqList=document.getElementById('hrRequestList');if(!reqList)return;
   const reqs=DB.get('punch_requests').filter(r=>r.status==='pending');
+  document.getElementById('hrApprovalHistory')?.remove();
+  const allHistory=DB.get('punch_requests').filter(r=>['approved','rejected'].includes(r.status));
+  const historyPages=Math.max(1,Math.ceil(allHistory.length/30));
+  hrApprovalHistoryPage=Math.max(1,Math.min(hrApprovalHistoryPage,historyPages));
+  const history=allHistory.slice((hrApprovalHistoryPage-1)*30,hrApprovalHistoryPage*30);
+  if(history.length){
+    const box=document.createElement('details');box.id='hrApprovalHistory';box.className='card';
+    box.innerHTML='<summary class="punch-year-summary">審核歷史（本頁 '+history.length+' 筆）</summary>'+history.map(r=>'<div class="punch-day-card"><strong>'+esc(r.userName||r.user||'員工')+' · '+esc(r.date||'')+'</strong><div>'+esc(r.status==='approved'?(r.approvalAction||'已核准'):'已拒絕')+' · '+esc(r.approvedName||r.approvedBy||r.rejectedBy||'審核人未記錄')+'</div><div>'+esc(r.before?.time||'無原始時間')+' → '+esc(r.after?.time||'未更動打卡')+'</div><div>'+esc(r.approvedAt||r.rejectedAt||'')+'</div><div>原因：'+esc(r.reason||'')+'</div>'+(r.status==='approved'&&!r.approvalAction?'<p class="punch-report-note">舊核准尚未連動打卡，請核對後補處理。</p><button class="btn bo bsm" onclick="approveReq('+esc(jsId(r._id))+')">核對舊核准</button>':'')+'</div>').join('');
+    reqList.parentElement.appendChild(box);
+    const nav=document.createElement('div');nav.className='punch-report-nav';
+    nav.innerHTML='<button class="btn bo bsm" data-history-prev '+(hrApprovalHistoryPage===1?'disabled':'')+'>上一頁</button><span>第 '+hrApprovalHistoryPage+'／'+historyPages+' 頁 · 共 '+allHistory.length+' 筆</span><button class="btn bo bsm" data-history-next '+(hrApprovalHistoryPage===historyPages?'disabled':'')+'>下一頁</button>';
+    box.appendChild(nav);
+    nav.querySelector('[data-history-prev]').addEventListener('click',()=>{hrApprovalHistoryPage--;renderHRPanel();});
+    nav.querySelector('[data-history-next]').addEventListener('click',()=>{hrApprovalHistoryPage++;renderHRPanel();});
+  }
   if(!reqs.length){
     reqList.innerHTML='<div class="empty-state"><div class="es-ic">📋</div><div class="es-t">尚無待審核申請</div></div>';return;
   }
@@ -1304,17 +1320,121 @@ function renderHRPanel(){
   reqs.forEach(r=>{
     const card=document.createElement('div');card.style.cssText='background:var(--warn-bg);border:1.5px solid var(--warn-bd);border-radius:var(--rs);padding:12px 16px;margin-bottom:8px';
     card.innerHTML=
-      '<div style="font-size:.88rem;font-weight:800">'+r.date+' · '+(r.userName||r.user||'員工')+'</div>'+
-      '<div style="font-size:.82rem;color:var(--g600);margin:6px 0 10px">申請原因：'+r.reason+'</div>'+
+      '<div style="font-size:.88rem;font-weight:800">'+esc(r.date||'')+' · '+esc(r.userName||r.user||'員工')+'</div>'+
+      '<div style="font-size:.82rem;color:var(--g600);margin:6px 0 10px">申請原因：'+esc(r.reason||'')+'</div>'+
       '<div style="display:flex;gap:7px">'+
-        '<button class="btn bgn bsm" onclick="approveReq('+r._id+')">核准</button>'+
-        '<button class="btn brd bsm" onclick="rejectReq('+r._id+')">拒絕</button>'+
+        '<button class="btn bgn bsm" onclick="approveReq('+esc(jsId(r._id))+')">核准</button>'+
+        '<button class="btn brd bsm" onclick="rejectReq('+esc(jsId(r._id))+')">拒絕</button>'+
       '</div>';
     reqList.appendChild(card);
   });
 }
-function approveReq(id){DB.upd('punch_requests',id,{status:'approved'});renderHRPanel();updateHRBadge();showToast('✅ 已核准。');}
-function rejectReq(id){DB.upd('punch_requests',id,{status:'rejected'});renderHRPanel();updateHRBadge();showToast('✅ 已拒絕。');}
+function punchRequestUser(request){
+  const user=String(request.user||'');
+  if(user.startsWith('emp_')||user==='owner')return user;
+  const employee=punchEmployeeForRecord(request,DB.getAll('employees'));
+  return employee?'emp_'+String(employee._id):(!['staff','punch',''].includes(user)?user:'');
+}
+function punchAuditSnapshot(record){
+  if(!record)return null;
+  return {_id:record._id,user:record.user||'',userName:record.userName||'',date:record.date||'',type:record.type||'',time:record.time||'',projectId:recId(record.projectId),projectName:record.projectName||''};
+}
+function punchRecordMatchesUser(record,user){
+  const employee=punchEmployeeForRecord(record,DB.getAll('employees'));
+  return (employee?'emp_'+String(employee._id):String(record.user||''))===user;
+}
+function applyPunchApproval(requestId,decision){
+  if(curRole!=='owner')throw new Error('只有老闆可核准打卡申請');
+  const request=findRec('punch_requests',requestId);
+  if(!request)throw new Error('找不到申請');
+  const legacyReview=request.status==='approved'&&!request.approvalAction&&decision.legacyReview;
+  if(request.status==='approved'&&!legacyReview)return request;
+  if(request.status!=='pending'&&!legacyReview)throw new Error('這筆申請已處理');
+  const date=punchReportDate(request.date);
+  if(!date||date>punchLocalDate())throw new Error('申請日期無效或尚未到來');
+  const user=String(decision.user||''),knownUser=punchRequestUser(request);
+  if(!user)throw new Error('請指定員工／帳號');
+  if(knownUser&&user!==knownUser)throw new Error('核准員工與申請人不一致');
+  const approvedBy=getPunchUser(),approvedName=document.getElementById('uName')?.textContent||'老闆',approvedAt=new Date().toISOString();
+  if(request.type==='other'){
+    DB.upd('punch_requests',request._id,{status:'approved',approvedBy,approvedName,approvedAt,approvalAction:'備註審核，未更動打卡'});
+    refreshPunchApprovalViews();return findRec('punch_requests',request._id);
+  }
+  if(!['in','out','fix'].includes(request.type))throw new Error('不支援這個申請類型');
+  const parsed=punchReportTime(decision.time);
+  if(parsed===null)throw new Error('請填寫正確時間');
+  const time=String(decision.time).length===5?decision.time+':00':decision.time;
+  if(date===punchLocalDate()&&parsed>punchReportTime(new Date().toTimeString().slice(0,8)))throw new Error('不可補入尚未到來的時間');
+  if(decision.projectId===undefined)throw new Error('請指定案場／地點');
+  const location=String(recId(decision.projectId)??'');
+  if(Object.prototype.hasOwnProperty.call(request,'projectId')&&String(recId(request.projectId)??'')!==location)throw new Error('核准案場與申請案場不一致');
+  const employee=DB.getAll('employees').find(e=>user==='emp_'+String(e._id));
+  const userName=employee?.name||request.userName||user;
+  let before=null,after,recordId;
+  if(request.type==='fix'){
+    const target=findRec('punch_recs',decision.targetId);
+    if(!target||!punchRecordMatchesUser(target,user)||punchReportDate(target.date)!==date||String(recId(target.projectId)??'')!==location)throw new Error('請選擇這位員工、當天、同案場的原始打卡');
+    if(request.targetRecordId!=null&&!sameRecId(request.targetRecordId,target._id))throw new Error('原始打卡與申請指定的記錄不一致');
+    const previous=(target.correctionHistory||[]).find(entry=>sameRecId(entry.requestId,request._id));
+    if(previous){before=previous.before;after=previous.after;recordId=target._id;}
+    else{
+      before=punchAuditSnapshot(target);after={...before,user,userName,date,time};recordId=target._id;
+      const correction={requestId:request._id,approvedBy,approvedName,approvedAt,reason:request.reason||'',before,after};
+      DB.upd('punch_recs',target._id,{user,userName,date,time,correctionHistory:[...(target.correctionHistory||[]),correction]});
+    }
+  }else{
+    recordId='punch_req_'+String(request._id);
+    const existing=DB.getAll('punch_recs').find(r=>sameRecId(r._id,recordId));
+    if(existing?.deleted)throw new Error('這筆補卡已移除，請先核對刪除原因');
+    if(existing){
+      if(!sameRecId(existing.requestId,request._id)||!punchRecordMatchesUser(existing,user)||punchReportDate(existing.date)!==date||existing.type!==request.type||existing.time!==time||String(recId(existing.projectId)??'')!==location)throw new Error('這筆補卡已寫入不同內容，請重新核對');
+      after=punchAuditSnapshot(existing);
+    }else{
+      const duplicate=DB.get('punch_recs').find(r=>punchRecordMatchesUser(r,user)&&punchReportDate(r.date)===date&&r.type===request.type&&String(recId(r.projectId)??'')===location);
+      if(duplicate)throw new Error('同一天、同案場已有這類打卡；請改用修改時間申請，避免重複');
+      const record={user,userName,date,time,type:request.type,projectId:recId(location),projectName:getPunchLocationLabel(location,request.projectName),source:'approved-request',requestId:request._id,approvedBy,approvedName,approvedAt,lat:null,lng:null,addr:'核准補卡（非現場定位）',summary:'核准補卡 '+userName+' '+date+' '+time};
+      DB.push('punch_recs',record,recordId);after=punchAuditSnapshot(findRec('punch_recs',recordId));
+    }
+  }
+  DB.upd('punch_requests',request._id,{status:'approved',resolvedUser:user,projectId:recId(location),recordId,approvedBy,approvedName,approvedAt,before,after,approvalAction:request.type==='fix'?'修改打卡時間':'新增補卡'});
+  refreshPunchApprovalViews();return findRec('punch_requests',request._id);
+}
+function refreshPunchApprovalViews(){
+  if(typeof refreshListsForKey==='function'){refreshListsForKey('punch_recs');refreshListsForKey('punch_requests');}
+  renderHRPanel();updateHRBadge();if(typeof renderPunchRec==='function')renderPunchRec();if(typeof updatePunchBtn==='function')updatePunchBtn();
+}
+function approveReq(id){
+  if(curRole!=='owner'){showToast('只有老闆可核准打卡申請');return;}
+  const request=findRec('punch_requests',id);if(!request||(request.status!=='pending'&&!(request.status==='approved'&&!request.approvalAction))){showToast('這筆申請已處理');return;}
+  document.getElementById('_punchApproval')?.remove();
+  const people=new Map(DB.getAll('employees').map(e=>['emp_'+String(e._id),(e.name||'員工')+(e.deleted?'（已移除）':'')+' · '+String(e._id)]));
+  DB.get('punch_recs').forEach(r=>{if(r.user&&!people.has(r.user)&&!['staff','punch'].includes(r.user))people.set(r.user,r.userName||r.user);});people.set('owner','老闆帳號');
+  const user=punchRequestUser(request);if(user&&!people.has(user))people.set(user,request.userName||user);
+  const locations=new Map([['','未指定案場'],['__office__','辦公室']]);DB.getAll('projects').forEach(p=>locations.set(String(p._id),p.name||'未命名案場'));
+  DB.get('punch_recs').forEach(r=>{const key=String(recId(r.projectId)??'');if(!locations.has(key))locations.set(key,r.projectName||'歷史案場 '+key);});
+  const knownLocation=Object.prototype.hasOwnProperty.call(request,'projectId'),location=String(recId(request.projectId)??'');
+  const box=document.createElement('div');box.id='_punchApproval';box.className='mov show';
+  box.innerHTML=`<div class="modal" style="max-width:520px"><div class="mtit">核對並核准打卡申請 <button class="mcl" id="paClose">✕</button></div><p>${esc(request.userName||request.user||'員工')} · ${esc(request.date||'')} · ${esc({in:'補上班卡',out:'補下班卡',fix:'修改時間',other:'其他備註'}[request.type]||request.type)}</p><p class="punch-report-note">原因：${esc(request.reason||'')}</p><div class="field"><label class="fl" for="paUser">員工／帳號</label><select class="fs" id="paUser" ${user?'disabled':''}><option value="">請指定申請人</option>${Array.from(people).map(([key,label])=>`<option value="${esc(key)}" ${user===key?'selected':''}>${esc(label)}</option>`).join('')}</select></div><div class="field"><label class="fl" for="paProject">案場／地點</label><select class="fs" id="paProject" ${knownLocation?'disabled':''}>${!knownLocation?'<option value="__choose__">請指定案場／地點</option>':''}${Array.from(locations).map(([key,label])=>`<option value="${esc(key)}" ${knownLocation&&location===key?'selected':''}>${esc(label)}</option>`).join('')}</select></div>${request.type==='fix'?'<div class="field"><label class="fl" for="paTarget">要修改的原始打卡</label><select class="fs" id="paTarget"></select></div>':''}${request.type!=='other'?`<div class="field"><label class="fl" for="paTime">核准時間</label><input class="fi" id="paTime" type="time" step="1" value="${esc(punchReportTime(request.time)!==null?request.time:'')}"></div>`:'<p class="punch-report-note">此申請只核准備註，不會新增或修改打卡。</p>'}<div id="paError" role="alert" style="color:var(--bad);margin-bottom:12px"></div><button class="btn bg bfull" id="paConfirm">${request.type==='other'?'核准備註':'核准並更新打卡'}</button></div>`;
+  document.body.appendChild(box);
+  const fillTargets=()=>{
+    const target=box.querySelector('#paTarget');if(!target)return;
+    target.disabled=request.targetRecordId!=null;
+    const employee=box.querySelector('#paUser').value,project=box.querySelector('#paProject').value;
+    const records=DB.get('punch_recs').filter(r=>punchRecordMatchesUser(r,employee)&&punchReportDate(r.date)===punchReportDate(request.date)&&String(recId(r.projectId)??'')===project);
+    target.innerHTML='<option value="">請選原始打卡</option>'+records.map(r=>`<option value="${esc(String(r._id))}" ${sameRecId(request.targetRecordId,r._id)?'selected':''}>${r.type==='in'?'上班':'下班'} ${esc(r.time||'時間不明')}</option>`).join('');
+  };
+  fillTargets();box.querySelector('#paUser').addEventListener('change',fillTargets);box.querySelector('#paProject').addEventListener('change',fillTargets);
+  box.querySelector('#paClose').addEventListener('click',()=>box.remove());
+  box.querySelector('#paConfirm').addEventListener('click',()=>{
+    try{const project=box.querySelector('#paProject').value;if(project==='__choose__'&&request.type!=='other')throw new Error('請先選案場／地點');applyPunchApproval(id,{user:box.querySelector('#paUser').value,projectId:project==='__choose__'?undefined:project,time:box.querySelector('#paTime')?.value,targetId:box.querySelector('#paTarget')?.value,legacyReview:request.status==='approved'&&!request.approvalAction});box.remove();showToast('已核准，打卡與月報已更新');}
+    catch(error){box.querySelector('#paError').textContent=error.message;}
+  });
+}
+function rejectReq(id){
+  if(curRole!=='owner'){showToast('只有老闆可審核打卡申請');return;}
+  const request=findRec('punch_requests',id);if(!request||request.status!=='pending')return;
+  confirmAction('拒絕這筆打卡申請？',()=>{DB.upd('punch_requests',request._id,{status:'rejected',rejectedBy:getPunchUser(),rejectedAt:new Date().toISOString()});refreshPunchApprovalViews();showToast('已拒絕申請');});
+}
 
 // ══ 廠商報價搜尋：篩選邏輯已整合進 renderVendorCatFilters ══════════════
 

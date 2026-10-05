@@ -159,7 +159,8 @@ document.getElementById('addEmpBtn')?.addEventListener('click',()=>{
   const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value='';
   ['empLaborCompany','empHealthCompany','empLaborEmployee','empHealthEmployee','empRetireCompany'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   const absorbEl=document.getElementById('empAbsorbInsurance');if(absorbEl)absorbEl.checked=false;
-  document.getElementById('empStartDate').value=new Date().toISOString().split('T')[0];
+  document.getElementById('empStartDate').value=punchLocalDate();
+  setEmployeeScheduleForm({});
   const typeStaffEl=document.getElementById('empTypeStaff');if(typeStaffEl)typeStaffEl.checked=true;
   document.getElementById('empModalTitle').innerHTML='新增員工 <button class="mcl" data-close="empModal">✕</button>';
   setEmpPermCheckboxes(DEFAULT_STAFF_PERMISSIONS);
@@ -228,7 +229,10 @@ function proceedSaveEmployee(name){
   }
   const permissions=readEmpPermCheckboxes();
   const empType=document.querySelector('input[name="empType"]:checked')?.value||'staff';
+  const endDate=document.getElementById('empEndDate')?.value||'';
+  if(endDate&&endDate<document.getElementById('empStartDate').value){showToast('離職日不可早於到職日');return;}
   const data={name,title:document.getElementById('empTitle').value.trim(),phone:document.getElementById('empPhone').value.trim(),idNum:document.getElementById('empId').value.trim(),bank:document.getElementById('empBank').value.trim(),startDate:document.getElementById('empStartDate').value,salary,meal,transport,other,insuredSalary,labor,health,laborCompany,healthCompany,laborEmployee,healthEmployee,retire,net,companyCost,account,password,permissions,empType,summary:'員工 '+name};
+  Object.assign(data,{endDate,workWeekdays:Array.from(document.querySelectorAll('[data-emp-weekday]:checked')).map(el=>Number(el.dataset.empWeekday)),workOnHolidays:!!document.getElementById('empWorkHolidays')?.checked});
   if(empEditId){DB.upd('employees',empEditId,data);showToast('✅ 員工資料已更新！'+(account?'（打卡帳號：'+account+'）':''));}
   else{DB.push('employees',data);showToast('✅ 員工已新增！'+(account?'（打卡帳號：'+account+'）':''));}
   closeModal('empModal');renderEmployees();updHRStats();empEditId=null;
@@ -386,6 +390,7 @@ function renderEmployees(){
       document.getElementById('empName').value=e.name||'';document.getElementById('empTitle').value=e.title||'';
       document.getElementById('empPhone').value=e.phone||'';document.getElementById('empId').value=e.idNum||'';
       document.getElementById('empBank').value=e.bank||'';document.getElementById('empStartDate').value=e.startDate||'';
+      setEmployeeScheduleForm(e);
       document.getElementById('empSalary').value=e.salary||32000;document.getElementById('empMeal').value=e.meal||'';
       document.getElementById('empTransport').value=e.transport||0;document.getElementById('empOther').value=e.other||0;
       const insuredEl=document.getElementById('empInsuredSalary');if(insuredEl)insuredEl.value=e.insuredSalary||'';
@@ -912,56 +917,13 @@ function updProfitBar(){
 // ══ 出缺勤統計 ════════════════════════════════════════════
 function renderAttendance(){
   const list=document.getElementById('attendList');if(!list)return;
-  const emps=DB.get('employees');
-  const allRecs=DB.get('punch_recs');
-  if(!emps.length){list.innerHTML='<div class="empty-state"><div class="es-ic">📊</div><div class="es-t">尚無員工資料</div></div>';return;}
-
-  const now=new Date();
-  const monthKey=now.getFullYear()+'-'+(now.getMonth()+1).toString().padStart(2,'0');
-  const workDays=getWorkDaysInMonth(now.getFullYear(),now.getMonth());
-
-  list.innerHTML='<div style="font-size:.8rem;font-weight:800;color:var(--g400);margin-bottom:12px;padding:8px 12px;background:var(--info-bg);border-radius:var(--rxs)">📅 '+monthKey+'月份出缺勤統計 · 本月工作天 '+workDays+' 天</div>';
-
-  // 修正重點：這個函式原本是「個人打卡帳號」功能出現以前寫的，用寫死的字串 'staff'／'punch'
-  // 去配對打卡記錄，還手動加了一個假的「公務帳號」員工列在最上面。但現在每個人（不管是正式員工
-  // 還是公務型）登入後打卡都是用自己的 'emp_'+員工編號 標記，跟這個舊邏輯完全對不上，
-  // 導致每個真員工的出勤都比對不到、算出來的天數是錯的。改成每個人直接用自己的個人身份去比對，
-  // 不用共用角色字串，也不需要再假裝有一個叫「公務帳號」的員工。
-  emps.forEach(emp=>{
-    const empPunchId=emp._id?('emp_'+emp._id):null;
-    const myRecs=allRecs.filter(r=>{
-      if(r.user!==empPunchId&&r.userName!==emp.name)return false;
-      const norm=typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date;
-      return norm&&norm.startsWith(monthKey);
-    });
-
-    // 統計：同一天不管打了幾組（辦公室、工地各打一次），日期正規化之後用 Set 去重，只算一天
-    const inDays=new Set(myRecs.filter(r=>r.type==='in').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
-    const outDays=new Set(myRecs.filter(r=>r.type==='out').map(r=>typeof normalizePunchDate==='function'?normalizePunchDate(r.date):r.date)).size;
-    const absentDays=Math.max(0,workDays-inDays);
-    const pct=workDays>0?Math.round(inDays/workDays*100):0;
-
-    const card=document.createElement('div');
-    card.style.cssText='background:var(--w);border:1px solid var(--g200);border-radius:var(--r);padding:16px 20px;margin-bottom:10px;box-shadow:var(--sh1)';
-    card.innerHTML=
-      '<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">'+
-        '<div class="emp-avatar" style="width:40px;height:40px;font-size:.9rem">'+emp.name.charAt(0)+'</div>'+
-        '<div style="flex:1"><div style="font-size:.9rem;font-weight:900">'+emp.name+'</div><div style="font-size:.75rem;color:var(--g400)">'+(emp.title||'員工')+'</div></div>'+
-        '<div style="font-family:monospace;font-size:1.1rem;font-weight:900;color:'+(pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--bad)')+'">'+pct+'%</div>'+
-      '</div>'+
-      '<div style="background:var(--g200);border-radius:4px;height:8px;margin-bottom:12px;overflow:hidden">'+
-        '<div style="background:linear-gradient(90deg,'+(pct>=80?'var(--ok)':pct>=60?'var(--warn)':'var(--bad)')+','+( pct>=80?'#4ADE80':pct>=60?'#FCD34D':'#F87171')+');height:100%;width:'+pct+'%;border-radius:4px"></div>'+
-      '</div>'+
-      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">'+
-        ['出勤 '+inDays+'天','未打退 '+(inDays-outDays>0?inDays-outDays:0)+'天','缺勤 '+absentDays+'天','出勤率 '+pct+'%'].map((txt,i)=>
-          '<div style="text-align:center;padding:8px;background:var(--g50);border-radius:var(--rxs)">'+
-            '<div style="font-size:.72rem;color:var(--g400);margin-bottom:3px">'+['出勤','未打退卡','缺勤','出勤率'][i]+'</div>'+
-            '<div style="font-weight:900;font-size:.88rem;font-family:monospace">'+['出勤 '+inDays+'天','未打退 '+(inDays-outDays>0?inDays-outDays:0)+'天','缺勤 '+absentDays+'天',pct+'%'][i].split(' ')[1]+'</div>'+
-          '</div>'
-        ).join('')+
-      '</div>';
-    list.appendChild(card);
-  });
+  const now=new Date(),report=buildMonthlyPunchReport(fmtMonth(now.getFullYear(),now.getMonth()));
+  const rows=report.rows.filter(row=>row.employee&&!row.employee.deleted);
+  list.innerHTML='<p class="punch-report-note">本月出勤依同一份打卡報告統計；缺勤只核對昨天以前的排班，排除已核准休假與到離職日期。</p>'+rows.map(row=>{
+    const a=row.attendance,percent=a.known&&a.expected?Math.round(a.attendedScheduled/a.expected*100)+'%':'—';
+    return '<div class="card"><strong>'+esc(row.name)+'</strong><div class="punch-employee-metrics">'+[['出勤',row.days.size+' 天'],['已核准休假',a.known?a.leaveDays+' 天':'待設定'],['待確認缺勤',a.known?a.absentDates.length+' 天':'待設定'],['排班出勤率',percent]].map(([label,value])=>'<div>'+label+' <b>'+value+'</b></div>').join('')+'</div></div>';
+  }).join('');
+  if(!rows.length)list.innerHTML+='<div class="empty-state"><div class="es-t">尚無員工資料</div></div>';
 }
 
 // 台灣國定假日（依行政院人事行政總處公布之政府行政機關辦公日曆表，含補假）
@@ -1061,117 +1023,271 @@ function calcMonthlyOvertime(empUserKey,monthKey,hourlyRate){
   return {totalOtHours:+totalOtHours.toFixed(2),totalOtPay,dailyDetail};
 }
 
-// ══ 老闆每月打卡報告（只讀取記錄，不建立薪資或改動打卡）══════
+// ══ 老闆打卡報告：共用統計、年度查詢與匯出 ════════════════
 let hrPunchReportMonth='';
+const hrPunchFilters={employee:'',location:'*',status:'all',page:1};
+let hrPunchReportYear=null;
 
 function punchReportDate(value){
   const date=normalizePunchDate(String(value||''));
   if(!date||!/^\d{4}-\d{2}-\d{2}$/.test(date))return null;
-  const [year,month,day]=date.split('-').map(Number);
-  const check=new Date(year,month-1,day);
+  const [year,month,day]=date.split('-').map(Number),check=new Date(year,month-1,day);
   return check.getFullYear()===year&&check.getMonth()===month-1&&check.getDate()===day?date:null;
 }
-
 function punchReportTime(value){
   const match=String(value||'').match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if(!match)return null;
   const [,h,m,s='0']=match;
-  return +h<24&&+m<60&&+s<60?+h*3600+ +m*60+ +s:null;
+  return +h<24&&+m<60&&+s<60?Number(h)*3600+Number(m)*60+Number(s):null;
 }
-
-function buildMonthlyPunchReport(monthKey){
-  const employees=DB.getAll('employees');
-  const rows=new Map();
+function punchLocalDate(now=new Date()){return fmtMonth(now.getFullYear(),now.getMonth())+'-'+String(now.getDate()).padStart(2,'0');}
+function setEmployeeScheduleForm(emp){
+  const end=document.getElementById('empEndDate');if(end)end.value=emp.endDate||'';
+  const weekdays=Array.isArray(emp.workWeekdays)?emp.workWeekdays:[1,2,3,4,5];
+  document.querySelectorAll('[data-emp-weekday]').forEach(el=>{el.checked=weekdays.includes(Number(el.dataset.empWeekday));});
+  const holiday=document.getElementById('empWorkHolidays');if(holiday)holiday.checked=!!emp.workOnHolidays;
+}
+function getPunchReportSources(){
+  const records=DB.get('punch_recs'),byMonth=new Map();
+  records.forEach(record=>{const date=punchReportDate(record.date);if(date){const key=date.slice(0,7);if(!byMonth.has(key))byMonth.set(key,[]);byMonth.get(key).push(record);}});
+  return {employees:DB.getAll('employees'),records,byMonth,leaves:DB.get('leave_requests'),calendars:DB.get('hr_calendars')};
+}
+function punchEmployeeForRecord(record,employees){
+  const user=String(record.user||'');
+  if(user.startsWith('emp_'))return employees.find(e=>sameRecId(e._id,user.slice(4)))||null;
+  const matches=record.userName?employees.filter(e=>e.name===record.userName):[];
+  return matches.length===1?matches[0]:null;
+}
+function punchReportRowKey(record,employees){
+  const emp=punchEmployeeForRecord(record,employees),user=String(record.user||'');
+  return emp?'emp_'+String(emp._id):(user.startsWith('emp_')?user:JSON.stringify([user,record.userName||'']));
+}
+function classifyPunchGroup(group,now=new Date()){
+  group.complete=0;group.review=false;group.working=false;group.reasons=[];
+  let pending=0,unmatchedOut=0,invalid=false;
+  group.records.sort((a,b)=>(punchReportTime(a.time)??-1)-(punchReportTime(b.time)??-1)||(a.type===b.type?0:a.type==='in'?-1:1));
+  group.records.forEach(record=>{
+    const time=punchReportTime(record.time);
+    if(time===null){invalid=true;return;}
+    if(record.type==='in')pending++;
+    else if(pending){pending--;group.complete++;}
+    else unmatchedOut++;
+  });
+  const today=punchLocalDate(now),nowSeconds=now.getHours()*3600+now.getMinutes()*60+now.getSeconds();
+  if(group.date>today||(group.date===today&&group.records.some(r=>(punchReportTime(r.time)??0)>nowSeconds)))invalid=true;
+  if(invalid)group.reasons.push('時間異常');
+  if(unmatchedOut)group.reasons.push('缺上班卡');
+  if(pending){
+    if(group.date===today&&pending===1&&!invalid&&!unmatchedOut)group.working=true;
+    else group.reasons.push(pending>1?'重複上班／缺下班卡':'缺下班卡');
+  }
+  group.review=group.reasons.length>0;
+  group.status=group.review?group.reasons.join('、'):group.working?'上班中':'完整';
+  return group;
+}
+function calcPunchAttendance(employee,records,monthKey,leaves,now=new Date(),calendars=DB.get('hr_calendars')){
+  const attended=new Set(records.filter(r=>r.type==='in').map(r=>punchReportDate(r.date)).filter(Boolean));
+  const start=punchReportDate(employee?.startDate),end=punchReportDate(employee?.endDate);
+  const result={known:!!start&&(!employee.deleted||!!end),expected:0,leaveDays:0,absentDates:[],attendedScheduled:0,notScheduled:0};
+  const calendar=calendars.find(r=>String(r.year)===monthKey.slice(0,4));
+  const holidays=calendar?.holidays||(monthKey.startsWith('2026-')?TW_HOLIDAYS_2026:null);
+  result.note=!result.known?'到職日或歷史離職日尚未設定':!holidays&&!employee.workOnHolidays?'這個年度尚未設定假日表':'';
+  if(result.note)result.known=false;
+  if(!result.known)return result;
+  const weekdays=Array.isArray(employee.workWeekdays)?employee.workWeekdays:[1,2,3,4,5];
+  const approved=leaves.filter(r=>sameRecId(r.empId,employee._id)&&r.status==='approved');
+  const today=punchLocalDate(now),[year,month]=monthKey.split('-').map(Number);
+  for(let date=new Date(year,month-1,1);date.getMonth()===month-1;date.setDate(date.getDate()+1)){
+    const key=punchLocalDate(date);
+    if(key>=today||key<start||(end&&key>end))continue;
+    const scheduled=weekdays.includes(date.getDay())&&(employee.workOnHolidays||!holidays.includes(key));
+    if(!scheduled){result.notScheduled++;continue;}
+    const onLeave=approved.some(r=>{const a=punchReportDate(r.startDate),b=punchReportDate(r.endDate||r.startDate);return a&&b&&key>=a&&key<=b;});
+    if(onLeave){result.leaveDays++;continue;}
+    result.expected++;
+    if(attended.has(key))result.attendedScheduled++;
+    else result.absentDates.push(key);
+  }
+  return result;
+}
+function buildMonthlyPunchReport(monthKey,options={},sources=getPunchReportSources()){
+  const now=options.now||new Date(),rows=new Map(),employees=sources.employees;
+  const makeRow=(key,name,title,employee)=>({key,name,title,employee,records:[],allRecords:[],days:new Set(),groups:new Map(),complete:0,review:0,working:0,attendance:null});
   const addEmployee=emp=>{
     const key='emp_'+String(emp._id);
-    if(!rows.has(key))rows.set(key,{key,name:emp.name||'未命名員工',title:emp.deleted?'已移除員工':(emp.title||'員工'),records:[],days:new Set(),groups:new Map(),complete:0,review:0});
+    if(!rows.has(key))rows.set(key,makeRow(key,emp.name||'未命名員工',emp.deleted?'已移除員工':(emp.title||'員工'),emp));
     return rows.get(key);
   };
   employees.filter(e=>!e.deleted).forEach(addEmployee);
-  DB.get('punch_recs').forEach(record=>{
-    const date=punchReportDate(record.date);
-    if(!date||date.slice(0,7)!==monthKey||!['in','out'].includes(record.type))return;
-    const user=String(record.user||'');
-    // 個人 ID 優先；只有舊共用帳號且姓名唯一時才以姓名找員工，避免同名誤併。
-    let emp=user.startsWith('emp_')?employees.find(e=>sameRecId(e._id,user.slice(4))):null;
-    if(!user.startsWith('emp_')&&record.userName){
-      const matches=employees.filter(e=>e.name===record.userName);
-      if(matches.length===1)emp=matches[0];
-    }
-    const key=emp?'emp_'+String(emp._id):(user.startsWith('emp_')?user:JSON.stringify([user,record.userName||'']));
-    if(emp)addEmployee(emp);
-    if(!rows.has(key))rows.set(key,{key,name:record.userName||record.user||'未識別帳號',title:'歷史打卡帳號',records:[],days:new Set(),groups:new Map(),complete:0,review:0});
-    const row=rows.get(key);
-    row.records.push(record);
-    if(record.type==='in')row.days.add(date);
-    const location=String(recId(record.projectId)??'');
+  (sources.byMonth.get(monthKey)||[]).forEach(record=>{
+    if(!['in','out'].includes(record.type))return;
+    const employee=punchEmployeeForRecord(record,employees),key=punchReportRowKey(record,employees);
+    if(employee)addEmployee(employee);
+    if(!rows.has(key))rows.set(key,makeRow(key,record.userName||record.user||'未識別帳號','歷史打卡帳號',null));
+    const row=rows.get(key),date=punchReportDate(record.date),location=String(recId(record.projectId)??'');
+    row.allRecords.push(record);
+    if(options.location!=null&&options.location!=='*'&&location!==options.location)return;
     const groupKey=JSON.stringify([date,location]);
     if(!row.groups.has(groupKey))row.groups.set(groupKey,{date,location,records:[],complete:0,review:false});
     row.groups.get(groupKey).records.push(record);
   });
-  rows.forEach(row=>row.groups.forEach(group=>{
-    let pending=0;
-    group.records.sort((a,b)=>(punchReportTime(a.time)??-1)-(punchReportTime(b.time)??-1));
-    group.records.forEach(record=>{
-      if(punchReportTime(record.time)===null){group.review=true;return;}
-      if(record.type==='in')pending++;
-      else if(pending){pending--;group.complete++;}
-      else group.review=true;
+  rows.forEach(row=>{
+    row.attendance=calcPunchAttendance(row.employee||{},row.allRecords,monthKey,sources.leaves,now,sources.calendars);
+    row.groups.forEach((group,key)=>{
+      classifyPunchGroup(group,now);
+      if((options.status==='review'&&!group.review)||(options.status==='working'&&!group.working)||(options.status==='complete'&&(group.review||group.working))){row.groups.delete(key);return;}
+      row.records.push(...group.records);row.complete+=group.complete;
+      if(group.review)row.review++;if(group.working)row.working++;
+      group.records.filter(r=>r.type==='in').forEach(()=>row.days.add(group.date));
     });
-    if(pending)group.review=true;
-    row.complete+=group.complete;
-    if(group.review)row.review++;
-  }));
-  const result=Array.from(rows.values()).sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
-  return {rows:result,people:result.filter(r=>r.days.size).length,days:result.reduce((n,r)=>n+r.days.size,0),records:result.reduce((n,r)=>n+r.records.length,0),review:result.reduce((n,r)=>n+r.review,0)};
+  });
+  let result=Array.from(rows.values()).filter(row=>!options.employee||row.key===options.employee);
+  if(options.location!=null&&options.location!=='*'||options.status&&options.status!=='all')result=result.filter(r=>r.records.length);
+  result.sort((a,b)=>a.name.localeCompare(b.name,'zh-Hant'));
+  return {monthKey,rows:result,people:result.filter(r=>r.days.size).length,days:result.reduce((n,r)=>n+r.days.size,0),records:result.reduce((n,r)=>n+r.records.length,0),review:result.reduce((n,r)=>n+r.review,0),working:result.reduce((n,r)=>n+r.working,0),absent:result.reduce((n,r)=>n+r.attendance.absentDates.length,0),leave:result.reduce((n,r)=>n+r.attendance.leaveDays,0)};
 }
-
+function punchReportGroupValues(row,group){
+  const snapshot=group.records.find(r=>r.projectName)?.projectName;
+  const times=type=>group.records.filter(r=>r.type===type).map(r=>r.time||'時間不明').join('、')||'—';
+  const sources=group.records.map(r=>r.source==='approved-request'?'核准補卡':r.correctionHistory?.length?'已修正':'實際打卡');
+  return [row.name,group.date,getPunchLocationLabel(group.location,snapshot),times('in'),times('out'),group.status,Array.from(new Set(sources)).join('、')];
+}
+function punchReportSummaryValues(row){
+  const attendance=row.attendance;
+  return [row.name,row.title,row.days.size,row.records.length,row.complete,row.review,row.working,attendance.known?attendance.expected:'待設定',attendance.known?attendance.leaveDays:'待設定',attendance.known?attendance.absentDates.length:'待設定'];
+}
+function punchReportDetailHTML(row,index){
+  const groups=Array.from(row.groups.values()).sort((a,b)=>a.date.localeCompare(b.date)||a.location.localeCompare(b.location));
+  return `<details class="card" id="hrReportDetail${index}" data-report-key="${esc(row.key)}"><summary>${esc(row.name)} · ${row.days.size} 天出勤 · 每日明細</summary>
+    ${row.attendance.known?`<p class="punch-report-note">已核准休假 ${row.attendance.leaveDays} 天 · 未排班 ${row.attendance.notScheduled} 天 · 待確認缺勤：${esc(row.attendance.absentDates.join('、')||'無')}</p>`:'<p class="punch-report-note">'+esc(row.attendance.note)+'，缺勤暫不判定。</p>'}
+    <div class="tw punch-report-desktop"><table class="tbl punch-report-table"><thead><tr><th>日期</th><th>案場／地點</th><th>上班時間</th><th>下班時間</th><th>狀態</th><th>來源</th></tr></thead><tbody>${groups.map(group=>{const values=punchReportGroupValues(row,group);return `<tr>${values.slice(1).map(value=>`<td>${esc(String(value))}</td>`).join('')}</tr>`;}).join('')||'<tr><td colspan="6">尚無打卡記錄</td></tr>'}</tbody></table></div>
+    <div class="punch-report-mobile">${groups.map(group=>{const v=punchReportGroupValues(row,group);return `<div class="punch-day-card"><strong>${esc(v[1])} · ${esc(v[2])}</strong><div>上班：${esc(v[3])}</div><div>下班：${esc(v[4])}</div><div class="punch-status ${group.review?'needs-review':''}">${esc(v[5])} · ${esc(v[6])}</div></div>`;}).join('')||'<p>尚無打卡記錄</p>'}</div></details>`;
+}
+function renderPunchYearOverview(sources){
+  const year=hrPunchReportYear||Number(hrPunchReportMonth.slice(0,4)),options={employee:hrPunchFilters.employee,location:hrPunchFilters.location};
+  const months=Array.from({length:12},(_,i)=>buildMonthlyPunchReport(fmtMonth(year,i),options,sources));
+  const requests=DB.get('punch_requests').filter(r=>r.status==='pending');
+  return `<details class="card" id="hrReportYear"><summary class="punch-year-summary">${year} 年全年月份總覽</summary><div class="punch-report-nav"><button class="btn bo bxs" id="hrYearPrev">上一年</button><span>${year} 年</span><button class="btn bo bxs" id="hrYearNext">下一年</button><button class="btn bo bxs" id="hrCalendarEdit">設定年度假日</button></div><p class="punch-report-note">依目前員工與案場篩選；點月份查看月報。未完成申請另列待審核。</p><div class="punch-year-grid">${months.map(report=>{
+    const pending=requests.filter(r=>punchReportDate(r.date)?.slice(0,7)===report.monthKey&&(!options.employee||punchReportRowKey(r,sources.employees)===options.employee)&&(options.location==='*'||Object.prototype.hasOwnProperty.call(r,'projectId')&&String(recId(r.projectId)??'')===options.location)).length;
+    return `<button class="punch-year-month ${report.monthKey===hrPunchReportMonth?'selected':''}" data-report-month="${report.monthKey}"><strong>${Number(report.monthKey.slice(5))} 月</strong><span>出勤 ${report.days} 人天 · 打卡 ${report.records} 筆</span><span>缺卡／異常 ${report.review} 組 · 缺勤待確認 ${report.absent} 天</span><span>待審核申請 ${pending} 筆</span></button>`;
+  }).join('')}</div></details>`;
+}
 function renderMonthlyPunchReport(){
   const wrap=document.getElementById('hrPunchReport');if(!wrap)return;
   if(curRole!=='owner'){wrap.innerHTML='';return;}
-  const now=new Date();
-  const currentMonth=fmtMonth(now.getFullYear(),now.getMonth());
+  const currentMonth=fmtMonth(new Date().getFullYear(),new Date().getMonth());
   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(hrPunchReportMonth))hrPunchReportMonth=currentMonth;
-  const report=buildMonthlyPunchReport(hrPunchReportMonth);
-  const title=hrPunchReportMonth.replace('-','年')+'月';
-  wrap.innerHTML=`
-    <div class="punch-report-nav">
-      <button class="btn bo bsm" id="hrReportPrev" aria-label="上個月">◀</button>
-      <label for="hrReportMonth">月份</label>
-      <input class="fi" type="month" id="hrReportMonth" aria-label="報告月份" value="${hrPunchReportMonth}">
-      <button class="btn bo bsm" id="hrReportNext" aria-label="下個月">▶</button>
-      <button class="btn bo bsm" id="hrReportToday">回到本月</button>
-    </div>
-    <div class="ct">📅 ${title} 打卡總覽</div>
-    <div class="punch-report-stats">
-      ${[[report.people,'出勤人數'],[report.days,'出勤人天'],[report.records,'打卡筆數'],[report.review,'待確認組數']].map(([value,label])=>`<div class="stat"><div class="sn">${value}</div><div class="sl">${label}</div></div>`).join('')}
-    </div>
-    <p class="punch-report-note">同一人同一天跨案場只算一天出勤；上下班依日期、案場分組配對。待確認包含缺上班、缺下班或時間異常，可展開每日明細查看。總覽依系統目前保存的記錄統計。</p>
-    ${!report.records?'<div class="empty-state"><div class="es-ic">📅</div><div class="es-t">這個月尚無打卡記錄</div></div>':''}
-    ${report.rows.length?`<div class="card"><div class="tw"><table class="tbl punch-report-table">
-      <thead><tr><th>員工／帳號</th><th>出勤天數</th><th>打卡筆數</th><th>完整上下班組數</th><th>待確認組數</th><th>每日明細</th></tr></thead>
-      <tbody>${report.rows.map((row,index)=>`<tr><td><strong>${esc(row.name)}</strong><div class="punch-report-note" style="margin:0">${esc(row.title)}</div></td><td>${row.days.size} 天</td><td>${row.records.length} 筆</td><td>${row.complete} 組</td><td style="color:${row.review?'var(--warn)':'var(--g500)'}">${row.review} 組</td><td>${row.records.length?`<button class="btn bo bxs" data-punch-detail="${index}">查看明細</button>`:'—'}</td></tr>`).join('')}</tbody>
-    </table></div></div>`:''}
-    <div class="punch-report-detail" id="hrReportDetails">
-      ${report.rows.map((row,index)=>row.records.length?`<details class="card" id="hrReportDetail${index}"><summary>${esc(row.name)} · ${row.days.size} 天出勤 · 每日明細</summary><div class="tw"><table class="tbl punch-report-table"><thead><tr><th>日期</th><th>案場／地點</th><th>上班時間</th><th>下班時間</th><th>狀態</th></tr></thead><tbody>
-        ${Array.from(row.groups.values()).sort((a,b)=>a.date.localeCompare(b.date)||a.location.localeCompare(b.location)).map(group=>{
-          const snapshot=group.records.find(r=>r.projectName)?.projectName;
-          const location=getPunchLocationLabel(group.location,snapshot);
-          const times=type=>group.records.filter(r=>r.type===type).map(r=>esc(r.time||'時間不明')).join('、')||'—';
-          return `<tr><td>${group.date}</td><td>${esc(location)}</td><td>${times('in')}</td><td>${times('out')}</td><td style="color:${group.review?'var(--warn)':'var(--ok)'}">${group.review?'待確認':'完整'}${group.complete?'（'+group.complete+'組）':''}</td></tr>`;
-        }).join('')}
-      </tbody></table></div></details>`:'').join('')}
-    </div>`;
-  const changeMonth=month=>{if(/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){hrPunchReportMonth=month;renderMonthlyPunchReport();}};
+  if(!hrPunchReportYear)hrPunchReportYear=Number(hrPunchReportMonth.slice(0,4));
+  const sources=getPunchReportSources(),unfiltered=buildMonthlyPunchReport(hrPunchReportMonth,{},sources);
+  const report=buildMonthlyPunchReport(hrPunchReportMonth,hrPunchFilters,sources),pageSize=10,pages=Math.max(1,Math.ceil(report.rows.length/pageSize));
+  hrPunchFilters.page=Math.max(1,Math.min(hrPunchFilters.page,pages));
+  const pageRows=report.rows.slice((hrPunchFilters.page-1)*pageSize,hrPunchFilters.page*pageSize);
+  const opened=new Set(Array.from(wrap.querySelectorAll('details[open]')).map(el=>el.dataset.reportKey||el.id));
+  const locationChoices=new Map([['','未指定案場'],['__office__','辦公室']]);
+  const employeeChoices=new Map(unfiltered.rows.map(r=>[r.key,r.name+' · '+r.title+' · '+(r.key.startsWith('emp_')?r.key.slice(4):'歷史帳號')]));
+  sources.employees.forEach(e=>{const key='emp_'+String(e._id);if(!employeeChoices.has(key))employeeChoices.set(key,(e.name||'員工')+(e.deleted?'（已移除）':'')+' · '+String(e._id));});
+  sources.records.forEach(r=>{const key=punchReportRowKey(r,sources.employees);if(!employeeChoices.has(key))employeeChoices.set(key,(r.userName||r.user||'未識別帳號')+' · 歷史帳號');});
+  DB.getAll('projects').forEach(p=>locationChoices.set(String(p._id),p.name||'未命名案場'));
+  sources.records.forEach(r=>{const key=String(recId(r.projectId)??'');if(!locationChoices.has(key))locationChoices.set(key,r.projectName||'歷史案場 '+key);});
+  const selectOptions=(values,selected)=>values.map(([value,label])=>`<option value="${esc(value)}" ${selected===value?'selected':''}>${esc(label)}</option>`).join('');
+  const headers=['員工／帳號','出勤天數','打卡筆數','完整組數','缺卡／異常','上班中','應出勤','已核准休假','待確認缺勤'];
+  wrap.innerHTML=`<div class="punch-report-nav"><button class="btn bo bsm" id="hrReportPrev" aria-label="上個月">◀</button><label for="hrReportMonth">月份</label><input class="fi" type="month" id="hrReportMonth" aria-label="報告月份" value="${hrPunchReportMonth}"><button class="btn bo bsm" id="hrReportNext" aria-label="下個月">▶</button><button class="btn bo bsm" id="hrReportToday">回到本月</button></div>
+    <div class="punch-report-filters"><label>員工<select class="fs" id="hrReportEmployee">${selectOptions([['','全部員工／帳號'],...employeeChoices],hrPunchFilters.employee)}</select></label><label>案場<select class="fs" id="hrReportLocation">${selectOptions([['*','全部案場'],...locationChoices],hrPunchFilters.location)}</select></label><label>狀態<select class="fs" id="hrReportStatus">${selectOptions([['all','全部狀態'],['review','只看缺卡／異常'],['working','只看上班中'],['complete','只看完整']],hrPunchFilters.status)}</select></label><button class="btn bo bsm" id="hrReportReset">清除篩選</button></div>
+    <div class="punch-report-nav"><button class="btn bg bsm" id="hrReportExcel">匯出 Excel</button><button class="btn bo bsm" id="hrReportPDF">下載 PDF</button><span class="punch-report-note" style="margin:0">匯出符合篩選的全部結果</span></div>
+    <div class="ct">📅 ${hrPunchReportMonth.replace('-','年')}月 打卡總覽</div><div class="punch-report-stats">${[[report.people,'出勤人數'],[report.days,'出勤人天'],[report.records,'打卡筆數'],[report.review,'缺卡／異常組數'],[report.working,'上班中組數'],[report.absent,'待確認缺勤天數']].map(([value,label])=>`<div class="stat"><div class="sn">${value}</div><div class="sl">${label}</div></div>`).join('')}</div>
+    <p class="punch-report-note">同一人同一天跨案場只算一天。今天尚未下班顯示「上班中」；缺勤只檢查昨天以前，並排除到職前、離職後、未排班與已核准休假。應出勤、休假、缺勤為員工全案場統計，打卡數依目前篩選。未設定到職日或年度假日表者暫不判定缺勤。</p>
+    ${!report.records?'<div class="empty-state"><div class="es-t">這個月沒有符合條件的打卡記錄</div></div>':''}
+    <div class="card punch-report-desktop"><div class="tw"><table class="tbl punch-report-table"><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}<th>每日明細</th></tr></thead><tbody>${pageRows.map((row,index)=>{const values=punchReportSummaryValues(row);return `<tr><td><strong>${esc(values[0])}</strong><div class="punch-report-note" style="margin:0">${esc(values[1])}</div></td>${values.slice(2).map(v=>`<td>${esc(String(v))}</td>`).join('')}<td><button class="btn bo bxs" data-punch-detail="${index}">查看明細</button></td></tr>`;}).join('')||'<tr><td colspan="10">沒有符合條件的員工</td></tr>'}</tbody></table></div></div>
+    <div class="punch-report-mobile">${pageRows.map((row,index)=>`<div class="card punch-employee-card"><strong>${esc(row.name)}</strong><span>${esc(row.title)}</span><div class="punch-employee-metrics"><div>出勤 <b>${row.days.size} 天</b></div><div>打卡 <b>${row.records.length} 筆</b></div><div>缺卡／異常 <b>${row.review} 組</b></div><div>上班中 <b>${row.working} 組</b></div><div>已核准休假 <b>${row.attendance.known?row.attendance.leaveDays+' 天':'待設定'}</b></div><div>待確認缺勤 <b>${row.attendance.known?row.attendance.absentDates.length+' 天':'待設定'}</b></div></div><button class="btn bo bsm" data-punch-detail="${index}">查看每日明細</button></div>`).join('')}</div>
+    <div class="punch-report-nav"><button class="btn bo bsm" id="hrReportPagePrev" ${hrPunchFilters.page===1?'disabled':''}>上一頁</button><span>第 ${hrPunchFilters.page}／${pages} 頁 · 共 ${report.rows.length} 位</span><button class="btn bo bsm" id="hrReportPageNext" ${hrPunchFilters.page===pages?'disabled':''}>下一頁</button></div>
+    <div id="hrReportDetails" class="punch-report-detail">${pageRows.map(punchReportDetailHTML).join('')}</div>${renderPunchYearOverview(sources)}`;
+  wrap.querySelectorAll('details').forEach(el=>{el.open=opened.has(el.dataset.reportKey||el.id);});
+  const changeMonth=month=>{if(/^\d{4}-(0[1-9]|1[0-2])$/.test(month)){hrPunchReportMonth=month;hrPunchReportYear=Number(month.slice(0,4));hrPunchFilters.page=1;renderMonthlyPunchReport();}};
   const [year,month]=hrPunchReportMonth.split('-').map(Number);
-  wrap.querySelector('#hrReportMonth').addEventListener('change',event=>changeMonth(event.target.value));
+  wrap.querySelector('#hrReportMonth').addEventListener('change',e=>{if(e.target.value)changeMonth(e.target.value);else renderMonthlyPunchReport();});
   wrap.querySelector('#hrReportPrev').addEventListener('click',()=>changeMonth(fmtMonth(year,month-2)));
   wrap.querySelector('#hrReportNext').addEventListener('click',()=>changeMonth(fmtMonth(year,month)));
   wrap.querySelector('#hrReportToday').addEventListener('click',()=>changeMonth(currentMonth));
-  wrap.querySelectorAll('[data-punch-detail]').forEach(button=>button.addEventListener('click',()=>{
-    const detail=document.getElementById('hrReportDetail'+button.dataset.punchDetail);
-    detail.open=true;detail.scrollIntoView({behavior:'smooth',block:'start'});
-  }));
+  [['Employee','employee'],['Location','location'],['Status','status']].forEach(([id,key])=>wrap.querySelector('#hrReport'+id).addEventListener('change',e=>{hrPunchFilters[key]=e.target.value;hrPunchFilters.page=1;renderMonthlyPunchReport();}));
+  wrap.querySelector('#hrReportReset').addEventListener('click',()=>{Object.assign(hrPunchFilters,{employee:'',location:'*',status:'all',page:1});renderMonthlyPunchReport();});
+  wrap.querySelector('#hrReportPagePrev').addEventListener('click',()=>{hrPunchFilters.page--;renderMonthlyPunchReport();});
+  wrap.querySelector('#hrReportPageNext').addEventListener('click',()=>{hrPunchFilters.page++;renderMonthlyPunchReport();});
+  wrap.querySelectorAll('[data-punch-detail]').forEach(button=>button.addEventListener('click',()=>{const detail=document.getElementById('hrReportDetail'+button.dataset.punchDetail);detail.open=true;detail.scrollIntoView({behavior:'smooth',block:'start'});}));
+  wrap.querySelectorAll('[data-report-month]').forEach(button=>button.addEventListener('click',()=>changeMonth(button.dataset.reportMonth)));
+  wrap.querySelector('#hrYearPrev').addEventListener('click',()=>{hrPunchReportYear--;renderMonthlyPunchReport();document.getElementById('hrReportYear').open=true;});
+  wrap.querySelector('#hrYearNext').addEventListener('click',()=>{hrPunchReportYear++;renderMonthlyPunchReport();document.getElementById('hrReportYear').open=true;});
+  wrap.querySelector('#hrCalendarEdit').addEventListener('click',()=>openHRCalendarEditor(hrPunchReportYear));
+  wrap.querySelector('#hrReportExcel').addEventListener('click',()=>exportMonthlyPunchExcel());
+  wrap.querySelector('#hrReportPDF').addEventListener('click',()=>exportMonthlyPunchPDF());
+}
+function openHRCalendarEditor(year){
+  if(curRole!=='owner')return;
+  document.getElementById('_hrCalendar')?.remove();
+  const record=DB.get('hr_calendars').find(r=>String(r.year)===String(year));
+  const dates=record?.holidays||(year===2026?TW_HOLIDAYS_2026:[]);
+  const box=document.createElement('div');box.id='_hrCalendar';box.className='mov show';
+  box.innerHTML=`<div class="modal" style="max-width:520px"><div class="mtit">${year} 年公司假日表 <button class="mcl" id="hcClose">✕</button></div><p class="punch-report-note">每行一個休假日期，格式為 YYYY-MM-DD。週末由員工的每週排班處理；其他年度需確認假日表後才判定缺勤。修改會重新核對該年度出勤。</p><textarea class="fi" id="hcDates" rows="12" aria-label="年度假日日期">${esc(dates.join('\n'))}</textarea><label class="punch-report-note"><input type="checkbox" id="hcConfirmed"> 我已核對這一年度的公司假日</label><div id="hcError" role="alert" style="color:var(--bad)"></div><button class="btn bg bfull" id="hcSave">儲存年度假日</button></div>`;
+  document.body.appendChild(box);box.querySelector('#hcClose').addEventListener('click',()=>box.remove());
+  box.querySelector('#hcSave').addEventListener('click',()=>{
+    const values=box.querySelector('#hcDates').value.split(/\s+/).filter(Boolean);
+    if(!box.querySelector('#hcConfirmed').checked){box.querySelector('#hcError').textContent='請先核對並勾選確認';return;}
+    if(values.some(date=>!punchReportDate(date)||!date.startsWith(year+'-'))){box.querySelector('#hcError').textContent='日期格式錯誤或不屬於這個年度';return;}
+    const patch={year,holidays:Array.from(new Set(values)).sort(),updatedBy:getPunchUser(),updatedAt:new Date().toISOString()};
+    if(record)DB.upd('hr_calendars',record._id,patch);else DB.push('hr_calendars',patch,'hr_calendar_'+year);
+    box.remove();refreshListsForKey('hr_calendars');showToast('年度假日已儲存');
+  });
+}
+
+function getPunchExportData(){
+  const report=buildMonthlyPunchReport(hrPunchReportMonth,hrPunchFilters);
+  const summaryHeaders=['員工','職稱','出勤天數','打卡筆數','完整上下班組數','缺卡／異常組數','上班中組數','應出勤天數','已核准休假天數','待確認缺勤天數'];
+  const detailHeaders=['員工','日期','案場／地點','上班時間','下班時間','狀態','來源'];
+  const details=[];
+  report.rows.forEach(row=>{Array.from(row.groups.values()).sort((a,b)=>a.date.localeCompare(b.date)).forEach(group=>details.push(punchReportGroupValues(row,group)));row.attendance.absentDates.forEach(date=>details.push([row.name,date,'全案場','—','—','待確認缺勤','排班核對']));});
+  const filters=[hrPunchFilters.employee?'員工：'+(report.rows[0]?.name||'指定員工'):'全部員工',hrPunchFilters.location==='*'?'全部案場':'案場：'+getPunchLocationLabel(hrPunchFilters.location,DB.getAll('projects').find(p=>sameRecId(p._id,hrPunchFilters.location))?.name||DB.get('punch_recs').find(r=>String(recId(r.projectId)??'')===hrPunchFilters.location)?.projectName),{all:'全部狀態',review:'缺卡／異常',working:'上班中',complete:'完整'}[hrPunchFilters.status]].join(' · ');
+  return {report,summaryHeaders,summary:report.rows.map(punchReportSummaryValues),detailHeaders,details,filters};
+}
+const punchExportLoads={};
+function loadPunchExportLibrary(globalName,url){
+  if(window[globalName])return Promise.resolve();
+  if(!punchExportLoads[globalName])punchExportLoads[globalName]=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src=url;script.onload=()=>window[globalName]?resolve():reject(new Error('匯出套件載入失敗'));script.onerror=()=>{delete punchExportLoads[globalName];script.remove();reject(new Error('無法載入匯出套件，請確認網路後重試'));};document.head.appendChild(script);});
+  return punchExportLoads[globalName];
+}
+async function exportMonthlyPunchExcel(){
+  if(curRole!=='owner')return;
+  const data=getPunchExportData(),button=document.getElementById('hrReportExcel');if(button)button.disabled=true;
+  try{
+    await loadPunchExportLibrary('ExcelJS','https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js');
+    const workbook=new ExcelJS.Workbook();
+    [['月報總覽',data.summaryHeaders,data.summary],['每日明細',data.detailHeaders,data.details]].forEach(([name,headers,rows])=>{
+      const sheet=workbook.addWorksheet(name);sheet.addRow([data.report.monthKey+' 打卡報告']);sheet.addRow([data.filters]);sheet.addRow(['產出時間：'+new Date().toLocaleString('zh-TW')]);sheet.addRow(headers);rows.forEach(row=>sheet.addRow(row));
+      sheet.views=[{state:'frozen',ySplit:4}];sheet.autoFilter={from:{row:4,column:1},to:{row:4,column:headers.length}};
+      sheet.columns=headers.map((_,i)=>({width:i===0?18:name==='每日明細'?26:18}));
+      sheet.getRow(1).font={bold:true,size:15};sheet.getRow(4).font={bold:true,color:{argb:'FFFFFFFF'}};sheet.getRow(4).fill={type:'pattern',pattern:'solid',fgColor:{argb:'FF4A4540'}};
+      sheet.eachRow(row=>{row.alignment={vertical:'middle',wrapText:true};});sheet.pageSetup={orientation:'landscape',paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0};
+    });
+    const buffer=await workbook.xlsx.writeBuffer(),url=URL.createObjectURL(new Blob([buffer],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}));
+    const link=document.createElement('a');link.href=url;link.download=data.report.monthKey+'_打卡報告.xlsx';link.click();setTimeout(()=>URL.revokeObjectURL(url),10000);showToast('已下載 Excel 打卡報告');
+  }catch(error){showToast(error.message||'Excel 匯出失敗，請重試');}finally{if(button)button.disabled=false;}
+}
+async function exportMonthlyPunchPDF(){
+  if(curRole!=='owner')return;
+  const data=getPunchExportData(),button=document.getElementById('hrReportPDF');if(button)button.disabled=true;
+  let container;
+  try{
+    await Promise.all([loadPunchExportLibrary('html2canvas','https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'),loadPunchExportLibrary('jspdf','https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js')]);
+    await document.fonts.ready;
+    const pdf=new window.jspdf.jsPDF({orientation:'landscape',unit:'mm',format:'a4'}),pages=[];
+    [['月報總覽',data.summaryHeaders,data.summary],['每日明細',data.detailHeaders,data.details]].forEach(([title,headers,rows])=>{for(let i=0;i<Math.max(1,rows.length);i+=14)pages.push({title,headers,rows:rows.slice(i,i+14)});});
+    container=document.createElement('div');container.style.cssText='position:absolute;left:-20000px;top:0;width:1120px;background:white;color:#222;';document.body.appendChild(container);
+    for(let index=0;index<pages.length;index++){
+      const page=pages[index];
+      container.innerHTML=`<div style="padding:28px;font:16px 'PingFang TC','Noto Sans TC',sans-serif;box-sizing:border-box;width:1120px;min-height:720px"><h1 style="font-size:24px;margin:0 0 8px">${esc(data.report.monthKey)} 打卡報告 · ${page.title}</h1><p style="font-size:14px">${esc(data.filters)}</p><p style="font-size:12px">依保存記錄統計；應出勤排除今日、未排班及已核准休假。缺勤為待確認，不代表薪資扣款。</p><table style="width:100%;border-collapse:collapse;table-layout:fixed"><thead><tr>${page.headers.map(h=>`<th style="border:1px solid #ccc;padding:8px;background:#eee;text-align:left">${esc(h)}</th>`).join('')}</tr></thead><tbody>${page.rows.map(row=>`<tr>${row.map(v=>`<td style="border:1px solid #ccc;padding:8px;overflow-wrap:anywhere">${esc(String(v))}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${page.headers.length}" style="padding:14px">尚無符合條件的記錄</td></tr>`}</tbody></table><p style="font-size:12px;margin-top:18px">產出：${esc(new Date().toLocaleString('zh-TW'))} · 第 ${index+1}／${pages.length} 頁</p></div>`;
+      const canvas=await window.html2canvas(container.firstElementChild,{scale:1.5,backgroundColor:'#ffffff',logging:false});
+      if(index)pdf.addPage();const width=Math.min(277,190*canvas.width/canvas.height),height=canvas.height*width/canvas.width;pdf.addImage(canvas.toDataURL('image/jpeg',0.92),'JPEG',10,10,width,height);
+    }
+    pdf.save(data.report.monthKey+'_打卡報告.pdf');showToast('已下載 PDF 打卡報告');
+  }catch(error){showToast(error.message||'PDF 匯出失敗，請重試');}finally{container?.remove();if(button)button.disabled=false;}
 }
 
 // switchHRTab 覆寫加出缺勤
@@ -1860,6 +1976,7 @@ function approveLeaveRequest(id){
   confirmAction('核准「'+r.empName+'」的'+(LEAVE_TYPES[r.type]?.label||'')+'申請？',()=>{
     DB.upd('leave_requests',id,{status:'approved',reviewedAt:new Date().toLocaleString('zh-TW')});
     renderLeaveManagement();
+    if(typeof refreshListsForKey==='function')refreshListsForKey('leave_requests');
     showToast('✅ 已核准休假申請');
   },false);
 }
@@ -1868,6 +1985,7 @@ function rejectLeaveRequest(id){
   confirmAction('拒絕「'+r.empName+'」的'+(LEAVE_TYPES[r.type]?.label||'')+'申請？',()=>{
     DB.upd('leave_requests',id,{status:'rejected',reviewedAt:new Date().toLocaleString('zh-TW')});
     renderLeaveManagement();
+    if(typeof refreshListsForKey==='function')refreshListsForKey('leave_requests');
     showToast('已拒絕該申請');
   });
 }

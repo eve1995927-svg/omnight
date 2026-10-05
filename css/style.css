@@ -627,11 +627,29 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .ltab[data-hr-owner-only][hidden]{display:none}
 .punch-report-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:16px}
 .punch-report-nav .fi{width:auto;max-width:100%;font-weight:800}
-.punch-report-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.punch-report-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .punch-report-note{font-size:.78rem;color:var(--g500);line-height:1.7;margin-bottom:14px}
 .punch-report-table{min-width:620px}
 .punch-report-detail{margin-top:18px}
 .punch-report-detail summary{cursor:pointer;font-weight:800;padding:12px 0}
+.punch-report-filters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;align-items:end;gap:10px;margin-bottom:16px}
+.punch-report-filters label{font-size:.8rem;font-weight:700;min-width:0}
+.punch-report-filters .fs{display:block;width:100%;margin-top:5px}
+.punch-report-mobile{display:none}
+.punch-employee-card>strong{display:block;font-size:1rem;margin-bottom:5px}
+.punch-employee-card>span{font-size:.78rem;color:var(--g500)}
+.punch-employee-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px 0;font-size:.82rem}
+.punch-employee-metrics b{display:block;margin-top:4px;font-size:.95rem}
+.punch-day-card{padding:12px;border:1px solid var(--g200);border-radius:var(--rxs);margin-bottom:10px;font-size:.85rem;line-height:1.8;overflow-wrap:anywhere}
+.punch-status{color:var(--ok);font-weight:700}.punch-status.needs-review{color:var(--warn)}
+.punch-year-summary{cursor:pointer;font-weight:800;padding:10px 0}
+.punch-year-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.punch-year-month{background:var(--g50);border:1px solid var(--g200);border-radius:var(--rxs);padding:14px;text-align:left;font:inherit;cursor:pointer;min-width:0}
+.punch-year-month strong,.punch-year-month span{display:block}.punch-year-month span{font-size:.75rem;line-height:1.8;margin-top:4px;color:var(--g500)}
+.punch-year-month.selected{border-color:var(--gold);background:var(--gold-pale)}
+.punch-weekdays{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px}
+@media(max-width:768px){.punch-report-filters{grid-template-columns:repeat(2,minmax(0,1fr))}.punch-report-desktop{display:none}.punch-report-mobile{display:block}.punch-year-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:380px){.punch-year-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.punch-report-stats{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.punch-report-nav .btn{padding:8px 10px}.punch-report-nav .fi{padding:8px}}
 .ldir{background:var(--g50);color:var(--g500);transition:all var(--ease)}
 .ldir:hover{background:var(--g100)}
@@ -741,4 +759,3 @@ body{font-family:'PingFang TC','Noto Sans TC',-apple-system,BlinkMacSystemFont,s
 .mode-toggle{display:flex;gap:6px;margin-bottom:12px}
 .mode-btn{padding:7px 16px;border-radius:20px;font-size:.8rem;font-weight:800;cursor:pointer;border:1.5px solid var(--g200);background:var(--w);color:var(--g500);transition:all var(--ease);font-family:inherit}
 .mode-btn.on{background:var(--gold-pale);border-color:var(--gold);color:var(--gold-d)}
-

@@ -1703,7 +1703,22 @@
   </div>
   <div class="g2" style="margin-bottom:12px">
    <div class="field" style="margin:0"><label class="fl">到職日</label><input class="fi" id="empStartDate" type="date"></div>
+   <div class="field" style="margin:0"><label class="fl">離職日（未離職留空）</label><input class="fi" id="empEndDate" type="date"></div>
    <div class="field" style="margin:0"><label class="fl">聯絡電話</label><input class="fi" id="empPhone" placeholder="0912-345-678"></div>
+  </div>
+  <div class="field">
+   <label class="fl">每週排班日</label>
+   <div class="punch-weekdays">
+    <label><input type="checkbox" data-emp-weekday="1" checked> 一</label>
+    <label><input type="checkbox" data-emp-weekday="2" checked> 二</label>
+    <label><input type="checkbox" data-emp-weekday="3" checked> 三</label>
+    <label><input type="checkbox" data-emp-weekday="4" checked> 四</label>
+    <label><input type="checkbox" data-emp-weekday="5" checked> 五</label>
+    <label><input type="checkbox" data-emp-weekday="6"> 六</label>
+    <label><input type="checkbox" data-emp-weekday="0"> 日</label>
+   </div>
+   <label class="punch-report-note"><input type="checkbox" id="empWorkHolidays"> 國定假日依排班日上班</label>
+   <p class="punch-report-note">未另設定時沿用週一至週五，排除系統假日表；勾選日期用於出勤核對，不自動扣薪。</p>
   </div>
   <div class="g2" style="margin-bottom:12px">
    <div class="field" style="margin:0"><label class="fl">身分證字號</label><input class="fi" id="empId" placeholder="A123456789"></div>

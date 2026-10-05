@@ -4,8 +4,8 @@ const fs=require('node:fs');
 const path=require('node:path');
 const vm=require('node:vm');
 
-function reportContext(employees,punches){
-  const data={employees,punch_recs:punches};
+function reportContext(employees,punches,leaves=[]){
+  const data={employees,punch_recs:punches,leave_requests:leaves};
   const context=vm.createContext({
     setTimeout:()=>0,
     document:{getElementById:()=>null,querySelectorAll:()=>[]},
@@ -88,4 +88,69 @@ test('拒絕不存在的日期與不合法時間',()=>{
   assert.equal(context.punchReportDate('2026/9/4'),'2026-09-04');
   assert.equal(context.punchReportTime('25:00:00'),null);
   assert.equal(context.punchReportTime('09:60:00'),null);
+});
+
+test('今天未下班為上班中；過去缺卡及時間倒序分類清楚',()=>{
+  const now=new Date(2026,8,4,10,0,0);
+  const context=reportContext([{_id:1,name:'員工'}],[
+    punch('emp_1','2026-09-04','in','09:00:00'),
+    punch('emp_1','2026-09-03','in','09:00:00'),
+    punch('emp_1','2026-09-02','out','18:00:00'),
+  ]);
+  const result=context.buildMonthlyPunchReport('2026-09',{now});
+  assert.equal(result.working,1);assert.equal(result.review,2);
+  const statuses=Array.from(result.rows[0].groups.values()).map(g=>g.status);
+  assert.ok(statuses.includes('上班中'));assert.ok(statuses.includes('缺下班卡'));assert.ok(statuses.includes('缺上班卡'));
+  assert.equal(context.buildMonthlyPunchReport('2026-09',{now,status:'working'}).records,1);
+});
+
+test('出勤核對排除到職前、離職後、今日、未排班及核准休假，ID 相容',()=>{
+  const employee={_id:1,name:'員工',startDate:'2026-09-02',endDate:'2026-09-04',workWeekdays:[1,2,3,4,5]};
+  const context=reportContext([employee],[punch('emp_1','2026-09-02','in','09:00:00')],[
+    {empId:'1',status:'approved',startDate:'2026-09-03',endDate:'2026-09-03'},
+    {empId:1,status:'pending',startDate:'2026-09-04',endDate:'2026-09-04'},
+  ]);
+  const attendance=context.buildMonthlyPunchReport('2026-09',{now:new Date(2026,8,8)}).rows[0].attendance;
+  assert.equal(attendance.expected,2);assert.equal(attendance.leaveDays,1);assert.equal(attendance.attendedScheduled,1);
+  assert.deepEqual(Array.from(attendance.absentDates),['2026-09-04']);
+  const today=context.buildMonthlyPunchReport('2026-09',{now:new Date(2026,8,4,20)}).rows[0].attendance;
+  assert.equal(today.absentDates.length,0);
+});
+
+test('個別週末排班、系統假日和未知到職日不誤算缺勤',()=>{
+  const context=reportContext([],[]);
+  const employee={_id:1,startDate:'2026-09-25',workWeekdays:[6]};
+  const attendance=context.calcPunchAttendance(employee,[],'2026-09',[],new Date(2026,9,1));
+  assert.deepEqual(Array.from(attendance.absentDates),['2026-09-26']);
+  const weekday=context.calcPunchAttendance({...employee,workWeekdays:[1]},[],'2026-09',[],new Date(2026,9,1));
+  assert.equal(weekday.expected,0);
+  assert.equal(context.calcPunchAttendance({_id:1},[],'2026-09',[],new Date(2026,9,1)).known,false);
+});
+
+test('員工和案場篩選維持公司出勤判斷，不把其他案場出勤當缺勤',()=>{
+  const context=reportContext([{_id:1,name:'員工',startDate:'2026-09-01'}],[
+    punch('emp_1','2026-09-01','in','09:00:00',7),punch('emp_1','2026-09-01','out','18:00:00',7),
+    punch('emp_1','2026-09-02','in','09:00:00',8),punch('emp_1','2026-09-02','out','18:00:00',8),
+  ]);
+  const result=context.buildMonthlyPunchReport('2026-09',{employee:'emp_1',location:'7',now:new Date(2026,8,3)});
+  assert.equal(result.records,2);assert.equal(result.days,1);assert.equal(result.absent,0);
+  assert.equal(result.rows[0].attendance.attendedScheduled,2);
+});
+
+test('沒有假日表的年度不推算缺勤；公司年度假日可覆寫系統表',()=>{
+  const context=reportContext([],[]),employee={_id:1,startDate:'2025-01-01',workWeekdays:[1,2,3,4,5]};
+  const unknown=context.calcPunchAttendance(employee,[],'2025-09',[],new Date(2026,0,1),[]);
+  assert.equal(unknown.known,false);assert.match(unknown.note,/年度/);
+  const calendar=[{year:2026,holidays:['2026-09-02']}];
+  const known=context.calcPunchAttendance(employee,[],'2026-09',[],new Date(2026,8,3),calendar);
+  assert.equal(known.known,true);assert.deepEqual(Array.from(known.absentDates),['2026-09-01']);
+});
+
+test('匯出包含所有符合篩選的員工，不只畫面目前十人分頁',()=>{
+  const employees=Array.from({length:15},(_,i)=>({_id:i+1,name:'員工'+(i+1)}));
+  const context=reportContext(employees,[]);
+  vm.runInContext("hrPunchReportMonth='2026-09';hrPunchFilters.page=2;",context);
+  assert.equal(context.getPunchExportData().summary.length,15);
+  vm.runInContext("hrPunchFilters.employee='emp_3';",context);
+  assert.equal(context.getPunchExportData().summary.length,1);
 });

@@ -467,7 +467,7 @@ const _cache = {}; // _cache[k] = {recordId: record, ...}（用 _id 當 key 的�
 const _KEYS = ['projects','quotes','vendors','invoices','contracts','progress','ledger','billing',
                'employees','punch_recs','punch_requests','clients','zeju_quotes',
                'chat_mk','chat_cs','chat_ac','chat_ad','post_history','reports',
-               'salary_records','leave_requests','measurements','vendor_reports','design_files','omnichannel_messages','omnichannel_threads','memos','recurring_expenses','calendar_events','monthly_bills'];
+               'salary_records','leave_requests','hr_calendars','measurements','vendor_reports','design_files','omnichannel_messages','omnichannel_threads','memos','recurring_expenses','calendar_events','monthly_bills'];
 
 // 把舊格式（陣列，或 Firebase 有時回傳的 {0:rec,1:rec} 這種物件）統一轉成「用 _id 當 key」的物件，
 // 不管資料原本長什麼樣，一律用每筆資料自己的 _id 重新當 key，格式不一致的舊資料也能自動修正
@@ -550,7 +550,7 @@ const DB={
     // 先從 cache 取（包含已刪除項目），依 _id 新到舊排序，跟以前陣列 unshift 的順序一致，
     // 不會因為改成物件儲存就打亂既有畫面「新的排最前面」的邏輯
     if(_cache[k]!==undefined){
-      return Object.values(_cache[k]||{}).sort((a,b)=>(b._id||0)-(a._id||0));
+      return Object.values(_cache[k]||{}).sort((a,b)=>(b._createdMs||Number(b._id)||0)-(a._createdMs||Number(a._id)||0));
     }
     // 降級用 localStorage
     try{
@@ -573,22 +573,18 @@ const DB={
     _cache[k]=_normalizeToKeyedObj(v);
     _cloudSetAll(k, Object.values(_cache[k]));
   },
-  push(k,item){
+  push(k,item,recordId){
     if(!_cache[k])_cache[k]={};
+    // 核准補卡使用固定 ID；重送或兩台裝置核准同一申請時，不新增第二筆。
+    if(recordId!=null&&_cache[k][String(recordId)])return DB.getAll(k);
     // 用 Date.now() 當 id，正常情況下毫秒等級夠用，但如果極短時間內連續新增兩筆
     // （同一毫秒內），要避免兩筆用到同一個 id 互相蓋掉——這裡確保一定拿到沒用過的 id
-    let newId=Date.now();
-    while(_cache[k][String(newId)]!==undefined) newId++;
-    const record={...item,_id:newId,_ts:new Date().toLocaleString('zh-TW')};
+    let newId=recordId??Date.now();
+    if(recordId==null)while(_cache[k][String(newId)]!==undefined)newId++;
+    const record={...item,_id:newId,_createdMs:Date.now(),_ts:new Date().toLocaleString('zh-TW')};
     _cache[k][String(record._id)]=record;
     _cloudSetRecord(k,record._id,record);
-    // 維持原本「最多存 500 筆，滿了就丟掉最舊的一筆」的行為，只刪那一筆，不動其他資料
-    const all=Object.values(_cache[k]);
-    if(all.length>500){
-      const oldest=all.reduce((a,b)=>(a._id<b._id?a:b));
-      delete _cache[k][String(oldest._id)];
-      _cloudRemoveRecord(k,oldest._id);
-    }
+    // 歷史資料持續保留；查閱由各頁的年度／月份與分頁控制，不再靜默刪除。
     return DB.getAll(k);
   },
   del(k,id){
@@ -895,9 +891,13 @@ function startCloudSync(){
 }
 
 function refreshListsForKey(k){
-  if(['punch_recs','employees','projects'].includes(k)&&curRole==='owner'){
+  if(['punch_recs','punch_requests','leave_requests','hr_calendars','employees','projects'].includes(k)&&curRole==='owner'){
     const hr=document.getElementById('p-hr-settings');
     if(hr?.classList.contains('on')&&document.getElementById('hrb-punch-report')?.classList.contains('on')&&typeof renderMonthlyPunchReport==='function')renderMonthlyPunchReport();
+    if(hr?.classList.contains('on')&&document.getElementById('hrb-attend')?.classList.contains('on')&&typeof renderAttendance==='function')renderAttendance();
+    if(['punch_recs','punch_requests'].includes(k)&&hr?.classList.contains('on')&&typeof renderHRPanel==='function')renderHRPanel();
+    if(k==='punch_requests'&&typeof updateHRBadge==='function')updateHRBadge();
+    if(['punch_recs','employees'].includes(k)&&typeof updHRStats==='function')updHRStats();
   }
   if(k==='quotes'&&typeof renderQTable==='function')renderQTable();
   if(k==='contracts'){

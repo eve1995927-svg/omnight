@@ -577,8 +577,10 @@ function openPunchRequest(){
         </div>
         <div class="field">
           <label class="fl">正確時間（若適用）</label>
-          <input class="fi" id="prTime" type="time">
+          <input class="fi" id="prTime" type="time" step="1">
         </div>
+        <div class="field"><label class="fl">案場／地點</label><select class="fs" id="prProject"></select></div>
+        <div class="field" id="prTargetField" hidden><label class="fl">要修改的打卡</label><select class="fs" id="prTarget"></select></div>
         <div class="field">
           <label class="fl">申請原因</label>
           <textarea class="fi" id="prReason" rows="3" placeholder="請說明原因，例如：忘記打卡、手機沒訊號等"></textarea>
@@ -592,14 +594,19 @@ function openPunchRequest(){
       const type = document.getElementById('prType').value;
       const time = document.getElementById('prTime').value;
       const reason = document.getElementById('prReason').value.trim();
+      const projectId=document.getElementById('prProject').value;
+      const targetRecordId=document.getElementById('prTarget').value;
       if(!date){showToast('⚠️ 請選擇日期');return;}
+      if(!punchReportDate(date)||date>punchLocalDate()){showToast('日期無效或尚未到來');return;}
       if(!reason){showToast('⚠️ 請填寫申請原因');return;}
+      if(type!=='other'&&punchReportTime(time)===null){showToast('請填寫正確時間');return;}
+      if(type==='fix'&&!targetRecordId){showToast('請選擇要修改的打卡');return;}
       const typeMap={in:'補打上班卡',out:'補打下班卡',fix:'修改時間',other:'其他'};
       DB.push('punch_requests',{
         summary:'打卡申請：'+typeMap[type],
-        user: curRole,
+        user: getPunchUser(),
         userName: document.getElementById('uName')?.textContent||curRole,
-        date, type, time, reason,
+        date, type, time, reason,projectId:recId(projectId),projectName:getPunchLocationLabel(projectId),targetRecordId:type==='fix'?recId(targetRecordId):null,
         status:'pending',
       });
       showToast('✅ 申請已送出，等待老闆審核！');
@@ -609,10 +616,27 @@ function openPunchRequest(){
       document.getElementById('prTime').value='';
       document.getElementById('prReason').value='';
     });
+    ['prDate','prType','prProject'].forEach(id=>document.getElementById(id).addEventListener('change',refreshPunchRequestTargets));
+    document.getElementById('prTarget').addEventListener('change',event=>{const record=findRec('punch_recs',event.target.value);if(record)document.getElementById('prTime').value=record.time||'';});
   }
   // 預設今天日期
-  document.getElementById('prDate').value = new Date().toISOString().split('T')[0];
+  document.getElementById('prDate').value=punchLocalDate();
+  document.getElementById('prDate').max=punchLocalDate();
+  const locations=new Map([['','未指定案場'],['__office__','辦公室']]);
+  DB.get('projects').forEach(p=>locations.set(String(p._id),p.name||'未命名案場'));
+  DB.get('punch_recs').filter(r=>punchRecordMatchesUser(r,getPunchUser())).forEach(r=>{const key=String(recId(r.projectId)??'');if(!locations.has(key))locations.set(key,r.projectName||'歷史案場 '+key);});
+  document.getElementById('prProject').innerHTML=Array.from(locations).map(([value,label])=>'<option value="'+esc(value)+'">'+esc(label)+'</option>').join('');
+  const lastProject=document.getElementById('punchProjectSel')?.value||'';
+  if(locations.has(lastProject))document.getElementById('prProject').value=lastProject;
+  refreshPunchRequestTargets();
   openModal('punchRequestModal');
+}
+function refreshPunchRequestTargets(){
+  const type=document.getElementById('prType')?.value;
+  const field=document.getElementById('prTargetField');if(field)field.hidden=type!=='fix';
+  const target=document.getElementById('prTarget');if(!target)return;
+  const date=document.getElementById('prDate').value,location=document.getElementById('prProject').value;
+  target.innerHTML='<option value="">請選原始打卡</option>'+DB.get('punch_recs').filter(r=>punchRecordMatchesUser(r,getPunchUser())&&punchReportDate(r.date)===date&&String(recId(r.projectId)??'')===location).map(r=>'<option value="'+esc(String(r._id))+'">'+(r.type==='in'?'上班':'下班')+' '+esc(r.time||'時間不明')+'</option>').join('');
 }
 
 // ══ 把 localStorage 現有資料一次性上傳到 Firebase ══
